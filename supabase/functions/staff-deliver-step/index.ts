@@ -7,6 +7,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { triggerDropboxSync } from "../_shared/dropbox-trigger.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -136,6 +137,17 @@ serve(async (req: Request) => {
       .eq("id", stepId);
 
     console.log(`Staff delivery: step=${stepId}, version=${deliveryVersion}, files=${files.length}`);
+
+    // Dropbox sync — fire-and-forget for each uploaded file
+    for (const path of uploadedPaths) {
+      triggerDropboxSync({
+        order_id: step.order_id,
+        source_bucket: "quote-files",
+        source_path: path,
+        sync_trigger: "staff_delivery",
+        filename: path.split("/").pop() ?? undefined,
+      });
+    }
 
     return json({
       success: true,

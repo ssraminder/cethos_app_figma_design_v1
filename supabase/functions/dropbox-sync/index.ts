@@ -8,6 +8,8 @@
  * Actions:
  *   sync_file     — Download from Supabase, upload to Dropbox, log with hash
  *   sync_batch    — Sync multiple files in one call
+ *   sync_order_file — Auto-resolve Dropbox path from order_id, then sync
+ *   setup_order   — Create folder structure + batch-sync existing quote files
  *   create_order_folder — Create the full order folder structure
  *   share_folder  — Create a shared link for a folder (customer delivery)
  *   check_status  — Check sync status for an order
@@ -99,6 +101,10 @@ serve(async (req: Request) => {
         return await handleSyncFile(supabase, accessToken, body);
       case "sync_batch":
         return await handleSyncBatch(supabase, accessToken, body);
+      case "sync_order_file":
+        return await handleSyncOrderFile(supabase, accessToken, body);
+      case "setup_order":
+        return await handleSetupOrder(supabase, accessToken, body);
       case "create_order_folder":
         return await handleCreateOrderFolder(accessToken, body);
       case "share_folder":
@@ -411,6 +417,243 @@ async function handleCheckStatus(
   };
 
   return jsonResponse({ summary, files: data });
+}
+
+// --- Resolve order → Dropbox base path ---
+
+async function resolveOrderDropboxPath(
+  supabase: any,
+  order_id: string,
+): Promise<{ basePath: string; projectNumber: string; customerName: string; targetLanguage: string } | null> {
+  // order → internal_project + customer + target language
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, order_number, customer_id, internal_project_id, quote_id")
+    .eq("id", order_id)
+    .maybeSingle();
+
+  if (!order) return null;
+
+  // Project number
+  let projectNumber = order.order_number ?? "";
+  if (order.internal_project_id) {
+    const { data: project } = await supabase
+      .from("internal_projects")
+      .select("project_number")
+      .eq("id", order.internal_project_id)
+      .maybeSingle();
+    if (project?.project_number) projectNumber = project.project_number;
+  }
+
+  // Customer name
+  let customerName = "";
+  if (order.customer_id) {
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("full_name")
+      .eq("id", order.customer_id)
+      .maybeSingle();
+    if (customer?.full_name) customerName = customer.full_name;
+  }
+
+  // Target language from the quote
+  let targetLanguage = "";
+  if (order.quote_id) {
+    const { data: quote } = await supabase
+      .from("quotes")
+      .select("target_language_id")
+      .eq("id", order.quote_id)
+      .maybeSingle();
+    if (quote?.target_language_id) {
+      const { data: lang } = await supabase
+        .from("languages")
+        .select("name")
+        .eq("id", quote.target_language_id)
+        .maybeSingle();
+      if (lang?.name) targetLanguage = lang.name;
+    }
+  }
+
+  if (!projectNumber) return null;
+
+  const folderName = [projectNumber, customerName, targetLanguage]
+    .filter(Boolean)
+    .join(" — ");
+
+  return {
+    basePath: `/Cethos/Orders/${folderName}`,
+    projectNumber,
+    customerName,
+    targetLanguage,
+  };
+}
+
+// --- sync_order_file: auto-resolve path from order_id ---
+
+async function handleSyncOrderFile(
+  supabase: any,
+  accessToken: string,
+  body: {
+    order_id: string;
+    source_bucket: string;
+    source_path: string;
+    sync_trigger: string;
+    filename?: string;
+    quote_id?: string;
+    quote_file_id?: string;
+    step_delivery_id?: string;
+  },
+) {
+  const { order_id, source_bucket, source_path, sync_trigger, quote_id, quote_file_id, step_delivery_id } = body;
+
+  if (!order_id || !source_bucket || !source_path || !sync_trigger) {
+    return jsonResponse({ error: "order_id, source_bucket, source_path, sync_trigger are required" }, 400);
+  }
+
+  const subfolder = TRIGGER_TO_SUBFOLDER[sync_trigger];
+  if (!subfolder) {
+    return jsonResponse({ error: `Unknown sync_trigger: ${sync_trigger}` }, 400);
+  }
+
+  const resolved = await resolveOrderDropboxPath(supabase, order_id);
+  if (!resolved) {
+    return jsonResponse({ skipped: true, reason: "Could not resolve order Dropbox path" });
+  }
+
+  // Extract filename from source_path or use provided filename
+  const filename = body.filename ?? source_path.split("/").pop() ?? "file";
+
+  // Ensure folder exists (creates if needed, no-ops if already there)
+  await ensureOrderFolders(accessToken, resolved.basePath);
+
+  const dropbox_path = `${resolved.basePath}/${subfolder}/${filename}`;
+
+  // Delegate to the existing sync_file handler
+  return await handleSyncFile(supabase, accessToken, {
+    source_bucket,
+    source_path,
+    dropbox_path,
+    sync_trigger,
+    order_id,
+    quote_id,
+    quote_file_id,
+    step_delivery_id,
+  });
+}
+
+// --- setup_order: create folders + batch-sync existing source files ---
+
+async function handleSetupOrder(
+  supabase: any,
+  accessToken: string,
+  body: { order_id: string; quote_id?: string },
+) {
+  const { order_id } = body;
+  if (!order_id) {
+    return jsonResponse({ error: "order_id is required" }, 400);
+  }
+
+  const resolved = await resolveOrderDropboxPath(supabase, order_id);
+  if (!resolved) {
+    return jsonResponse({ skipped: true, reason: "Could not resolve order Dropbox path" });
+  }
+
+  // Create the full folder structure
+  await handleCreateOrderFolder(accessToken, {
+    project_number: resolved.projectNumber,
+    customer_name: resolved.customerName,
+    target_language: resolved.targetLanguage,
+  });
+
+  // Find the quote_id from the order if not provided
+  let quoteId = body.quote_id;
+  if (!quoteId) {
+    const { data: order } = await supabase
+      .from("orders")
+      .select("quote_id")
+      .eq("id", order_id)
+      .maybeSingle();
+    quoteId = order?.quote_id;
+  }
+
+  // Batch-sync existing source documents and reference files from the quote
+  const synced: string[] = [];
+  if (quoteId) {
+    const { data: quoteFiles } = await supabase
+      .from("quote_files")
+      .select("id, storage_path, original_filename, file_category_id")
+      .eq("quote_id", quoteId)
+      .is("deleted_at", null);
+
+    // Identify source vs reference by category
+    const SOURCE_CAT = "45cb02ba-fca5-423a-8cb9-6ad807ad3bbc";
+    const REF_CAT = "f1aed462-a25f-4dd0-96c0-f952c3a72950";
+
+    for (const qf of quoteFiles ?? []) {
+      if (!qf.storage_path) continue;
+
+      let trigger = "";
+      let bucket = "quote-files";
+      if (qf.file_category_id === SOURCE_CAT) {
+        trigger = "client_upload";
+      } else if (qf.file_category_id === REF_CAT) {
+        trigger = "reference_upload";
+        bucket = "quote-reference-files";
+      } else {
+        continue; // Skip draft_translation, final_deliverable, etc.
+      }
+
+      const subfolder = TRIGGER_TO_SUBFOLDER[trigger]!;
+      const filename = qf.original_filename ?? qf.storage_path.split("/").pop() ?? "file";
+      const dropbox_path = `${resolved.basePath}/${subfolder}/${filename}`;
+
+      try {
+        const res = await handleSyncFile(supabase, accessToken, {
+          source_bucket: bucket,
+          source_path: qf.storage_path,
+          dropbox_path,
+          sync_trigger: trigger,
+          order_id,
+          quote_id: quoteId,
+          quote_file_id: qf.id,
+        });
+        const resBody = await res.json();
+        if (resBody.success || resBody.already_synced) synced.push(filename);
+      } catch (err: any) {
+        console.warn(`[setup_order] failed to sync ${filename}:`, err?.message);
+      }
+    }
+  }
+
+  return jsonResponse({
+    success: true,
+    base_path: resolved.basePath,
+    source_files_synced: synced.length,
+  });
+}
+
+// Ensure the order subfolder structure exists (idempotent)
+async function ensureOrderFolders(accessToken: string, basePath: string): Promise<void> {
+  for (const sub of ORDER_SUBFOLDERS) {
+    const path = `${basePath}/${sub}`;
+    try {
+      const res = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ path, autorename: false }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        // Conflict = already exists = fine
+        if (err?.error?.[".tag"] !== "path" || err.error.path?.[".tag"] !== "conflict") {
+          console.warn(`[ensureOrderFolders] unexpected error for ${path}:`, err);
+        }
+      }
+    } catch { /* swallow — folder creation failure is non-fatal */ }
+  }
 }
 
 // --- Token management ---

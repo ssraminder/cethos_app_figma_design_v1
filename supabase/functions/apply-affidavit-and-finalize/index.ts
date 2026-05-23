@@ -28,6 +28,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { buildAffidavitDocx, type AffidavitFields } from "../_shared/affidavit-docx.ts";
+import { triggerDropboxSync } from "../_shared/dropbox-trigger.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -391,6 +392,17 @@ serve(async (req: Request) => {
     //     triggered_by + cert code in notes)
     //   - the staff-side row in review-draft-file (action_type=
     //     'draft_override_approved' or, for Flow A, the customer file_review_history row)
+
+    // Dropbox sync — fire-and-forget for the affidavit
+    triggerDropboxSync({
+      order_id,
+      source_bucket: BUCKET,
+      source_path: storagePath,
+      sync_trigger: "affidavit_generated",
+      filename: certifiedFilename,
+      quote_id: order.quote_id,
+      quote_file_id: certifiedRow.id,
+    });
 
     return json({
       success: true,

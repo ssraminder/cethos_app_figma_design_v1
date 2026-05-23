@@ -18,6 +18,21 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-22 — Dropbox integration Phase 2: automatic sync triggers wired into file lifecycle
+- **Decision:** Wired fire-and-forget Dropbox sync triggers into 4 existing edge functions so files are automatically mirrored to Dropbox when lifecycle events occur. A new shared helper `_shared/dropbox-trigger.ts` provides `triggerDropboxSync()` and `triggerDropboxOrderSetup()` — both silently no-op if Dropbox is not connected or if the sync fails.
+- **Trigger → subfolder mapping:** `staff_delivery` → `03-Deliveries`, `draft_promoted` → `04-Drafts`, `affidavit_generated` → `05-Certified`, `client_upload` → `01-Source`, `reference_upload` → `02-Reference`. `setup_order` creates the full 6-subfolder structure and batch-syncs existing source+reference docs.
+- **Functions modified (all deployed 2026-05-22):**
+  - `staff-deliver-step` v35 — fires `triggerDropboxSync` per uploaded file after delivery record created
+  - `promote-step-delivery-to-draft` v7 — fires after watermarked PDF inserted into `quote_files`
+  - `apply-affidavit-and-finalize` v8 — fires after affidavit .docx uploaded and `quote_files` row created
+  - `assign-order-workflow` v45 — fires `triggerDropboxOrderSetup` after workflow steps inserted
+  - `dropbox-sync` v2 — new `sync_order_file` and `setup_order` actions with `resolveOrderDropboxPath()` (queries orders → internal_projects → customers → languages)
+- **Path resolution:** centralized in `dropbox-sync` — callers pass `order_id` + `sync_trigger`, the sync function resolves the Dropbox folder path from the order's project number, customer name, and target language. Format: `/Cethos/Orders/{PRJ-number} — {Customer} — {Language}/{subfolder}/`
+- **Deferred:** `vendor-deliver-step` lives in vendor repo (`D:\cethos-vendor`) — wire separately. `customer-quote-finalize-files` covered by batch sync at workflow assignment.
+- **Pending setup (not code):** Set `DROPBOX_APP_KEY` + `DROPBOX_APP_SECRET` Supabase secrets, `VITE_DROPBOX_APP_KEY` Netlify env var, redirect URI in Dropbox console → `https://portal.cethos.com/admin/settings/dropbox`.
+- **Status:** active. All code deployed. Sync will silently no-op until Dropbox OAuth is completed by an admin user.
+- **Affects:** `_shared/dropbox-trigger.ts` (new), `dropbox-sync/index.ts`, `staff-deliver-step/index.ts`, `promote-step-delivery-to-draft/index.ts`, `apply-affidavit-and-finalize/index.ts`, `assign-order-workflow/index.ts`.
+
 ### 2026-05-21 — Affidavit pipeline: 3-flow model, fail-loud on missing template, code-slug lookup
 - **Decision:** Post-approval certification is driven by a single edge function `apply-affidavit-and-finalize` triggered from `review-draft-file`. Three terminal paths from "draft submitted to customer for review":
   - Flow A (customer approve) and Flow C (staff `override_approve`) both fire the affidavit pipeline; Flow B (request_changes) loops via a new draft promotion. No round cap — count rows only.

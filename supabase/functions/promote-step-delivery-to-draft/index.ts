@@ -25,6 +25,7 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { convertWordToPdf } from "../_shared/word-to-pdf.ts";
 import { applyDiagonalWatermark } from "../_shared/pdf-watermark.ts";
+import { triggerDropboxSync } from "../_shared/dropbox-trigger.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -245,6 +246,17 @@ serve(async (req) => {
       try { await sb.storage.from(STAFF_BUCKET).remove([pdfStoragePath]); } catch { /* swallow */ }
       return json({ error: insertErr?.message ?? "quote_files insert failed" }, 500);
     }
+
+    // Dropbox sync — fire-and-forget
+    triggerDropboxSync({
+      order_id,
+      source_bucket: STAFF_BUCKET,
+      source_path: pdfStoragePath,
+      sync_trigger: "draft_promoted",
+      filename: pdfFilename,
+      quote_id: order.quote_id,
+      quote_file_id: row.id,
+    });
 
     return json({
       quote_file_id: row.id,
