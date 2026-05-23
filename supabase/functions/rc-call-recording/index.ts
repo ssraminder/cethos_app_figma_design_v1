@@ -16,6 +16,7 @@
 // =============================================================================
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import {
   corsHeaders,
   getAdminClient,
@@ -30,6 +31,17 @@ interface RequestBody {
   action: "audio" | "transcribe" | "summarize";
 }
 
+interface CallInfo {
+  id: string;
+  recording_id: string | null;
+  recording_url: string | null;
+  has_recording: boolean;
+  transcript: string | null;
+  transcript_at: string | null;
+  summary: string | null;
+  summary_at: string | null;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -39,19 +51,22 @@ serve(async (req: Request) => {
       return jsonResponse(400, { ok: false, error: "call_id and action required" });
     }
 
-    const commsAdmin = getAdminClient();        // comms schema
-    const publicAdmin = getPublicAdminClient();  // public schema
+    // Use the comms-schema admin client for RC token cache lookups,
+    // and the public-schema admin client for RPC calls to comms.call_logs.
+    const commsAdmin = getAdminClient();
+    const publicAdmin = getPublicAdminClient();
 
-    // Fetch call record
-    const { data: call, error: callErr } = await commsAdmin
-      .from("call_logs")
-      .select("id, recording_id, recording_url, has_recording, transcript, transcript_at, summary, summary_at")
-      .eq("id", body.call_id)
-      .maybeSingle();
+    // Fetch call record via public RPC (comms schema not exposed to PostgREST)
+    const { data: callData, error: callErr } = await publicAdmin.rpc(
+      "comms_get_call_recording_info",
+      { p_call_id: body.call_id },
+    );
 
-    if (callErr || !call) {
+    if (callErr || !callData) {
       return jsonResponse(404, { ok: false, error: "call not found" });
     }
+
+    const call = callData as CallInfo;
 
     if (!call.has_recording || !call.recording_id) {
       return jsonResponse(400, { ok: false, error: "no recording for this call" });
@@ -64,12 +79,12 @@ serve(async (req: Request) => {
 
     // ── ACTION: transcribe ─────────────────────────────────────────────
     if (body.action === "transcribe") {
-      return await transcribeRecording(commsAdmin, call);
+      return await transcribeRecording(commsAdmin, publicAdmin, call);
     }
 
     // ── ACTION: summarize ──────────────────────────────────────────────
     if (body.action === "summarize") {
-      return await summarizeTranscript(commsAdmin, call);
+      return await summarizeTranscript(publicAdmin, call);
     }
 
     return jsonResponse(400, { ok: false, error: `unknown action: ${body.action}` });
@@ -81,14 +96,10 @@ serve(async (req: Request) => {
 
 // ── Proxy audio from RingCentral ─────────────────────────────────────────────
 
-async function proxyAudio(
-  admin: ReturnType<typeof getAdminClient>,
-  call: Record<string, unknown>,
-) {
+async function proxyAudio(commsAdmin: SupabaseClient, call: CallInfo) {
   const cfg = getRcConfig();
-  const token = await getAccessToken(admin, cfg);
+  const token = await getAccessToken(commsAdmin, cfg);
 
-  // RC content URI: /restapi/v1.0/account/~/recording/{id}/content
   const contentUrl = `${cfg.serverUrl}/restapi/v1.0/account/~/recording/${call.recording_id}/content`;
 
   const rcResp = await fetch(contentUrl, {
@@ -119,8 +130,9 @@ async function proxyAudio(
 // ── Transcribe via ElevenLabs ────────────────────────────────────────────────
 
 async function transcribeRecording(
-  admin: ReturnType<typeof getAdminClient>,
-  call: Record<string, unknown>,
+  commsAdmin: SupabaseClient,
+  publicAdmin: SupabaseClient,
+  call: CallInfo,
 ) {
   const elevenLabsKey = Deno.env.get("ELEVENLABS_API_KEY");
   if (!elevenLabsKey) {
@@ -129,7 +141,7 @@ async function transcribeRecording(
 
   // Fetch audio from RC
   const cfg = getRcConfig();
-  const token = await getAccessToken(admin, cfg);
+  const token = await getAccessToken(commsAdmin, cfg);
   const contentUrl = `${cfg.serverUrl}/restapi/v1.0/account/~/recording/${call.recording_id}/content`;
 
   const rcResp = await fetch(contentUrl, {
@@ -166,6 +178,7 @@ async function transcribeRecording(
       ok: false,
       error: "ElevenLabs transcription failed",
       status: sttResp.status,
+      detail: errText,
     });
   }
 
@@ -180,14 +193,11 @@ async function transcribeRecording(
     });
   }
 
-  // Save transcript to DB
-  const { error: updateErr } = await admin
-    .from("call_logs")
-    .update({
-      transcript,
-      transcript_at: new Date().toISOString(),
-    })
-    .eq("id", call.id);
+  // Save transcript to DB via RPC
+  const { error: updateErr } = await publicAdmin.rpc("comms_save_call_transcript", {
+    p_call_id: call.id,
+    p_transcript: transcript,
+  });
 
   if (updateErr) {
     console.error("Failed to save transcript:", updateErr);
@@ -198,17 +208,13 @@ async function transcribeRecording(
 
 // ── Summarize via Claude Haiku ───────────────────────────────────────────────
 
-async function summarizeTranscript(
-  admin: ReturnType<typeof getAdminClient>,
-  call: Record<string, unknown>,
-) {
+async function summarizeTranscript(publicAdmin: SupabaseClient, call: CallInfo) {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) {
     return jsonResponse(503, { ok: false, error: "ANTHROPIC_API_KEY not configured" });
   }
 
-  const transcript = call.transcript as string | null;
-  if (!transcript || !transcript.trim()) {
+  if (!call.transcript || !call.transcript.trim()) {
     return jsonResponse(400, { ok: false, error: "no transcript available — transcribe first" });
   }
 
@@ -225,7 +231,7 @@ async function summarizeTranscript(
       messages: [
         {
           role: "user",
-          content: `Summarize this phone call transcript in 3-5 bullet points. Focus on: who called, what they needed, any action items or commitments, and the outcome. Be concise and professional.\n\nTranscript:\n${transcript}`,
+          content: `Summarize this phone call transcript in 3-5 bullet points. Focus on: who called, what they needed, any action items or commitments, and the outcome. Be concise and professional.\n\nTranscript:\n${call.transcript}`,
         },
       ],
     }),
@@ -242,8 +248,7 @@ async function summarizeTranscript(
   }
 
   const claudeResult = await claudeResp.json();
-  const summary =
-    claudeResult.content?.[0]?.text || "";
+  const summary = claudeResult.content?.[0]?.text || "";
 
   if (!summary.trim()) {
     return jsonResponse(200, {
@@ -253,14 +258,11 @@ async function summarizeTranscript(
     });
   }
 
-  // Save summary to DB
-  const { error: updateErr } = await admin
-    .from("call_logs")
-    .update({
-      summary,
-      summary_at: new Date().toISOString(),
-    })
-    .eq("id", call.id);
+  // Save summary to DB via RPC
+  const { error: updateErr } = await publicAdmin.rpc("comms_save_call_summary", {
+    p_call_id: call.id,
+    p_summary: summary,
+  });
 
   if (updateErr) {
     console.error("Failed to save summary:", updateErr);
