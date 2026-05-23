@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, Loader2, Printer } from "lucide-react";
+import { Calculator, Download, Loader2, Printer, Save } from "lucide-react";
 import { callPaymentApi } from "@/lib/payment-api";
 import { downloadXlsx } from "@/lib/xlsx-export";
 
@@ -236,6 +236,47 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
 
   const printAll = () => window.print();
 
+  // Distribute the total vendor ITCs across branches in proportion to revenue.
+  // For each branch: target_itc = total_itc_pool * (branch_revenue / total_revenue).
+  // Pre-fill line_106_additional with the delta (target - line_106_computed) so
+  // Line 106 ends up equal to the target. Existing additional_itc values are
+  // overwritten — user can fine-tune per branch before saving.
+  const distributeByRevenue = () => {
+    const totalRevenue = returns.reduce((a, r) => a + r.line_101, 0);
+    const totalItcPool = returns.reduce((a, r) => a + r.line_106_computed, 0);
+    if (totalRevenue <= 0) {
+      setError("Total revenue is zero — cannot distribute by revenue share.");
+      return;
+    }
+    const ok = window.confirm(
+      `Distribute total vendor ITCs (\$${totalItcPool.toFixed(2)}) across ${returns.length} branches in proportion to revenue?\n\nThis overwrites the 'Additional ITCs' input on each branch. You can adjust per-branch and then click Save.`,
+    );
+    if (!ok) return;
+    const next: EditState = { ...edits };
+    for (const r of returns) {
+      const targetItc = totalItcPool * (r.line_101 / totalRevenue);
+      const delta = Math.round((targetItc - r.line_106_computed) * 100) / 100;
+      const note = `Auto-split by revenue % (target Line 106 = \$${targetItc.toFixed(2)}, revenue share = ${((r.line_101 / totalRevenue) * 100).toFixed(2)}%)`;
+      next[r.branch_id] = {
+        ...next[r.branch_id],
+        line_106_additional: delta,
+        additional_itc_notes: note,
+      };
+    }
+    setEdits(next);
+  };
+
+  // Save all branches that have unsaved edits in sequence.
+  const saveAll = async () => {
+    const dirtyBranches = returns.filter((r) => edits[r.branch_id]);
+    if (dirtyBranches.length === 0) return;
+    for (const r of dirtyBranches) {
+      await save(r);
+    }
+  };
+
+  const dirtyCount = returns.filter((r) => edits[r.branch_id]).length;
+
   const exportExcel = () => {
     const header = [
       "Branch",
@@ -310,11 +351,33 @@ export default function GstReturnView({ branchIds, dateFrom, dateTo, basis }: Pr
 
   return (
     <div className="space-y-6">
-      <div className="gst-return-no-print flex items-center justify-between">
+      <div className="gst-return-no-print flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs text-gray-500">
           {returns.length} branch{returns.length === 1 ? "" : "es"} · Letter-size PDF output
+          {dirtyCount > 0 && (
+            <span className="ml-2 px-1.5 py-0.5 text-[11px] font-medium rounded bg-amber-100 text-amber-700">
+              {dirtyCount} unsaved
+            </span>
+          )}
         </p>
         <div className="flex items-center gap-2">
+          <button
+            onClick={distributeByRevenue}
+            className="px-3 py-1.5 text-sm bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 rounded flex items-center gap-1"
+            title="Allocate total vendor ITC across branches proportionally to revenue"
+          >
+            <Calculator className="w-4 h-4" />
+            Distribute ITCs by revenue %
+          </button>
+          <button
+            onClick={saveAll}
+            disabled={dirtyCount === 0 || savingBranchId !== null}
+            className="px-3 py-1.5 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded flex items-center gap-1 disabled:opacity-50"
+            title="Save all unsaved branches"
+          >
+            <Save className="w-4 h-4" />
+            Save all ({dirtyCount})
+          </button>
           <button
             onClick={exportExcel}
             className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
