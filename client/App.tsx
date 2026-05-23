@@ -148,6 +148,7 @@ import TrackingSettings from "./pages/admin/settings/TrackingSettings";
 import ServicesSettings from "./pages/admin/settings/ServicesSettings";
 import WorkflowTemplatesSettings from "./pages/admin/settings/WorkflowTemplatesSettings";
 import BranchesSettings from "./pages/admin/settings/BranchesSettings";
+import DropboxSettings from "./pages/admin/settings/DropboxSettings";
 import GoogleTagManager from "./components/shared/GoogleTagManager";
 import QuoteTrackingLayout from "./components/layouts/QuoteTrackingLayout";
 
@@ -529,6 +530,10 @@ const App = () => (
                     <Route
                       path="settings/branches"
                       element={<BranchesSettings />}
+                    />
+                    <Route
+                      path="settings/dropbox"
+                      element={<DropboxSettings />}
                     />
                   </Route>
 
