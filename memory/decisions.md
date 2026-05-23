@@ -18,6 +18,19 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-23 — Dropbox folder hierarchy: project-level grouping + dates
+- **Decision:** Restructured the Dropbox folder hierarchy from flat order folders to a project-grouped layout with dates in folder names. Orders linked to an internal project nest under a project folder; standalone orders go under `/Cethos/Orders/`.
+- **New path convention:**
+  - With project: `/Cethos/Projects/{PRJ-YYYY-NNNNN} — {Customer}/{ORD-YYYY-NNNNN} — {Language} — {YYYY-MM-DD}/`
+  - Without project: `/Cethos/Orders/{ORD-YYYY-NNNNN} — {Customer} — {Language} — {YYYY-MM-DD}/`
+- **Server-side:** `resolveOrderDropboxPath` in `dropbox-sync/index.ts` now returns `{ basePath, projectNumber, orderNumber, customerName, targetLanguage, orderDate, hasProject }`. `handleCreateOrderFolder` simplified to accept `base_path` directly (no longer assembles path from components). `handleSetupOrder` passes `resolved.basePath`.
+- **Client-side:** `AdminOrderDetail.tsx` Dropbox URL computation mirrors the server path — uses `projectInfo?.project_number` to decide Projects vs Orders hierarchy. Added `projectInfo?.project_number` to the useEffect dependency array.
+- **Tested:** Both paths verified in Dropbox web UI:
+  - Project path: `/Cethos/Projects/PRJ-2026-00031 — Laura Acevedagallo/ORD-2026-10227 — Punjabi — 2026-05-23`
+  - Standalone path: `/Cethos/Orders/ORD-2026-777255 — Sara Zenasni — French — 2026-05-23`
+- **Status:** active. Edge function deployed, UI pending Netlify deploy.
+- **Affects:** `dropbox-sync/index.ts` (resolveOrderDropboxPath + handleCreateOrderFolder + handleSetupOrder), `AdminOrderDetail.tsx` (Dropbox URL computation).
+
 ### 2026-05-23 — Dropbox folder link + sync button on admin order detail
 - **Decision:** Added an "Open in Dropbox" link and a "Sync" re-trigger button to the admin order detail page header. The Dropbox folder URL is computed client-side from `order_number`, `customer.full_name`, and `quote.target_language.name` — matching the server-side path convention in `dropbox-sync/resolveOrderDropboxPath`. Only shown when a `dropbox_connections` row exists.
 - **Auto-trigger audit confirmed:** `assign-order-workflow` already calls `triggerDropboxOrderSetup()` after inserting workflow steps. Every order that gets a workflow assigned automatically gets Dropbox folders created (including dynamic step folders). Orders without a workflow don't get folders — correct behavior since folder structure depends on the workflow template.

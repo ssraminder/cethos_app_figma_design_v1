@@ -309,22 +309,14 @@ async function handleSyncBatch(
 async function handleCreateOrderFolder(
   accessToken: string,
   body: {
-    project_number: string;
-    customer_name: string;
-    target_language: string;
+    base_path: string;
     step_folders?: string[];
   },
 ) {
-  const { project_number, customer_name, target_language, step_folders } = body;
-  if (!project_number) {
-    return jsonResponse({ error: "project_number is required" }, 400);
+  const { base_path, step_folders } = body;
+  if (!base_path) {
+    return jsonResponse({ error: "base_path is required" }, 400);
   }
-
-  const folderName = [project_number, customer_name, target_language]
-    .filter(Boolean)
-    .join(" — ");
-
-  const basePath = `/Cethos/Orders/${folderName}`;
 
   // Build the full list: static folders + dynamic step folders
   const allFolders = [...STATIC_FOLDERS, ...(step_folders ?? [])];
@@ -332,33 +324,12 @@ async function handleCreateOrderFolder(
   // Create base folder + subfolders
   const created = [];
   for (const sub of allFolders) {
-    const path = `${basePath}/${sub}`;
-    try {
-      const res = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ path, autorename: false }),
-      });
-
-      if (res.ok) {
-        created.push(path);
-      } else {
-        const err = await res.json();
-        if (err?.error?.[".tag"] === "path" && err.error.path?.[".tag"] === "conflict") {
-          created.push(path); // Already exists
-        } else {
-          console.error(`Failed to create ${path}:`, err);
-        }
-      }
-    } catch (e) {
-      console.error(`Error creating ${path}:`, e);
-    }
+    const path = `${base_path}/${sub}`;
+    await createSingleFolder(accessToken, path);
+    created.push(path);
   }
 
-  return jsonResponse({ success: true, base_path: basePath, folders_created: created.length });
+  return jsonResponse({ success: true, base_path, folders_created: created.length });
 }
 
 async function handleShareFolder(
@@ -453,18 +424,34 @@ async function handleCheckStatus(
 async function resolveOrderDropboxPath(
   supabase: any,
   order_id: string,
-): Promise<{ basePath: string; projectNumber: string; customerName: string; targetLanguage: string } | null> {
+): Promise<{
+  basePath: string;
+  projectNumber: string | null;
+  orderNumber: string;
+  customerName: string;
+  targetLanguage: string;
+  orderDate: string;
+  hasProject: boolean;
+} | null> {
   // order → internal_project + customer + target language
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, customer_id, internal_project_id, quote_id")
+    .select("id, order_number, customer_id, internal_project_id, quote_id, created_at")
     .eq("id", order_id)
     .maybeSingle();
 
   if (!order) return null;
 
-  // Project number
-  let projectNumber = order.order_number ?? "";
+  const orderNumber = order.order_number ?? "";
+  if (!orderNumber) return null;
+
+  // Order date (YYYY-MM-DD from created_at)
+  const orderDate = order.created_at
+    ? new Date(order.created_at).toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
+  // Project number (if linked)
+  let projectNumber: string | null = null;
   if (order.internal_project_id) {
     const { data: project } = await supabase
       .from("internal_projects")
@@ -503,17 +490,27 @@ async function resolveOrderDropboxPath(
     }
   }
 
-  if (!projectNumber) return null;
-
-  const folderName = [projectNumber, customerName, targetLanguage]
-    .filter(Boolean)
-    .join(" — ");
+  // Build path:
+  //   With project: /Cethos/Projects/{project_number} — {customer}/{order_number} — {language} — {date}/
+  //   Without:      /Cethos/Orders/{order_number} — {customer} — {language} — {date}/
+  let basePath: string;
+  if (projectNumber) {
+    const projectFolder = [projectNumber, customerName].filter(Boolean).join(" — ");
+    const orderFolder = [orderNumber, targetLanguage, orderDate].filter(Boolean).join(" — ");
+    basePath = `/Cethos/Projects/${projectFolder}/${orderFolder}`;
+  } else {
+    const orderFolder = [orderNumber, customerName, targetLanguage, orderDate].filter(Boolean).join(" — ");
+    basePath = `/Cethos/Orders/${orderFolder}`;
+  }
 
   return {
-    basePath: `/Cethos/Orders/${folderName}`,
+    basePath,
     projectNumber,
+    orderNumber,
     customerName,
     targetLanguage,
+    orderDate,
+    hasProject: !!projectNumber,
   };
 }
 
@@ -651,9 +648,7 @@ async function handleSetupOrder(
 
   // Create the full folder structure (static + dynamic step folders)
   await handleCreateOrderFolder(accessToken, {
-    project_number: resolved.projectNumber,
-    customer_name: resolved.customerName,
-    target_language: resolved.targetLanguage,
+    base_path: resolved.basePath,
     step_folders: stepFolders,
   });
 

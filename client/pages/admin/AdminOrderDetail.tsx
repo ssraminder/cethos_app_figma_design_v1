@@ -589,20 +589,32 @@ export default function AdminOrderDetail() {
         setDropboxConnected(connected);
         if (!connected) return;
 
-        // Build folder name: {order_number} — {customer_name} — {target_language}
-        const parts = [
-          order.order_number,
-          order.customer?.full_name,
-          order.quote?.target_language?.name,
-        ].filter(Boolean);
-        const folderName = parts.join(" — ");
-        const encoded = encodeURIComponent(folderName);
-        setDropboxFolderUrl(`https://www.dropbox.com/home/Cethos/Orders/${encoded}`);
+        // Order date (YYYY-MM-DD)
+        const orderDate = order.created_at
+          ? new Date(order.created_at).toISOString().slice(0, 10)
+          : "";
+
+        // Path mirrors server-side resolveOrderDropboxPath:
+        //   With project: /Cethos/Projects/{project_number} — {customer}/{order_number} — {lang} — {date}
+        //   Without:      /Cethos/Orders/{order_number} — {customer} — {lang} — {date}
+        let folderPath: string;
+        if (projectInfo?.project_number) {
+          const projectFolder = [projectInfo.project_number, order.customer?.full_name]
+            .filter(Boolean).join(" — ");
+          const orderFolder = [order.order_number, order.quote?.target_language?.name, orderDate]
+            .filter(Boolean).join(" — ");
+          folderPath = `/Cethos/Projects/${encodeURIComponent(projectFolder)}/${encodeURIComponent(orderFolder)}`;
+        } else {
+          const orderFolder = [order.order_number, order.customer?.full_name, order.quote?.target_language?.name, orderDate]
+            .filter(Boolean).join(" — ");
+          folderPath = `/Cethos/Orders/${encodeURIComponent(orderFolder)}`;
+        }
+        setDropboxFolderUrl(`https://www.dropbox.com/home${folderPath}`);
       } catch {
         // silently ignore — Dropbox link is a convenience, not critical
       }
     })();
-  }, [order?.id]);
+  }, [order?.id, projectInfo?.project_number]);
 
   // Fetch activity timeline independently when order loads
   useEffect(() => {
