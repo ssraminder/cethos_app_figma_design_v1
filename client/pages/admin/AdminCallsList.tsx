@@ -185,6 +185,13 @@ export default function AdminCallsList() {
           <span className="text-sm text-gray-500">({total.toLocaleString()})</span>
         </div>
         <div className="flex-1" />
+        <Link
+          to="/admin/call-intelligence"
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100"
+        >
+          <Sparkles className="w-4 h-4" />
+          Intelligence Reports
+        </Link>
         <button
           onClick={handleSync}
           disabled={syncing}

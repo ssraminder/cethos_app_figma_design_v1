@@ -38,7 +38,7 @@ interface TranscriptionStats {
   unlabeled: number;
 }
 
-const SETTING_KEYS = ["call_transcription_mode", "call_auto_summarize"];
+const SETTING_KEYS = ["call_transcription_mode", "call_auto_summarize", "call_intelligence_enabled", "call_intelligence_recipients"];
 
 const PRESET_COLORS = [
   "#2563EB", "#16A34A", "#9333EA", "#F59E0B", "#EF4444",
@@ -77,6 +77,12 @@ export default function CallRecordingSettings() {
   const [dateFrom, setDateFrom] = useState("");
   const [backfillLabelIds, setBackfillLabelIds] = useState<string[]>([]);
 
+  // Intelligence report settings
+  const [intelligenceEnabled, setIntelligenceEnabled] = useState(true);
+  const [intelligenceRecipients, setIntelligenceRecipients] = useState("");
+  const [origIntelligenceEnabled, setOrigIntelligenceEnabled] = useState(true);
+  const [origIntelligenceRecipients, setOrigIntelligenceRecipients] = useState("");
+
   // Stats
   const [stats, setStats] = useState<TranscriptionStats | null>(null);
 
@@ -110,10 +116,17 @@ export default function CallRecordingSettings() {
       const m = s.call_transcription_mode === "auto" ? "auto" : "manual";
       const sum = s.call_auto_summarize !== "false";
 
+      const intEnabled = s.call_intelligence_enabled !== "false";
+      const intRecip = s.call_intelligence_recipients || "";
+
       setGlobalMode(m as "auto" | "manual");
       setAutoSummarize(sum);
       setOrigGlobalMode(m as "auto" | "manual");
       setOrigAutoSummarize(sum);
+      setIntelligenceEnabled(intEnabled);
+      setOrigIntelligenceEnabled(intEnabled);
+      setIntelligenceRecipients(intRecip);
+      setOrigIntelligenceRecipients(intRecip);
     } catch { toast.error("Failed to load settings"); }
     finally { setLoading(false); }
   };
@@ -134,7 +147,7 @@ export default function CallRecordingSettings() {
 
   /* ── Save global settings ────────────────────────────────────────────── */
 
-  const hasChanges = globalMode !== origGlobalMode || autoSummarize !== origAutoSummarize;
+  const hasChanges = globalMode !== origGlobalMode || autoSummarize !== origAutoSummarize || intelligenceEnabled !== origIntelligenceEnabled || intelligenceRecipients !== origIntelligenceRecipients;
 
   const handleSave = async () => {
     setSaving(true);
@@ -142,12 +155,16 @@ export default function CallRecordingSettings() {
       for (const u of [
         { setting_key: "call_transcription_mode", setting_value: globalMode },
         { setting_key: "call_auto_summarize", setting_value: String(autoSummarize) },
+        { setting_key: "call_intelligence_enabled", setting_value: String(intelligenceEnabled) },
+        { setting_key: "call_intelligence_recipients", setting_value: intelligenceRecipients },
       ]) {
         const { error } = await supabase.from("app_settings").upsert(u, { onConflict: "setting_key" });
         if (error) throw error;
       }
       setOrigGlobalMode(globalMode);
       setOrigAutoSummarize(autoSummarize);
+      setOrigIntelligenceEnabled(intelligenceEnabled);
+      setOrigIntelligenceRecipients(intelligenceRecipients);
       toast.success("Settings saved");
     } catch { toast.error("Failed to save"); }
     finally { setSaving(false); }
@@ -600,6 +617,49 @@ export default function CallRecordingSettings() {
                 {backfillResult}
               </div>
             )}
+          </div>
+        </SettingsCard>
+
+        {/* ── Weekly Intelligence Report ──────────────────────── */}
+        <SettingsCard
+          title="Weekly Intelligence Report"
+          description="AI-powered weekly analysis of call transcripts for quality, training, and customer insights"
+          actions={
+            <button
+              onClick={() => navigate("/admin/call-intelligence")}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              View Reports &rarr;
+            </button>
+          }
+        >
+          <div className="space-y-4">
+            {/* Enable toggle */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={intelligenceEnabled}
+                onChange={e => setIntelligenceEnabled(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+              />
+              <div>
+                <span className="text-sm font-medium text-gray-900">Enable weekly cron report</span>
+                <p className="text-xs text-gray-500">Automatically generates and emails a report every Monday at 8am UTC</p>
+              </div>
+            </label>
+
+            {/* Recipients */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email Recipients</label>
+              <input
+                type="text"
+                value={intelligenceRecipients}
+                onChange={e => setIntelligenceRecipients(e.target.value)}
+                placeholder="email1@cethos.com, email2@cethos.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Comma-separated email addresses. Leave empty to skip email delivery.</p>
+            </div>
           </div>
         </SettingsCard>
 

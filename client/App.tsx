@@ -152,6 +152,7 @@ import WorkflowTemplatesSettings from "./pages/admin/settings/WorkflowTemplatesS
 import BranchesSettings from "./pages/admin/settings/BranchesSettings";
 import DropboxSettings from "./pages/admin/settings/DropboxSettings";
 import CallRecordingSettings from "./pages/admin/settings/CallRecordingSettings";
+import CallIntelligenceReports from "./pages/admin/CallIntelligenceReports";
 import GoogleTagManager from "./components/shared/GoogleTagManager";
 import QuoteTrackingLayout from "./components/layouts/QuoteTrackingLayout";
 
@@ -384,6 +385,7 @@ const App = () => (
                     <Route path="quotes/:id" element={<AdminQuoteDetail />} />
                     <Route path="messages" element={<AdminMessages />} />
                     <Route path="calls" element={<AdminCallsList />} />
+                    <Route path="call-intelligence" element={<CallIntelligenceReports />} />
                     <Route path="sms" element={<AdminSmsInbox />} />
                     <Route path="tasks" element={<StaffTasks />} />
                     <Route path="orders" element={<AdminOrdersList />} />

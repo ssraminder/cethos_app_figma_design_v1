@@ -18,6 +18,34 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-23 — Weekly call intelligence report
+- **Decision:** Built weekly AI-powered call intelligence report. Claude Haiku 4.5 analyzes all transcribed calls for a date period and produces structured JSON: quality scores, sentiment breakdown, top topics, training highlights, staff performance, action items, customer patterns.
+- **Rationale:** User wants to leverage transcripts/summaries for quality analysis, training, and customer service improvement. Weekly cadence gives actionable insights without overwhelming.
+- **Architecture:** `rc-call-intelligence-report` edge function (dual-mode: cron + manual). `comms.call_intelligence_reports` table stores report history with full JSON + rendered HTML. pg_cron fires Monday 8am UTC. Email via Brevo. Admin UI at `/admin/call-intelligence` with date-range picker, report viewer, and history table. Settings (enabled toggle + recipients) in `CallRecordingSettings`.
+- **Key patterns reused:** `requireCronSecret()` for cron auth, `getPublicAdminClient().rpc()` for comms data, Brevo direct API for email, `app_settings` for configuration.
+- **Status:** active
+- **Affects:** `rc-call-intelligence-report` (new), `CallIntelligenceReports.tsx` (new), `CallRecordingSettings.tsx`, `AdminCallsList.tsx`, `App.tsx`, `comms.call_intelligence_reports` table, cron job `rc-call-intelligence-weekly`
+
+### 2026-05-23 — Call label system with per-label transcription modes
+- **Decision:** Created call labels (Sales, Support, Follow-up, General Inquiry, Internal) with per-label transcription modes (auto/manual/skip). Labels stored in `comms.call_labels`, linked to calls via `label_id` FK. Backfill supports custom batch size, date-from, and label filtering.
+- **Rationale:** Different call types need different transcription treatment. Sales/Support auto-transcribe; Internal calls skip to save cost.
+- **Status:** active
+- **Affects:** `comms.call_labels` table, `comms.call_logs.label_id`, `rc-auto-transcribe`, `CallRecordingSettings.tsx`, `AdminCallsList.tsx`
+
+### 2026-05-23 — Call recording auto-transcription pipeline
+- **Decision:** Built auto-transcribe/summarize pipeline for call recordings. ElevenLabs Scribe v1 for STT, Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) for summarization. Admin setting controls manual vs auto mode.
+- **Rationale:** User wants transcripts/summaries for LLM knowledge base. Cost is ~$0.008/min — cheap enough to auto-process all recordings.
+- **Architecture:** `rc-sync-calls` fires `rc-auto-transcribe` after each sync (fire-and-forget via service_role). `rc-auto-transcribe` checks `call_transcription_mode` setting, processes batch of pending recordings. Both use public RPCs to access comms schema.
+- **Key learning:** Anthropic API model must match what the API key has access to. `claude-haiku-4-20250514` did NOT work; `claude-haiku-4-5-20251001` does (matching other edge functions in the project).
+- **Status:** active
+- **Affects:** `rc-sync-calls`, `rc-call-recording`, `rc-auto-transcribe`, `AdminCallsList`, `CallRecordingSettings`, `AdminSettings`, `app_settings` table
+
+### 2026-05-23 — validate-quote-token edge function for RLS bypass
+- **Decision:** Created dedicated edge function to validate customer magic link tokens instead of querying `customer_magic_links` directly from the client.
+- **Rationale:** `customer_magic_links` has RLS with no `anon` policy — only service_role and authenticated staff can read it. Customer quote pages use anon key, so direct PostgREST queries returned empty → showed "expired" even for valid tokens.
+- **Status:** active
+- **Affects:** `Index.tsx`, `validate-quote-token` edge function
+
 ### 2026-05-23 — Dropbox folder hierarchy: client → project → order grouping + dates
 - **Decision:** Restructured the Dropbox folder hierarchy to a 3-level layout for project orders: client (business name) → project → order. Standalone orders (no project) remain flat under `/Cethos/Orders/`.
 - **New path convention:**
