@@ -19,29 +19,21 @@ async function validateQuoteToken(
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
 
   try {
-    // Legacy tokens (issued before quote-scoped tokens) have quote_id = NULL.
-    // Accept both: scoped tokens (quote_id matches) and legacy tokens (quote_id IS NULL).
-    // Legacy tokens will naturally expire within 30 days.
     const response = await fetch(
-      `${SUPABASE_URL}/rest/v1/customer_magic_links` +
-      `?token=eq.${encodeURIComponent(token)}` +
-      `&purpose=eq.quote_access` +
-      `&is_valid=eq.true` +
-      `&expires_at=gt.${new Date().toISOString()}` +
-      `&or=(quote_id.eq.${encodeURIComponent(quoteId)},quote_id.is.null)` +
-      `&select=id` +
-      `&limit=1`,
+      `${SUPABASE_URL}/functions/v1/validate-quote-token`,
       {
+        method: "POST",
         headers: {
+          "Content-Type": "application/json",
           apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         },
+        body: JSON.stringify({ quote_id: quoteId, token }),
       }
     );
 
     if (!response.ok) return false;
-    const rows = await response.json();
-    return Array.isArray(rows) && rows.length > 0;
+    const result = await response.json();
+    return result.valid === true;
   } catch (_e) {
     return false;
   }
