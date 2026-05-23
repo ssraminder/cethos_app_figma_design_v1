@@ -61,6 +61,7 @@ import {
   ChevronDown,
   ChevronRight,
   ShieldCheck,
+  FolderOpen,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -525,6 +526,11 @@ export default function AdminOrderDetail() {
   const [workflowData, setWorkflowData] = useState<any>(null);
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
   const [refunds, setRefunds] = useState<any[]>([]);
+
+  // Dropbox folder link state
+  const [dropboxConnected, setDropboxConnected] = useState(false);
+  const [dropboxFolderUrl, setDropboxFolderUrl] = useState<string | null>(null);
+  const [syncingDropbox, setSyncingDropbox] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<"workflow" | "finance" | "communications">("workflow");
   const messagesBottomRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -567,6 +573,36 @@ export default function AdminOrderDetail() {
       fetchOrderFiles();
     }
   }, [order?.quote_id]);
+
+  // Build Dropbox folder URL when order data is available
+  useEffect(() => {
+    if (!order) return;
+    // Check if Dropbox is connected
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("dropbox_connections")
+          .select("id")
+          .limit(1)
+          .maybeSingle();
+        const connected = !!data;
+        setDropboxConnected(connected);
+        if (!connected) return;
+
+        // Build folder name: {order_number} — {customer_name} — {target_language}
+        const parts = [
+          order.order_number,
+          order.customer?.full_name,
+          order.quote?.target_language?.name,
+        ].filter(Boolean);
+        const folderName = parts.join(" — ");
+        const encoded = encodeURIComponent(folderName);
+        setDropboxFolderUrl(`https://www.dropbox.com/home/Cethos/Orders/${encoded}`);
+      } catch {
+        // silently ignore — Dropbox link is a convenience, not critical
+      }
+    })();
+  }, [order?.id]);
 
   // Fetch activity timeline independently when order loads
   useEffect(() => {
@@ -2653,6 +2689,27 @@ export default function AdminOrderDetail() {
     setSavingProject(false);
   };
 
+  const handleDropboxSync = async () => {
+    if (!order || syncingDropbox) return;
+    setSyncingDropbox(true);
+    try {
+      const { data, error: err } = await supabase.functions.invoke("dropbox-sync", {
+        body: { action: "setup_order", order_id: order.id, quote_id: order.quote_id },
+      });
+      if (err) throw err;
+      if (data?.success) {
+        toast.success("Dropbox folders created and files synced");
+      } else if (data?.skipped) {
+        toast.info(data.reason || "Dropbox sync skipped");
+      } else {
+        toast.error(data?.error || "Dropbox sync failed");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to sync to Dropbox");
+    }
+    setSyncingDropbox(false);
+  };
+
   return (
     <div className="px-4 sm:px-6 py-6 max-w-6xl mx-auto">
       <div className="mb-6">
@@ -2685,6 +2742,31 @@ export default function AdminOrderDetail() {
               <ExternalLink className="w-3.5 h-3.5" />
             </Link>
             <CopyButton value={projectInfo.project_number} label="Project number" />
+          </div>
+        )}
+
+        {/* Dropbox folder link */}
+        {dropboxConnected && dropboxFolderUrl && (
+          <div className="flex items-center gap-2 mb-3">
+            <a
+              href={dropboxFolderUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 hover:bg-blue-100 transition-colors"
+            >
+              <FolderOpen className="w-4 h-4" />
+              <span>Open in Dropbox</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <button
+              onClick={handleDropboxSync}
+              disabled={syncingDropbox}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
+              title="Re-sync folders and source files to Dropbox"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncingDropbox ? "animate-spin" : ""}`} />
+              {syncingDropbox ? "Syncing…" : "Sync"}
+            </button>
           </div>
         )}
 
