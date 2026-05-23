@@ -429,6 +429,7 @@ async function resolveOrderDropboxPath(
   projectNumber: string | null;
   orderNumber: string;
   customerName: string;
+  companyName: string;
   targetLanguage: string;
   orderDate: string;
   hasProject: boolean;
@@ -461,15 +462,17 @@ async function resolveOrderDropboxPath(
     if (project?.project_number) projectNumber = project.project_number;
   }
 
-  // Customer name
+  // Customer name + company
   let customerName = "";
+  let companyName = "";
   if (order.customer_id) {
     const { data: customer } = await supabase
       .from("customers")
-      .select("full_name")
+      .select("full_name, company_name")
       .eq("id", order.customer_id)
       .maybeSingle();
     if (customer?.full_name) customerName = customer.full_name;
+    if (customer?.company_name) companyName = customer.company_name;
   }
 
   // Target language from the quote
@@ -491,13 +494,14 @@ async function resolveOrderDropboxPath(
   }
 
   // Build path:
-  //   With project: /Cethos/Projects/{project_number} — {customer}/{order_number} — {language} — {date}/
+  //   With project: /Cethos/Projects/{client}/{project_number} — {customer}/{order_number} — {language} — {date}/
   //   Without:      /Cethos/Orders/{order_number} — {customer} — {language} — {date}/
   let basePath: string;
   if (projectNumber) {
+    const clientFolder = companyName || customerName || "Unknown Client";
     const projectFolder = [projectNumber, customerName].filter(Boolean).join(" — ");
     const orderFolder = [orderNumber, targetLanguage, orderDate].filter(Boolean).join(" — ");
-    basePath = `/Cethos/Projects/${projectFolder}/${orderFolder}`;
+    basePath = `/Cethos/Projects/${clientFolder}/${projectFolder}/${orderFolder}`;
   } else {
     const orderFolder = [orderNumber, customerName, targetLanguage, orderDate].filter(Boolean).join(" — ");
     basePath = `/Cethos/Orders/${orderFolder}`;
@@ -508,6 +512,7 @@ async function resolveOrderDropboxPath(
     projectNumber,
     orderNumber,
     customerName,
+    companyName,
     targetLanguage,
     orderDate,
     hasProject: !!projectNumber,

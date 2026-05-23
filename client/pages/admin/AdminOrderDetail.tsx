@@ -595,15 +595,16 @@ export default function AdminOrderDetail() {
           : "";
 
         // Path mirrors server-side resolveOrderDropboxPath:
-        //   With project: /Cethos/Projects/{project_number} — {customer}/{order_number} — {lang} — {date}
+        //   With project: /Cethos/Projects/{client}/{project_number} — {customer}/{order_number} — {lang} — {date}
         //   Without:      /Cethos/Orders/{order_number} — {customer} — {lang} — {date}
         let folderPath: string;
         if (projectInfo?.project_number) {
+          const clientFolder = order.customer?.company_name || order.customer?.full_name || "Unknown Client";
           const projectFolder = [projectInfo.project_number, order.customer?.full_name]
             .filter(Boolean).join(" — ");
           const orderFolder = [order.order_number, order.quote?.target_language?.name, orderDate]
             .filter(Boolean).join(" — ");
-          folderPath = `/Cethos/Projects/${encodeURIComponent(projectFolder)}/${encodeURIComponent(orderFolder)}`;
+          folderPath = `/Cethos/Projects/${encodeURIComponent(clientFolder)}/${encodeURIComponent(projectFolder)}/${encodeURIComponent(orderFolder)}`;
         } else {
           const orderFolder = [order.order_number, order.customer?.full_name, order.quote?.target_language?.name, orderDate]
             .filter(Boolean).join(" — ");

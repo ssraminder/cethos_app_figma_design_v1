@@ -18,17 +18,18 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
-### 2026-05-23 — Dropbox folder hierarchy: project-level grouping + dates
-- **Decision:** Restructured the Dropbox folder hierarchy from flat order folders to a project-grouped layout with dates in folder names. Orders linked to an internal project nest under a project folder; standalone orders go under `/Cethos/Orders/`.
+### 2026-05-23 — Dropbox folder hierarchy: client → project → order grouping + dates
+- **Decision:** Restructured the Dropbox folder hierarchy to a 3-level layout for project orders: client (business name) → project → order. Standalone orders (no project) remain flat under `/Cethos/Orders/`.
 - **New path convention:**
-  - With project: `/Cethos/Projects/{PRJ-YYYY-NNNNN} — {Customer}/{ORD-YYYY-NNNNN} — {Language} — {YYYY-MM-DD}/`
+  - With project: `/Cethos/Projects/{Client}/{PRJ-YYYY-NNNNN} — {Customer}/{ORD-YYYY-NNNNN} — {Language} — {YYYY-MM-DD}/`
   - Without project: `/Cethos/Orders/{ORD-YYYY-NNNNN} — {Customer} — {Language} — {YYYY-MM-DD}/`
-- **Server-side:** `resolveOrderDropboxPath` in `dropbox-sync/index.ts` now returns `{ basePath, projectNumber, orderNumber, customerName, targetLanguage, orderDate, hasProject }`. `handleCreateOrderFolder` simplified to accept `base_path` directly (no longer assembles path from components). `handleSetupOrder` passes `resolved.basePath`.
-- **Client-side:** `AdminOrderDetail.tsx` Dropbox URL computation mirrors the server path — uses `projectInfo?.project_number` to decide Projects vs Orders hierarchy. Added `projectInfo?.project_number` to the useEffect dependency array.
-- **Tested:** Both paths verified in Dropbox web UI:
-  - Project path: `/Cethos/Projects/PRJ-2026-00031 — Laura Acevedagallo/ORD-2026-10227 — Punjabi — 2026-05-23`
-  - Standalone path: `/Cethos/Orders/ORD-2026-777255 — Sara Zenasni — French — 2026-05-23`
-- **Status:** active. Edge function deployed, UI pending Netlify deploy.
+- **Client folder:** Uses `customer.company_name` when available (business customers); falls back to `customer.full_name` for individuals, then `"Unknown Client"`.
+- **Server-side:** `resolveOrderDropboxPath` now fetches `company_name` from customers and returns `{ basePath, projectNumber, orderNumber, customerName, companyName, targetLanguage, orderDate, hasProject }`. `handleCreateOrderFolder` accepts `base_path` directly.
+- **Client-side:** `AdminOrderDetail.tsx` mirrors the server path — uses `order.customer.company_name || order.customer.full_name` as the client folder.
+- **Tested:** Verified in Dropbox web UI:
+  - Project path: `/Cethos/Projects/RWS/PRJ-2026-00031 — Laura Acevedagallo/ORD-2026-10227 — Punjabi — 2026-05-23` ✅
+  - Standalone path: `/Cethos/Orders/ORD-2026-777255 — Sara Zenasni — French — 2026-05-23` ✅
+- **Status:** active. Edge function deployed, Netlify build published.
 - **Affects:** `dropbox-sync/index.ts` (resolveOrderDropboxPath + handleCreateOrderFolder + handleSetupOrder), `AdminOrderDetail.tsx` (Dropbox URL computation).
 
 ### 2026-05-23 — Dropbox folder link + sync button on admin order detail
