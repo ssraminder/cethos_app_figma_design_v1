@@ -4066,9 +4066,22 @@ function WorkflowPipeline({
                             Use Cethos TM
                           </label>
                           {step.tm_job_reference && (
-                            <span className="text-xs text-teal-600">
-                              Job: {step.tm_job_reference}
-                            </span>
+                            <>
+                              <span className="text-xs text-teal-600">
+                                Job: {step.tm_job_reference}
+                              </span>
+                              {step.tm_job_id && (
+                                <a
+                                  href={`https://tm.cethos.com/pm/jobs/${step.tm_job_id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-xs text-teal-700 underline hover:text-teal-900"
+                                >
+                                  View in TM →
+                                </a>
+                              )}
+                            </>
                           )}
                         </div>
                         <button
