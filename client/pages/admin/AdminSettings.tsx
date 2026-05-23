@@ -486,6 +486,18 @@ export default function AdminSettings() {
                 Connect Dropbox for file storage and sharing
               </p>
             </button>
+
+            <button
+              onClick={() => navigate("/admin/settings/call-recording")}
+              className="text-left p-4 bg-white border border-violet-200 rounded-lg hover:border-violet-500 hover:shadow-md transition-all"
+            >
+              <h3 className="font-semibold text-gray-900 mb-1">
+                Call Recording & Transcription
+              </h3>
+              <p className="text-sm text-gray-600">
+                Auto-transcribe recordings, AI summaries, knowledge base
+              </p>
+            </button>
           </div>
         </div>
 

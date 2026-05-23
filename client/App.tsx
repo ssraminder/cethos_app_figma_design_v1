@@ -151,6 +151,7 @@ import ServicesSettings from "./pages/admin/settings/ServicesSettings";
 import WorkflowTemplatesSettings from "./pages/admin/settings/WorkflowTemplatesSettings";
 import BranchesSettings from "./pages/admin/settings/BranchesSettings";
 import DropboxSettings from "./pages/admin/settings/DropboxSettings";
+import CallRecordingSettings from "./pages/admin/settings/CallRecordingSettings";
 import GoogleTagManager from "./components/shared/GoogleTagManager";
 import QuoteTrackingLayout from "./components/layouts/QuoteTrackingLayout";
 
@@ -536,6 +537,10 @@ const App = () => (
                     <Route
                       path="settings/dropbox"
                       element={<DropboxSettings />}
+                    />
+                    <Route
+                      path="settings/call-recording"
+                      element={<CallRecordingSettings />}
                     />
                   </Route>
 

@@ -226,7 +226,7 @@ async function summarizeTranscript(publicAdmin: SupabaseClient, call: CallInfo) 
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-haiku-4-20250514",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
       messages: [
         {
@@ -244,6 +244,7 @@ async function summarizeTranscript(publicAdmin: SupabaseClient, call: CallInfo) 
       ok: false,
       error: "Claude summarization failed",
       status: claudeResp.status,
+      detail: errText,
     });
   }
 

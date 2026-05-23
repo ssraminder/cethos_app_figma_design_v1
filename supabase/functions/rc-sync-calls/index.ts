@@ -138,6 +138,28 @@ serve(async (req: Request) => {
       page++;
     }
 
+    // Fire-and-forget: trigger auto-transcribe if any calls were upserted
+    let autoTranscribeResult: unknown = null;
+    if (upserted > 0) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+        if (supabaseUrl && serviceKey) {
+          const atResp = await fetch(`${supabaseUrl}/functions/v1/rc-auto-transcribe`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceKey}`,
+            },
+            body: JSON.stringify({ batch_size: 5 }),
+          });
+          autoTranscribeResult = await atResp.json();
+        }
+      } catch (e) {
+        autoTranscribeResult = { error: String(e) };
+      }
+    }
+
     return jsonResponse(200, {
       ok: true,
       window: { since },
@@ -146,6 +168,7 @@ serve(async (req: Request) => {
       upserted,
       errors,
       errorSamples,
+      autoTranscribe: autoTranscribeResult,
     });
   } catch (e) {
     return jsonResponse(500, { ok: false, error: e instanceof Error ? e.message : String(e) });
