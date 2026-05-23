@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-23 — Dropbox folder link + sync button on admin order detail
+- **Decision:** Added an "Open in Dropbox" link and a "Sync" re-trigger button to the admin order detail page header. The Dropbox folder URL is computed client-side from `order_number`, `customer.full_name`, and `quote.target_language.name` — matching the server-side path convention in `dropbox-sync/resolveOrderDropboxPath`. Only shown when a `dropbox_connections` row exists.
+- **Auto-trigger audit confirmed:** `assign-order-workflow` already calls `triggerDropboxOrderSetup()` after inserting workflow steps. Every order that gets a workflow assigned automatically gets Dropbox folders created (including dynamic step folders). Orders without a workflow don't get folders — correct behavior since folder structure depends on the workflow template.
+- **Batch source sync gap:** The `setup_order` handler only auto-syncs quote files with `file_category_id` matching the hardcoded source/reference category UUIDs. Files with `NULL` category (common for customer-uploaded PDFs via the public quote form) are skipped. The manual "Sync" button on the order page re-triggers `setup_order` which re-attempts the same logic — so uncategorized files still need manual Dropbox upload or a future fix to treat `NULL` category as source.
+- **Status:** active.
+- **Affects:** `AdminOrderDetail.tsx` (new Dropbox link + sync button, ~80 lines). No edge function changes.
+
 ### 2026-05-23 — Dropbox sync ByteString fix + scoped app re-authorization
 - **Decision:** Two bugs fixed in `dropbox-sync/index.ts` to unblock file uploads to Dropbox when order folder names contain non-ASCII characters (em-dashes, accented names, etc.).
 - **Bug 1 — ByteString header encoding:** `Dropbox-API-Arg` HTTP header was built via `JSON.stringify()`, which preserves raw Unicode. HTTP headers must be ASCII-only (ByteString). When the Dropbox folder path contained em-dashes (U+2014) from the order naming convention (`ORD-XXXX — Customer — Language`), the `fetch()` call threw `Failed to construct 'Request': 'headers' of 'RequestInit' is not a valid ByteString`. Folder creation was unaffected because it uses a JSON body, not a header.
