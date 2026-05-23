@@ -304,6 +304,8 @@ serve(async (req: Request) => {
         await supabase.from("order_workflow_steps").update({ vendor_id, status: "accepted", pricing_mode: pricing_mode || "per_unit", vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null, vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD", deadline: deadline || null, instructions: instructions || null, accepted_at: new Date().toISOString(), assigned_by: body.staff_id || null }).eq("id", step_id);
         if (pricing_mode !== "target" && vendor_rate && vendor_total) {
           const units = vendor_rate > 0 ? vendor_total / vendor_rate : 1;
+          // Cancel any existing pending payable for this step to prevent duplicates
+          await supabase.from("vendor_payables").update({ status: "cancelled" }).eq("workflow_step_id", step_id).eq("status", "pending");
           await supabase.from("vendor_payables").insert({ workflow_step_id: step_id, vendor_id, order_id: workflow.order_id, rate: vendor_rate, rate_unit: vendor_rate_unit || "flat", units, subtotal: vendor_total, total: vendor_total, currency: vendor_currency || "CAD", status: "pending", step_name: step.name, description: `Step ${step.step_number}: ${step.name}` });
         }
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
@@ -320,6 +322,8 @@ serve(async (req: Request) => {
         await supabase.from("order_workflow_steps").update({ status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions, pricing_mode: pricing_mode || "per_unit" }).eq("id", step_id);
         if (pricing_mode !== "target" && vendor_rate && vendor_total) {
           const units = vendor_rate > 0 ? vendor_total / vendor_rate : 1;
+          // Cancel any existing pending payable for this step to prevent duplicates
+          await supabase.from("vendor_payables").update({ status: "cancelled" }).eq("workflow_step_id", step_id).eq("status", "pending");
           await supabase.from("vendor_payables").insert({ workflow_step_id: step_id, vendor_id, order_id: workflow.order_id, rate: vendor_rate, rate_unit: vendor_rate_unit || "flat", units, subtotal: vendor_total, total: vendor_total, currency: vendor_currency || "CAD", status: "pending", step_name: step.name, description: `Step ${step.step_number}: ${step.name}` });
         }
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
