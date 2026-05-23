@@ -16,6 +16,10 @@ import {
   ExternalLink,
   Mic,
   User as UserIcon,
+  Play,
+  Pause,
+  FileText,
+  Sparkles,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useStaffAuth } from "@/context/StaffAuthContext";
@@ -69,7 +73,12 @@ interface CallDetail {
     matched_source: string | null;
     rc_extension_id: string | null;
     recording_url: string | null;
+    recording_id: string | null;
     ended_at: string | null;
+    transcript: string | null;
+    transcript_at: string | null;
+    summary: string | null;
+    summary_at: string | null;
   };
   notes: CallNote[];
   recent_sms: Array<{
@@ -342,6 +351,16 @@ function CallDetailDrawer({
   const [sendingSms, setSendingSms] = useState(false);
   const [smsResult, setSmsResult] = useState<string | null>(null);
 
+  // Recording / Transcription / Summary state
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [audioRef] = useState<{ el: HTMLAudioElement | null }>({ el: null });
+  const [transcribing, setTranscribing] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [transcriptLocal, setTranscriptLocal] = useState<string | null>(null);
+  const [summaryLocal, setSummaryLocal] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     const [detailRes, tplRes] = await Promise.all([
@@ -419,6 +438,88 @@ function CallDetailDrawer({
     await load();
   };
 
+  // Sync transcript/summary from detail when it loads
+  useEffect(() => {
+    if (detail) {
+      setTranscriptLocal(detail.call.transcript || null);
+      setSummaryLocal(detail.call.summary || null);
+    }
+  }, [detail?.call.transcript, detail?.call.summary]);
+
+  const loadAudio = async () => {
+    if (audioUrl || !detail?.call.has_recording) return;
+    setAudioLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("rc-call-recording", {
+        body: { call_id: callId, action: "audio" },
+      });
+      if (error) throw error;
+      // data is a Blob from the invoke
+      const url = URL.createObjectURL(data);
+      setAudioUrl(url);
+    } catch (e) {
+      console.error("Failed to load audio:", e);
+    } finally {
+      setAudioLoading(false);
+    }
+  };
+
+  const togglePlay = () => {
+    if (!audioRef.el) return;
+    if (isPlaying) {
+      audioRef.el.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.el.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleTranscribe = async () => {
+    setTranscribing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("rc-call-recording", {
+        body: { call_id: callId, action: "transcribe" },
+      });
+      if (error) throw error;
+      if (data?.ok && data.transcript) {
+        setTranscriptLocal(data.transcript);
+      } else {
+        alert(data?.error || data?.message || "Transcription returned empty");
+      }
+    } catch (e: any) {
+      alert("Transcription failed: " + (e.message || e));
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const handleSummarize = async () => {
+    setSummarizing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("rc-call-recording", {
+        body: { call_id: callId, action: "summarize" },
+      });
+      if (error) throw error;
+      if (data?.ok && data.summary) {
+        setSummaryLocal(data.summary);
+      } else {
+        alert(data?.error || data?.message || "Summary returned empty");
+      }
+    } catch (e: any) {
+      alert("Summarization failed: " + (e.message || e));
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
+  // Cleanup audio URL on unmount
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
+
   return (
     <div className="fixed inset-0 z-50 flex" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
@@ -488,14 +589,86 @@ function CallDetailDrawer({
                   </span>
                 )}
               </div>
-              {detail.call.recording_url && (
+              {detail.call.has_recording && (
                 <div className="col-span-2">
-                  <div className="text-xs text-gray-500 flex items-center gap-1">
+                  <div className="text-xs text-gray-500 flex items-center gap-1 mb-2">
                     <Mic className="w-3 h-3" /> Recording
                   </div>
-                  <div className="text-xs text-gray-400">
-                    Stored at RingCentral. Open from the RingCentral dashboard — direct download requires authenticated access.
+
+                  {/* Audio player */}
+                  {!audioUrl ? (
+                    <button
+                      onClick={loadAudio}
+                      disabled={audioLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      {audioLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                      {audioLoading ? "Loading…" : "Load recording"}
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={togglePlay}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                      >
+                        {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                        {isPlaying ? "Pause" : "Play"}
+                      </button>
+                      <audio
+                        ref={(el) => { audioRef.el = el; }}
+                        src={audioUrl}
+                        onEnded={() => setIsPlaying(false)}
+                        onPause={() => setIsPlaying(false)}
+                        onPlay={() => setIsPlaying(true)}
+                        controls
+                        className="h-8 flex-1"
+                      />
+                    </div>
+                  )}
+
+                  {/* Transcribe button */}
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={handleTranscribe}
+                      disabled={transcribing}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-violet-100 text-violet-700 rounded hover:bg-violet-200 disabled:opacity-50"
+                    >
+                      {transcribing ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                      {transcribing ? "Transcribing…" : transcriptLocal ? "Re-transcribe" : "Transcribe"}
+                    </button>
+
+                    {/* Summarize button — only when transcript exists */}
+                    {transcriptLocal && (
+                      <button
+                        onClick={handleSummarize}
+                        disabled={summarizing}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200 disabled:opacity-50"
+                      >
+                        {summarizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                        {summarizing ? "Summarizing…" : summaryLocal ? "Re-summarize" : "Summarize"}
+                      </button>
+                    )}
                   </div>
+
+                  {/* Transcript display */}
+                  {transcriptLocal && (
+                    <div className="mt-3">
+                      <div className="text-xs font-medium text-gray-500 mb-1">Transcript</div>
+                      <div className="bg-gray-50 rounded p-3 text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-y-auto">
+                        {transcriptLocal}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary display */}
+                  {summaryLocal && (
+                    <div className="mt-3">
+                      <div className="text-xs font-medium text-gray-500 mb-1">Summary</div>
+                      <div className="bg-amber-50 border border-amber-100 rounded p-3 text-sm whitespace-pre-wrap text-gray-700">
+                        {summaryLocal}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
