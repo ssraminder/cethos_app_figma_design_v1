@@ -26,6 +26,7 @@ import Success from "./pages/Success";
 import NotFound from "./pages/NotFound";
 import Checkout from "./pages/Checkout";
 import OrderSuccess from "./pages/OrderSuccess";
+import OrderConfirmation from "./pages/OrderConfirmation";
 import PaymentCancel from "./pages/PaymentCancel";
 import QuoteRecoverPage from "./pages/quote/QuoteRecoverPage";
 import QuoteReviewPage from "./pages/quote/QuoteReviewPage";
@@ -230,6 +231,10 @@ const App = () => (
                         element={<QuoteContinuePage />}
                       />
                       <Route path="/order/success" element={<OrderSuccess />} />
+                      <Route
+                        path="/order/confirmation/:quoteId"
+                        element={<OrderConfirmation />}
+                      />
                       <Route path="/payment/cancel" element={<PaymentCancel />} />
                     </Route>
 
