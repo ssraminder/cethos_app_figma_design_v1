@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { CheckCircle2, Mail, Loader2, AlertCircle } from "lucide-react";
+import { CheckCircle2, Mail, Loader2 } from "lucide-react";
 import { trackQuoteSubmission, trackGoogleAdsConversion, getReferralSource } from "@/lib/tracking";
 import { useTrackingSettings } from "@/hooks/useTrackingSettings";
 
@@ -133,16 +133,23 @@ export default function OrderSuccess() {
   }
 
   if (error && !order) {
+    // Payment SUCCEEDED at Stripe (Stripe wouldn't have redirected us here
+    // otherwise) — we just couldn't find the order row yet. Show a calm
+    // "payment received, processing" treatment, not an alert. The order
+    // is being created by the stripe-webhook in the background.
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-          <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-8 h-8 text-yellow-600" />
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="w-10 h-10 text-green-500" />
           </div>
           <h1 className="text-xl font-bold text-gray-900 mb-2">
-            Processing Your Order
+            Payment Received
           </h1>
-          <p className="text-gray-600 mb-6">{error}</p>
+          <p className="text-gray-600 mb-6">
+            Thank you! We're finalizing your order now and a confirmation email
+            is on the way.
+          </p>
           <p className="text-sm text-gray-500">
             If you don't receive a confirmation email within 5 minutes, please
             contact support at{" "}
