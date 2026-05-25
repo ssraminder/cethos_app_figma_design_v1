@@ -19,6 +19,44 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, stripe-signature",
 };
 
+// Staff recipients for "new paid order" notifications. Same recipient list
+// pattern used by analyse-ocr-batch, analyse-ocr-next, ocr-process-next.
+const ADMIN_NOTIFICATION_EMAILS = [
+  "info@cethos.com",
+  "pm@cethoscorp.com",
+  "raminder@cethos.com",
+];
+
+// Direct Brevo call — avoid hopping through the send-email or
+// send-staff-notification edge functions (both currently zombie bundles
+// returning 404, see feedback_supabase_bundle_loss_pattern.md).
+async function sendBrevo(args: {
+  to: { email: string; name?: string }[];
+  subject: string;
+  html: string;
+}): Promise<void> {
+  const apiKey = Deno.env.get("BREVO_API_KEY");
+  if (!apiKey) throw new Error("BREVO_API_KEY not configured");
+  const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": apiKey,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
+      to: args.to,
+      subject: args.subject,
+      htmlContent: args.html,
+    }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Brevo ${resp.status}: ${body.slice(0, 200)}`);
+  }
+}
+
 function jsonResp(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -157,13 +195,17 @@ async function processQuotePayment(
       ? session.payment_intent
       : (session.payment_intent as any)?.id;
 
+  // CHECK constraints on payments table:
+  //   payment_type ∈ ('initial', 'balance', 'refund')
+  //   status       ∈ ('pending','processing','succeeded','failed','refunded','cancelled')
+  // payment_method has no CHECK but the existing 213 rows all use 'stripe'.
   const { error: payErr } = await sb.from("payments").insert({
     order_id: order.id,
     amount: amountPaid,
     currency,
-    payment_type: "stripe_checkout",
-    payment_method: "card",
-    status: "completed",
+    payment_type: "initial",
+    payment_method: "stripe",
+    status: "succeeded",
     stripe_checkout_session_id: session.id,
     stripe_payment_intent_id: paymentIntent || null,
   });
@@ -229,11 +271,27 @@ async function processQuotePayment(
     console.warn("Card enrichment failed (non-blocking):", enrichErr.message);
   }
 
-  // ── Customer confirmation email (non-blocking) ────────────────────────────
-  // The OrderSuccess page tells the customer "We've sent a receipt to ..." —
-  // make that promise real. Failures here MUST NOT roll back the order.
-  let emailSent = false;
-  let emailError: string | null = null;
+  // ── Customer confirmation + admin notification emails (non-blocking) ─────
+  // Both sends go DIRECTLY to Brevo — we don't hop through send-email or
+  // send-staff-notification edge functions because those are zombie bundles
+  // (deployed but source missing → 404 NOT_FOUND on call). Failures here
+  // MUST NOT roll back the order.
+  let customerEmailSent = false;
+  let customerEmailError: string | null = null;
+  let adminEmailSent = false;
+  let adminEmailError: string | null = null;
+
+  const portalUrl = "https://portal.cethos.com";
+  const eta = quote.estimated_delivery_date
+    ? new Date(quote.estimated_delivery_date).toLocaleDateString("en-CA", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+
+  // ── 1. Customer confirmation ──
   try {
     if (quote.customer_id) {
       const { data: customer } = await sb
@@ -243,18 +301,7 @@ async function processQuotePayment(
         .single();
 
       if (customer?.email) {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const portalUrl = "https://portal.cethos.com";
         const firstName = (customer.full_name || "").trim().split(" ")[0] || "there";
-        const eta = quote.estimated_delivery_date
-          ? new Date(quote.estimated_delivery_date).toLocaleDateString("en-CA", {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            })
-          : null;
         const html = orderConfirmationHtml({
           firstName,
           orderNumber: order.order_number,
@@ -264,32 +311,52 @@ async function processQuotePayment(
           eta,
           portalUrl,
         });
-        const emailResp = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${serviceKey}`,
-          },
-          body: JSON.stringify({
-            to: customer.email,
-            toName: customer.full_name || undefined,
-            subject: `Order Confirmation — ${order.order_number}`,
-            htmlContent: html,
-          }),
+        await sendBrevo({
+          to: [{ email: customer.email, name: customer.full_name || customer.email }],
+          subject: `Order Confirmation — ${order.order_number}`,
+          html,
         });
-        if (!emailResp.ok) {
-          const errBody = await emailResp.text();
-          throw new Error(`send-email ${emailResp.status}: ${errBody.slice(0, 200)}`);
-        }
-        emailSent = true;
+        customerEmailSent = true;
         console.log(`Confirmation email sent to ${customer.email} for ${order.order_number}`);
       } else {
-        console.warn(`No customer email on file for order ${order.order_number}; skipping confirmation email`);
+        console.warn(`No customer email for order ${order.order_number}; skipping`);
       }
     }
   } catch (mailErr: any) {
-    emailError = mailErr.message || String(mailErr);
-    console.error("Confirmation email failed (non-blocking):", emailError);
+    customerEmailError = mailErr.message || String(mailErr);
+    console.error("Customer confirmation email failed (non-blocking):", customerEmailError);
+  }
+
+  // ── 2. Admin / staff notification ──
+  try {
+    const { data: customer } = quote.customer_id
+      ? await sb
+          .from("customers")
+          .select("email, full_name")
+          .eq("id", quote.customer_id)
+          .single()
+      : { data: null as any };
+    const adminHtml = adminPaymentNotificationHtml({
+      orderNumber: order.order_number,
+      quoteNumber: quote.quote_number,
+      amountPaid,
+      currency,
+      customerName: customer?.full_name || "(unknown)",
+      customerEmail: customer?.email || "(unknown)",
+      eta,
+      portalUrl,
+      orderId: order.id,
+    });
+    await sendBrevo({
+      to: ADMIN_NOTIFICATION_EMAILS.map((email) => ({ email })),
+      subject: `💰 New paid order: ${order.order_number} ($${amountPaid.toFixed(2)} ${currency})`,
+      html: adminHtml,
+    });
+    adminEmailSent = true;
+    console.log(`Admin notification sent for ${order.order_number}`);
+  } catch (mailErr: any) {
+    adminEmailError = mailErr.message || String(mailErr);
+    console.error("Admin notification email failed (non-blocking):", adminEmailError);
   }
 
   // ── Activity log ──────────────────────────────────────────────────────────
@@ -305,8 +372,10 @@ async function processQuotePayment(
         amount_paid: amountPaid,
         stripe_session_id: session.id,
         stripe_payment_intent: paymentIntent,
-        confirmation_email_sent: emailSent,
-        confirmation_email_error: emailError,
+        customer_email_sent: customerEmailSent,
+        customer_email_error: customerEmailError,
+        admin_email_sent: adminEmailSent,
+        admin_email_error: adminEmailError,
       },
     });
   } catch {
@@ -385,6 +454,75 @@ function orderConfirmationHtml(args: {
             Questions? Contact us at <a href="mailto:support@cethos.com" style="color:#2563eb;text-decoration:none;">support@cethos.com</a>
           </td>
         </tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+// ── Admin "new paid order" notification HTML ────────────────────────────────
+function adminPaymentNotificationHtml(args: {
+  orderNumber: string;
+  quoteNumber: string;
+  amountPaid: number;
+  currency: string;
+  customerName: string;
+  customerEmail: string;
+  eta: string | null;
+  portalUrl: string;
+  orderId: string;
+}): string {
+  const {
+    orderNumber,
+    quoteNumber,
+    amountPaid,
+    currency,
+    customerName,
+    customerEmail,
+    eta,
+    portalUrl,
+    orderId,
+  } = args;
+  const amountStr = `$${amountPaid.toFixed(2)} ${currency}`;
+  const etaRow = eta
+    ? `<tr>
+         <td style="padding:6px 0;color:#6b7280;font-size:13px;">Estimated Delivery</td>
+         <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;">${eta}</td>
+       </tr>`
+    : "";
+  return `<!doctype html>
+<html><body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111827;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;">
+        <tr><td style="padding:20px 24px;border-bottom:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">New Paid Order</p>
+          <h1 style="margin:6px 0 0;font-size:22px;color:#111827;">${orderNumber} — ${amountStr}</h1>
+        </td></tr>
+        <tr><td style="padding:20px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding:6px 0;color:#6b7280;font-size:13px;">Customer</td>
+              <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;">${customerName}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;color:#6b7280;font-size:13px;">Email</td>
+              <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;">${customerEmail}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;color:#6b7280;font-size:13px;">Quote</td>
+              <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;">${quoteNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;color:#6b7280;font-size:13px;">Amount Paid</td>
+              <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;font-weight:600;">${amountStr}</td>
+            </tr>
+            ${etaRow}
+          </table>
+          <div style="margin-top:20px;text-align:center;">
+            <a href="${portalUrl}/admin/orders/${orderId}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">Open in Admin Portal</a>
+          </div>
+        </td></tr>
       </table>
     </td></tr>
   </table>
