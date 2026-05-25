@@ -18,6 +18,19 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-25 — Rebuilt stripe-webhook + create-checkout-session edge functions (payment flow fix)
+- **Decision:** Rebuilt both functions from scratch (source was never committed), deployed to Supabase, and committed source to repo. Root cause: `stripe-webhook` deployment was lost (returning 404), so Stripe `checkout.session.completed` events were silently failing → orders not created → customers saw 404 on success redirect → thought payment failed → paid again.
+- **Rationale:** Customer ATAUR RAHEEMAN (QT-2026-25261) paid 3× at $102.38 due to this cascade failure. The functions now include: idempotency guard (check `converted_to_order_id` before creating order), session expiration after successful payment (prevent reuse), card enrichment, proper success_url matching the `/order/success` SPA route, guards against already-paid/converted quotes in `create-checkout-session`.
+- **Key implementation details:**
+  - `stripe-webhook`: verifies signature → checks quote not already converted → creates order (DB trigger generates order_number) → inserts payment record → updates quote (status=paid, converted_to_order_id) → expires Stripe session → enriches card details
+  - `create-checkout-session`: guards (paid status, converted_to_order_id, zero total) → expires old session → creates new Stripe Checkout Session with metadata.quote_id → stores session ID on quote
+  - Both deployed with `--no-verify-jwt` (customer flow is unauthenticated)
+  - `STRIPE_WEBHOOK_SECRET` env var already configured from prior deployment
+  - Webhook endpoint already registered in Stripe dashboard at `https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/stripe-webhook`
+- **Still needed:** Refund 2 duplicate Stripe charges for this customer (manual in Stripe dashboard)
+- **Status:** active
+- **Affects:** `supabase/functions/stripe-webhook/index.ts` (new), `supabase/functions/create-checkout-session/index.ts` (new), quote→order payment flow, OrderSuccess.tsx
+
 ### 2026-05-23 — Production hotfix: customer payment blocker + app_settings column mismatch
 - **Decision:** Emergency fix for three production errors: (1) `customer-quote-update` returning 403 for quote QT-2026-25261 because `awaiting_payment` was missing from `ALLOWED_STATUS_TRANSITIONS` — customer couldn't pay. (2) `app_settings` queries in FastQuoteCreate and KioskStaffForm using wrong column names (`key`/`value` instead of `setting_key`/`setting_value`), returning 400. (3) `rc-sync-sms` boot-crashing (502) on every cron — resolved by v5 redeploy (deployment artifact, not code bug).
 - **Rationale:** `awaiting_payment` is a staff-set status meaning "approved for payment" — it was simply omitted from the edge function's transition map. The `app_settings` column names were a legacy mismatch from a schema rename. The SMS sync crash was a transient bundling issue.
