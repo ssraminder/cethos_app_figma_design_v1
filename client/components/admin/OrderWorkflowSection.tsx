@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import BrevoEmailLogsModal from "./BrevoEmailLogsModal";
+import ManagePayableModal from "./ManagePayableModal";
 import OrderFinancialSummary, {
   type VendorFinancials,
   type MarginData,
@@ -2402,6 +2403,10 @@ function WorkflowPipeline({
   onDraftPromoted,
 }: WorkflowPipelineProps) {
   const [editDeadlineStepId, setEditDeadlineStepId] = useState<string | null>(null);
+  // ── Manage Payable modal — opens from the step card "+ Add payable" /
+  // "Manage payable" button. Stores the step the modal is targeting; the
+  // modal component handles the create_payable RPC + refetch.
+  const [managePayableStep, setManagePayableStep] = useState<WorkflowStep | null>(null);
 
   // AI negotiation recommendations — keyed by offer.id. Lazy: fetched on
   // demand when staff clicks "Get AI recommendation" on the counter card.
@@ -3858,6 +3863,28 @@ function WorkflowPipeline({
                     </>
                   )}
 
+                  {/* Manage Payable: external_vendor steps with a vendor
+                      assigned, not paid/cancelled. Opens the per-step
+                      payable modal (flat / per-word / per-hour / per-page /
+                      CAT analysis). Button label depends on whether a
+                      payable already exists. */}
+                  {step.vendor_id &&
+                    step.actor_type === "external_vendor" &&
+                    !["approved", "skipped", "cancelled"].includes(step.status) && (
+                      <button
+                        className="text-xs px-3 py-1 border border-emerald-400 text-emerald-700 rounded hover:bg-emerald-50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setManagePayableStep(step);
+                        }}
+                        title="Add or replace the payable for this step"
+                      >
+                        {step.payable && !["cancelled"].includes(step.payable.status)
+                          ? `Manage Payable (${(step.payable.total ?? 0).toFixed(2)} ${step.payable.currency})`
+                          : "+ Add Payable"}
+                      </button>
+                    )}
+
                   {/* Unassign Vendor: any step with vendor assigned, not approved/skipped */}
                   {step.vendor_id && !['approved', 'skipped'].includes(step.status) && (
                     <button
@@ -4963,6 +4990,22 @@ function WorkflowPipeline({
         vendorId={brevoLogVendorId}
         displayName={brevoLogVendorName}
       />
+
+      {managePayableStep && (
+        <ManagePayableModal
+          open={true}
+          onClose={() => setManagePayableStep(null)}
+          workflowStepId={managePayableStep.id}
+          stepNumber={managePayableStep.step_number}
+          stepName={managePayableStep.name}
+          vendorId={managePayableStep.vendor_id}
+          vendorName={managePayableStep.vendor_name}
+          existingPayable={managePayableStep.payable}
+          onSaved={async () => {
+            if (onRefresh) await onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }
