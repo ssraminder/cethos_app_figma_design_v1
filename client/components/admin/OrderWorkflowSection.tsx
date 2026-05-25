@@ -2674,14 +2674,22 @@ function WorkflowPipeline({
 
   const handleDownloadFile = async (filePath: string) => {
     try {
-      // Workflow step deliveries are uploaded by staff-deliver-step into the
-      // 'quote-files' bucket under workflows/<order>/<step>/v<N>/... paths.
-      // There is no 'vendor-deliveries' bucket — the original code here
-      // 400'd on every download.
+      // Staff deliveries go to 'quote-files' under workflows/... paths.
+      // Vendor deliveries go to 'vendor-deliveries' under {stepId}/v{N}/... paths.
+      const bucket = filePath.startsWith('workflows/') ? 'quote-files' : 'vendor-deliveries';
       const { data, error } = await supabase.storage
-        .from('quote-files')
+        .from(bucket)
         .createSignedUrl(filePath, 3600);
       if (error || !data?.signedUrl) {
+        // Fallback: try the other bucket in case of misrouted files
+        const fallback = bucket === 'quote-files' ? 'vendor-deliveries' : 'quote-files';
+        const { data: d2 } = await supabase.storage
+          .from(fallback)
+          .createSignedUrl(filePath, 3600);
+        if (d2?.signedUrl) {
+          window.open(d2.signedUrl, '_blank');
+          return;
+        }
         toast.error('Failed to generate download link');
         return;
       }
@@ -2689,6 +2697,21 @@ function WorkflowPipeline({
     } catch {
       toast.error('Failed to download file');
     }
+  };
+
+  // step_deliveries.file_paths stores two shapes: plain path strings (staff)
+  // or JSON-stringified {storage_path, original_filename, ...} objects (vendor).
+  const normalizeDeliveryPath = (entry: string): { path: string; name: string } => {
+    const trimmed = (entry || '').trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed?.storage_path) {
+          return { path: parsed.storage_path, name: parsed.original_filename || parsed.storage_path.split('/').pop() || 'file' };
+        }
+      } catch { /* fall through */ }
+    }
+    return { path: trimmed, name: trimmed.split('/').pop() || 'file' };
   };
 
   const REVIEW_STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
@@ -4140,16 +4163,19 @@ function WorkflowPipeline({
                       <div>
                         <span className="font-medium text-gray-600">Delivered files:</span>
                         <div className="text-xs text-gray-500 mt-1">
-                          {step.delivered_file_paths.map((p, i) => (
-                            <button
-                              key={i}
-                              className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
-                              onClick={(e) => { e.stopPropagation(); handleDownloadFile(p); }}
-                            >
-                              <Download className="w-3 h-3" />
-                              {p.split("/").pop()}
-                            </button>
-                          ))}
+                          {step.delivered_file_paths.map((p, i) => {
+                            const f = normalizeDeliveryPath(p);
+                            return (
+                              <button
+                                key={i}
+                                className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
+                                onClick={(e) => { e.stopPropagation(); handleDownloadFile(f.path); }}
+                              >
+                                <Download className="w-3 h-3" />
+                                {f.name}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -4169,16 +4195,19 @@ function WorkflowPipeline({
                         </div>
                         {step.latest_delivery.file_paths && step.latest_delivery.file_paths.length > 0 && (
                           <div className="mt-1 text-xs text-blue-600 flex flex-wrap gap-2">
-                            {step.latest_delivery.file_paths.map((p, i) => (
-                              <button
-                                key={i}
-                                className="flex items-center gap-0.5 hover:text-blue-800 hover:underline"
-                                onClick={(e) => { e.stopPropagation(); handleDownloadFile(p); }}
-                              >
-                                <Download className="w-3 h-3" />
-                                {p.split("/").pop()}
-                              </button>
-                            ))}
+                            {step.latest_delivery.file_paths.map((p, i) => {
+                              const f = normalizeDeliveryPath(p);
+                              return (
+                                <button
+                                  key={i}
+                                  className="flex items-center gap-0.5 hover:text-blue-800 hover:underline"
+                                  onClick={(e) => { e.stopPropagation(); handleDownloadFile(f.path); }}
+                                >
+                                  <Download className="w-3 h-3" />
+                                  {f.name}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                         {step.latest_delivery.notes && (
