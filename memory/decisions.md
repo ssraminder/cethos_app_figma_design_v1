@@ -20,14 +20,14 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ### 2026-05-25 — Rebuilt stripe-webhook + create-checkout-session edge functions (payment flow fix)
 - **Decision:** Rebuilt both functions from scratch (source was never committed), deployed to Supabase, and committed source to repo. Root cause: `stripe-webhook` deployment was lost (returning 404), so Stripe `checkout.session.completed` events were silently failing → orders not created → customers saw 404 on success redirect → thought payment failed → paid again.
-- **Rationale:** Customer ATAUR RAHEEMAN (QT-2026-25261) paid 3× at $102.38 due to this cascade failure. The functions now include: idempotency guard (check `converted_to_order_id` before creating order), session expiration after successful payment (prevent reuse), card enrichment, proper success_url matching the `/order/success` SPA route, guards against already-paid/converted quotes in `create-checkout-session`.
+- **Rationale:** Customer Jennifer Wong paid 3× due to this cascade failure (2 refunded via Stripe). The functions now include: idempotency guard (check `converted_to_order_id` before creating order), session expiration after successful payment (prevent reuse), card enrichment, proper success_url matching the `/order/success` SPA route, guards against already-paid/converted quotes in `create-checkout-session`.
 - **Key implementation details:**
   - `stripe-webhook`: verifies signature → checks quote not already converted → creates order (DB trigger generates order_number) → inserts payment record → updates quote (status=paid, converted_to_order_id) → expires Stripe session → enriches card details
   - `create-checkout-session`: guards (paid status, converted_to_order_id, zero total) → expires old session → creates new Stripe Checkout Session with metadata.quote_id → stores session ID on quote
   - Both deployed with `--no-verify-jwt` (customer flow is unauthenticated)
   - `STRIPE_WEBHOOK_SECRET` env var already configured from prior deployment
   - Webhook endpoint already registered in Stripe dashboard at `https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/stripe-webhook`
-- **Still needed:** Refund 2 duplicate Stripe charges for this customer (manual in Stripe dashboard)
+- **Resolved:** 2 duplicate Stripe charges for Jennifer Wong refunded via Stripe dashboard
 - **Status:** active
 - **Affects:** `supabase/functions/stripe-webhook/index.ts` (new), `supabase/functions/create-checkout-session/index.ts` (new), quote→order payment flow, OrderSuccess.tsx
 
