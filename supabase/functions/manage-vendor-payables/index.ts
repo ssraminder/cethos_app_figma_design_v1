@@ -303,6 +303,211 @@ serve(async (req: Request) => {
         return json({ success: true });
       }
 
+      // ── Create Payable ─────────────────────────────────────────────
+      // Manual payable creation for a workflow step. Supports flat,
+      // per-word, per-hour, per-page, and CAT-analysis modes.
+      //
+      // Respects the unique-step active-payable index by cancelling any
+      // existing non-cancelled row before inserting (same pattern as
+      // update-workflow-step direct_assign).
+      //
+      // For CAT mode the caller passes pre-computed lines (already run
+      // through parse-cat-analysis) — server validates the math and
+      // inserts both the parent payable and child cat_lines.
+      case "create_payable": {
+        const {
+          workflow_step_id,
+          vendor_id,
+          mode,             // "flat" | "per_word" | "per_hour" | "per_page" | "cat"
+          rate,             // numeric — required except flat (where it equals total)
+          units,            // numeric — required for per_* modes; ignored for flat/cat
+          flat_amount,      // numeric — required for flat
+          base_rate,        // numeric — required for cat (per-word base rate)
+          cat_lines,        // array — required for cat: [{match_tier, tier_label, word_count, tier_percentage}]
+          currency,         // "CAD" by default
+          tax_name,
+          tax_rate,         // numeric 0..1 (e.g. 0.05 for 5%)
+          description,
+          staff_id,
+        } = body;
+
+        if (!workflow_step_id) return json({ success: false, error: "Missing workflow_step_id" }, 400);
+        if (!mode) return json({ success: false, error: "Missing mode" }, 400);
+
+        // Load step + workflow context so the payable rows can be tagged
+        // with step_name + order_id + language fields (mirrors
+        // direct_assign in update-workflow-step).
+        const { data: step, error: stepErr } = await supabase
+          .from("order_workflow_steps")
+          .select("id, step_number, name, order_id, vendor_id, source_language, target_language, service_id, workflow_id")
+          .eq("id", workflow_step_id)
+          .single();
+        if (stepErr || !step) return json({ success: false, error: "Workflow step not found" }, 404);
+
+        const effectiveVendorId = vendor_id || step.vendor_id;
+        if (!effectiveVendorId) return json({ success: false, error: "Step has no vendor; pass vendor_id" }, 400);
+
+        // Compute subtotal + rate_unit per mode. The deterministic math
+        // lives here, server-side — Claude is never trusted to pick the
+        // final number even when the CAT lines came from a parse step.
+        let computedRate: number;
+        let computedRateUnit: string;
+        let computedUnits: number;
+        let computedSubtotal: number;
+        let normalizedCatLines: Array<{
+          match_tier: string;
+          tier_label: string | null;
+          word_count: number;
+          tier_percentage: number;
+          base_rate: number;
+          line_subtotal: number;
+          sort_order: number;
+        }> = [];
+
+        const RATE_UNIT_BY_MODE: Record<string, string> = {
+          flat: "flat",
+          per_word: "per_word",
+          per_hour: "per_hour",
+          per_page: "per_page",
+          cat: "per_word",
+        };
+        if (!RATE_UNIT_BY_MODE[mode]) {
+          return json({ success: false, error: `Unknown mode: ${mode}` }, 400);
+        }
+        computedRateUnit = RATE_UNIT_BY_MODE[mode];
+
+        if (mode === "flat") {
+          const flat = Number(flat_amount);
+          if (!Number.isFinite(flat) || flat <= 0) {
+            return json({ success: false, error: "flat mode requires flat_amount > 0" }, 400);
+          }
+          computedRate = flat;
+          computedUnits = 1;
+          computedSubtotal = flat;
+        } else if (mode === "cat") {
+          const baseRateNum = Number(base_rate);
+          if (!Number.isFinite(baseRateNum) || baseRateNum <= 0) {
+            return json({ success: false, error: "cat mode requires base_rate > 0" }, 400);
+          }
+          if (!Array.isArray(cat_lines) || cat_lines.length === 0) {
+            return json({ success: false, error: "cat mode requires cat_lines[]" }, 400);
+          }
+          let totalWords = 0;
+          let totalSubtotal = 0;
+          normalizedCatLines = cat_lines.map((l: any, idx: number) => {
+            const words = Number(l?.word_count ?? 0);
+            const pct = Number(l?.tier_percentage ?? 0);
+            if (!Number.isFinite(words) || words < 0) {
+              throw new Error(`cat_lines[${idx}].word_count invalid`);
+            }
+            if (!Number.isFinite(pct) || pct < 0 || pct > 5) {
+              throw new Error(`cat_lines[${idx}].tier_percentage out of range`);
+            }
+            const lineSubtotal = Math.round(words * pct * baseRateNum * 10000) / 10000;
+            totalWords += words;
+            totalSubtotal += lineSubtotal;
+            return {
+              match_tier: String(l?.match_tier ?? `tier_${idx}`),
+              tier_label: l?.tier_label ? String(l.tier_label) : null,
+              word_count: words,
+              tier_percentage: pct,
+              base_rate: baseRateNum,
+              line_subtotal: lineSubtotal,
+              sort_order: idx,
+            };
+          });
+          computedRate = baseRateNum;
+          computedUnits = totalWords;
+          computedSubtotal = Math.round(totalSubtotal * 100) / 100;
+        } else {
+          // per_word | per_hour | per_page
+          const r = Number(rate);
+          const u = Number(units);
+          if (!Number.isFinite(r) || r <= 0) {
+            return json({ success: false, error: `${mode} requires rate > 0` }, 400);
+          }
+          if (!Number.isFinite(u) || u <= 0) {
+            return json({ success: false, error: `${mode} requires units > 0` }, 400);
+          }
+          computedRate = r;
+          computedUnits = u;
+          computedSubtotal = Math.round(r * u * 100) / 100;
+        }
+
+        const taxRateNum = Number.isFinite(Number(tax_rate)) ? Number(tax_rate) : 0;
+        const taxAmount = Math.round(computedSubtotal * taxRateNum * 100) / 100;
+        const total = Math.round((computedSubtotal + taxAmount) * 100) / 100;
+        const cur = (currency || "CAD").toUpperCase();
+
+        // Cancel any existing non-cancelled payable on this step (unique-step
+        // index requires this). Matches the cancel-then-insert pattern in
+        // update-workflow-step.
+        const { error: cancelErr } = await supabase
+          .from("vendor_payables")
+          .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
+          .eq("workflow_step_id", workflow_step_id)
+          .neq("status", "cancelled");
+        if (cancelErr) {
+          return json({ success: false, error: `Failed to cancel prior payable: ${cancelErr.message}` }, 500);
+        }
+
+        const { data: inserted, error: insertErr } = await supabase
+          .from("vendor_payables")
+          .insert({
+            workflow_step_id,
+            vendor_id: effectiveVendorId,
+            order_id: step.order_id,
+            service_id: step.service_id ?? null,
+            step_name: step.name,
+            source_language: step.source_language ?? null,
+            target_language: step.target_language ?? null,
+            rate: computedRate,
+            rate_unit: computedRateUnit,
+            units: computedUnits,
+            subtotal: computedSubtotal,
+            currency: cur,
+            tax_name: tax_name ?? null,
+            tax_rate: taxRateNum,
+            tax_amount: taxAmount,
+            total,
+            status: "pending",
+            description: description || `Step ${step.step_number}: ${step.name}`,
+            created_by: staff_id ?? null,
+          })
+          .select("id")
+          .single();
+
+        if (insertErr || !inserted) {
+          return json({ success: false, error: insertErr?.message || "Insert failed" }, 500);
+        }
+
+        if (mode === "cat" && normalizedCatLines.length > 0) {
+          const rows = normalizedCatLines.map((l) => ({ ...l, payable_id: inserted.id }));
+          const { error: linesErr } = await supabase
+            .from("vendor_payable_cat_lines")
+            .insert(rows);
+          if (linesErr) {
+            console.error("cat lines insert failed; rolling back payable:", linesErr.message);
+            await supabase.from("vendor_payables").delete().eq("id", inserted.id);
+            return json({ success: false, error: `CAT lines insert failed: ${linesErr.message}` }, 500);
+          }
+        }
+
+        console.log(`Payable created (${mode}): ${inserted.id} step=${workflow_step_id} subtotal=${computedSubtotal} ${cur}`);
+
+        return json({
+          success: true,
+          payable_id: inserted.id,
+          subtotal: computedSubtotal,
+          tax_amount: taxAmount,
+          total,
+          currency: cur,
+          rate_unit: computedRateUnit,
+          units: computedUnits,
+          rate: computedRate,
+        });
+      }
+
       default:
         return json({ success: false, error: `Unknown action: ${action}` }, 400);
     }
