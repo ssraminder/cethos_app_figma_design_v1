@@ -207,7 +207,7 @@ async function claudeExtract(pasted_text: string): Promise<Array<{ canonical_tie
 
 Canonical tier mapping:
 - "Context Match" / "Perfect Match" / "101%" → context_match
-- "Repetitions" / "Cross-file Reps" → repetitions
+- "Repetitions" (Trados/SDL also separates "Cross-file Repetitions" — SUM both into repetitions)
 - "100%" → 100
 - "95% - 99%" / fuzzy 95-99 → 95_99
 - "85% - 94%" / fuzzy 85-94 → 85_94
@@ -215,7 +215,46 @@ Canonical tier mapping:
 - "50% - 74%" / fuzzy 50-74 → 50_74
 - "No Match" / "New" / "0-49%" → no_match
 
-Only emit tiers actually present in the input. Read the "Words" column when one exists; never substitute Segments / Characters. If a tier label is shown but its row is zero, still emit it with word_count=0. Be silent about anything you cannot map onto the canonical list — do NOT invent tiers.`;
+Input shapes you must handle:
+
+1. LABELED ROWS — "Repetitions 412 words" / "100% 92" / table with a "Words" header column.
+   Read the "Words" column. Never Segments / Characters / Percent / Placeables.
+
+2. TRADOS / SDL STUDIO "ANALYZE FILES" CSV — one row per file, headerless or
+   header-stripped. Standard column order (after the filename + optional
+   weighted-pct column):
+     PerfectMatch     [Segments | Words | Percent | Placeables]
+     Context Match    [Segments | Words | Percent | Placeables]
+     Repetitions      [Segments | Words | Percent | Placeables]
+     Cross-file Reps  [Segments | Words | Percent | Placeables]    <- sum into repetitions
+     100%             [Segments | Words | Percent | Placeables]
+     95% - 99%        [Segments | Words | Percent | Placeables]
+     85% - 94%        [Segments | Words | Percent | Placeables]
+     75% - 84%        [Segments | Words | Percent | Placeables]
+     50% - 74%        [Segments | Words | Percent | Placeables]
+     New              [Segments | Words | Percent | Placeables]    <- this is no_match
+   The trailing number on each row is usually Total. Cross-check by adding
+   the per-tier Words across all tiers and confirming it matches the trailing
+   Total. If they don't match, prefer the explicit Total and proportionally
+   trust the per-tier Words.
+
+3. MEMOQ "STATISTICS" CSV — header row names tiers explicitly. Match by label.
+
+4. MULTI-FILE INPUTS — when the input contains MULTIPLE file rows, SUM the
+   per-tier word counts across all files. Emit one row per canonical tier
+   with the summed total.
+
+5. PARTIAL / SUMMARY OUTPUTS — when only summary lines are present (e.g.
+   "Total: 3110 words" with no tier breakdown), emit no_match with that
+   total and leave other tiers absent. Don't invent a distribution.
+
+Final checks before emitting:
+- Each tier word_count must be a non-negative integer.
+- Sum of emitted word_counts should approximate the input's Total when one
+  is visible. If your sum is dramatically off (>10% drift), you're reading
+  the wrong column — re-read.
+- Never emit Segments, Characters, Percent, or Placeables values as
+  word_counts. Decimals like "4.15" are weighted-percent values; ignore.`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -226,7 +265,7 @@ Only emit tiers actually present in the input. Read the "Words" column when one 
     },
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: systemPrompt,
       tools: [tool],
       tool_choice: { type: "tool", name: "emit_cat_breakdown" },
@@ -342,6 +381,53 @@ serve(async (req: Request) => {
       sortOrder++;
     }
 
+    // Sanity check: scan the input for an explicit Total / Total Words
+    // figure and compare against our summed word count. If they drift by
+    // more than 10%, surface a warning so the UI can prompt the user.
+    const warnings: string[] = [];
+    const explicitTotalMatch = pasted_text.match(/\btotal(?:\s*words)?\s*[:=]?\s*([0-9][0-9,\.\s]*)/i);
+    let explicitTotal: number | null = null;
+    if (explicitTotalMatch) {
+      const cleaned = explicitTotalMatch[1].replace(/[\s,]/g, "");
+      const n = Number(cleaned);
+      if (Number.isFinite(n) && n > 0 && n < 100_000_000) explicitTotal = Math.round(n);
+    }
+    // Also: if the input has multiple rows that look like Trados file rows
+    // (decimal weighted-pct followed by 40+ integers), try summing every
+    // trailing-row number as a heuristic check.
+    let trailingTotal: number | null = null;
+    const fileRowTrailings: number[] = [];
+    for (const line of pasted_text.split(/\r?\n/)) {
+      const nums = [...line.matchAll(/(-?[0-9]+(?:\.[0-9]+)?)/g)].map((m) => Number(m[1]));
+      // Trados file row heuristic: at least one decimal (weighted %) and 35+ numbers total
+      if (nums.length >= 35 && nums.some((n) => !Number.isInteger(n) && n > 0 && n < 100)) {
+        fileRowTrailings.push(nums[nums.length - 1]);
+      }
+    }
+    if (fileRowTrailings.length > 0) {
+      trailingTotal = fileRowTrailings.reduce((a, b) => a + b, 0);
+    }
+
+    const referenceTotal = explicitTotal ?? trailingTotal;
+    if (referenceTotal !== null && totalWords > 0) {
+      const drift = Math.abs(totalWords - referenceTotal) / referenceTotal;
+      if (drift > 0.10) {
+        warnings.push(
+          `Extracted total (${totalWords} words) drifts ${Math.round(drift * 100)}% from the value the input suggests (${referenceTotal}). The parser may have read the wrong column — try uploading the original CSV/XLSX file, or paste with the header row included.`,
+        );
+      }
+    }
+    if (referenceTotal !== null && totalWords === 0) {
+      warnings.push(
+        `Parser found tier labels but couldn't extract Words counts; the input may be in a column layout the parser doesn't recognize. The input suggests a total of ${referenceTotal} words — try uploading the original file.`,
+      );
+    }
+    if (extractionSource === "regex_fallback") {
+      warnings.push(
+        `AI extraction unavailable — used a tolerant regex fallback. Double-check the per-tier word counts below before saving.`,
+      );
+    }
+
     return json({
       success: true,
       lines,
@@ -350,6 +436,8 @@ serve(async (req: Request) => {
       currency,
       grid_source: gridSource,
       extraction_source: extractionSource,
+      reference_total: referenceTotal,
+      warnings,
     });
   } catch (err: any) {
     console.error("parse-cat-analysis error:", err?.message || err);
