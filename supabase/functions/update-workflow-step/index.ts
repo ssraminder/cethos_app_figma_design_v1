@@ -434,6 +434,18 @@ serve(async (req: Request) => {
             started_at: null,
             delivered_at: null,
             offered_at: null,
+            // Clear the previous vendor's commercial terms too. Leaving
+            // them on the step row leaks the prior rate into the next
+            // assignment / offer, which the vendor portal then displays
+            // instead of the new offer's actual rate. Rates live on the
+            // offer row until acceptance copies them back (see
+            // accept-step / accept-direct-assign), so nulling here is
+            // safe.
+            vendor_rate: null,
+            vendor_rate_unit: null,
+            vendor_total: null,
+            vendor_currency: null,
+            deadline: null,
             delivered_file_paths: preserve_files ? step.delivered_file_paths : null,
           })
           .eq("id", step_id);
