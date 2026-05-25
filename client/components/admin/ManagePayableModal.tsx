@@ -1,8 +1,44 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import { Loader2, X, Sparkles } from "lucide-react";
+import { Loader2, X, Sparkles, Upload, AlertTriangle } from "lucide-react";
+
+// Reads a CAT analysis file in any supported format and returns its content
+// as plain text suitable for parse-cat-analysis. The edge function does the
+// hard work of mapping cells → tiers; we just normalize binary formats
+// (XLSX) into a TSV-like text representation so Claude sees the cell layout.
+//
+// Supported:
+//   .csv  / .tsv  / .txt  / .log → read as UTF-8 text directly
+//   .xml                          → read as UTF-8 text (Claude handles XML)
+//   .xlsx / .xls / .xlsm          → SheetJS → first sheet → CSV string
+//
+// .docx is NOT supported — users can copy-paste the table text from Word.
+async function readCatFile(file: File): Promise<{ text: string; format: string }> {
+  const name = file.name.toLowerCase();
+  const xlsxExt = [".xlsx", ".xls", ".xlsm", ".ods"];
+  if (xlsxExt.some((e) => name.endsWith(e))) {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    // Concatenate every sheet so multi-sheet exports (memoQ pattern) survive.
+    const chunks: string[] = [];
+    for (const sheetName of wb.SheetNames) {
+      const sheet = wb.Sheets[sheetName];
+      if (!sheet) continue;
+      const csv = XLSX.utils.sheet_to_csv(sheet, { strip: true });
+      chunks.push(`=== Sheet: ${sheetName} ===\n${csv}`);
+    }
+    return { text: chunks.join("\n\n"), format: "xlsx" };
+  }
+  // Default: treat as text. Handles csv/tsv/txt/xml/log/etc.
+  const text = await file.text();
+  if (name.endsWith(".xml")) return { text, format: "xml" };
+  if (name.endsWith(".csv")) return { text, format: "csv" };
+  if (name.endsWith(".tsv")) return { text, format: "tsv" };
+  return { text, format: "text" };
+}
 
 // Modes the modal supports. Each maps to vendor_payables.rate_unit on the
 // server (cat → per_word at the parent level, with a child-table breakdown).
@@ -52,6 +88,8 @@ interface ParseResponse {
   currency?: string;
   grid_source?: "vendor" | "global";
   extraction_source?: "claude" | "regex_fallback";
+  reference_total?: number | null;
+  warnings?: string[];
   error?: string;
 }
 
@@ -101,7 +139,11 @@ export default function ManagePayableModal({
   const [catLines, setCatLines] = useState<CatLine[]>([]);
   const [catGridSource, setCatGridSource] = useState<"vendor" | "global" | null>(null);
   const [catExtractionSource, setCatExtractionSource] = useState<"claude" | "regex_fallback" | null>(null);
+  const [catWarnings, setCatWarnings] = useState<string[]>([]);
+  const [catReferenceTotal, setCatReferenceTotal] = useState<number | null>(null);
+  const [catSourceFile, setCatSourceFile] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
 
@@ -135,6 +177,9 @@ export default function ManagePayableModal({
     setCatLines([]);
     setCatGridSource(null);
     setCatExtractionSource(null);
+    setCatWarnings([]);
+    setCatReferenceTotal(null);
+    setCatSourceFile(null);
   }, [open, existingPayable]);
 
   const subtotal = useMemo<number>(() => {
@@ -149,21 +194,25 @@ export default function ManagePayableModal({
   const taxAmount = Math.round(subtotal * taxRate * 100) / 100;
   const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
-  const handleParseCat = async () => {
-    if (!catPasteText.trim()) {
-      toast.error("Paste the CAT analysis first.");
-      return;
-    }
+  // Shared invoker for both the paste path and the file-upload path.
+  // Takes already-prepared text + the source label and pushes it through
+  // parse-cat-analysis with the current vendor/rate context.
+  const runParser = async (text: string, sourceLabel: string) => {
     const base = Number(catBaseRate);
     if (!Number.isFinite(base) || base <= 0) {
       toast.error("Enter a base per-word rate first.");
       return;
     }
+    if (!text.trim()) {
+      toast.error("No analysis content to parse.");
+      return;
+    }
     setParsing(true);
+    setCatWarnings([]);
     try {
       const { data, error } = await supabase.functions.invoke<ParseResponse>("parse-cat-analysis", {
         body: {
-          pasted_text: catPasteText,
+          pasted_text: text,
           base_rate: base,
           vendor_id: vendorId,
           currency,
@@ -174,11 +223,44 @@ export default function ManagePayableModal({
       setCatLines(data.lines || []);
       setCatGridSource(data.grid_source || null);
       setCatExtractionSource(data.extraction_source || null);
-      toast.success(`Parsed ${data.total_words ?? 0} words → ${fmt(data.subtotal ?? 0, data.currency || currency)}`);
+      setCatWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      setCatReferenceTotal(data.reference_total ?? null);
+      toast.success(
+        `${sourceLabel}: parsed ${data.total_words ?? 0} words → ${fmt(data.subtotal ?? 0, data.currency || currency)}`,
+      );
     } catch (e: any) {
       toast.error(e?.message || "Parse failed");
     } finally {
       setParsing(false);
+    }
+  };
+
+  const handleParseCat = async () => {
+    if (!catPasteText.trim()) {
+      toast.error("Paste the CAT analysis first.");
+      return;
+    }
+    setCatSourceFile(null);
+    await runParser(catPasteText, "Paste");
+  };
+
+  const handleCatFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Clear the input so re-selecting the same file fires onChange again.
+    e.target.value = "";
+    const maxSizeMb = 25;
+    if (file.size > maxSizeMb * 1024 * 1024) {
+      toast.error(`File too large (>${maxSizeMb} MB).`);
+      return;
+    }
+    try {
+      const { text, format } = await readCatFile(file);
+      setCatPasteText(text);
+      setCatSourceFile(`${file.name} (${format})`);
+      await runParser(text, `${file.name}`);
+    } catch (err: any) {
+      toast.error(`Could not read file: ${err?.message || "unknown error"}`);
     }
   };
 
@@ -360,17 +442,45 @@ export default function ManagePayableModal({
               </div>
 
               <div>
-                <label className="block text-xs text-gray-600 mb-1">Paste analysis</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs text-gray-600">Paste analysis or upload file</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,.tsv,.txt,.log,.xml,.xlsx,.xls,.xlsm,.ods"
+                      onChange={handleCatFile}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={parsing || !catBaseRate}
+                      className="text-xs inline-flex items-center gap-1 px-3 py-1.5 border border-teal-500 text-teal-700 rounded hover:bg-teal-50 disabled:opacity-50"
+                      title="Upload CSV / TSV / TXT / XLSX / XML"
+                    >
+                      <Upload className="w-3 h-3" />
+                      Upload file
+                    </button>
+                  </div>
+                </div>
                 <textarea
                   rows={6}
                   value={catPasteText}
-                  onChange={(e) => setCatPasteText(e.target.value)}
+                  onChange={(e) => {
+                    setCatPasteText(e.target.value);
+                    setCatSourceFile(null);
+                  }}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-teal-500"
-                  placeholder={"Paste a Trados, SDL Studio, memoQ, XTM, Phrase, Plunet, or XTRF analysis here. The 'Words' column is what matters — segment / character columns are ignored."}
+                  placeholder={"Paste a Trados, SDL Studio, memoQ, XTM, Phrase, Plunet, or XTRF analysis here — OR click Upload file above for the original CSV/XLSX/XML export (most reliable). The 'Words' column is what matters."}
                 />
                 <div className="flex items-center justify-between mt-1">
                   <p className="text-[11px] text-gray-500">
-                    AI extracts per-tier word counts. You can edit the table below before saving.
+                    {catSourceFile ? (
+                      <>Loaded from <span className="font-medium">{catSourceFile}</span></>
+                    ) : (
+                      <>Tip: for best results, upload the original export file — pastes without column headers can be ambiguous.</>
+                    )}
                   </p>
                   <button
                     type="button"
@@ -383,6 +493,26 @@ export default function ManagePayableModal({
                   </button>
                 </div>
               </div>
+
+              {catWarnings.length > 0 && (
+                <div className="border border-amber-300 bg-amber-50 rounded p-3 text-xs text-amber-900 space-y-1">
+                  <div className="flex items-center gap-1 font-medium">
+                    <AlertTriangle className="w-3 h-3" />
+                    Parser warnings
+                  </div>
+                  <ul className="list-disc pl-5 space-y-0.5">
+                    {catWarnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                  {catReferenceTotal != null && (
+                    <div className="mt-1 text-amber-700">
+                      Input suggests a total of <span className="font-medium">{catReferenceTotal.toLocaleString()}</span> words.
+                      Adjust the per-tier counts manually if the AI got them wrong.
+                    </div>
+                  )}
+                </div>
+              )}
 
               {catLines.length > 0 && (
                 <div className="border border-gray-200 rounded">
