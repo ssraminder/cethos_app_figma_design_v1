@@ -169,6 +169,17 @@ serve(async (req: Request) => {
           <p style="color:#9ca3af; font-size:12px;">If you cannot complete this assignment, please contact the project manager at ${ADMIN_EMAIL}.</p>
         `;
 
+        // notification_log has NOT NULL constraints on event_type,
+        // recipient_type, recipient_email, subject, status. The old INSERTs
+        // below only set event_type + step_id + metadata, so they 23502'd
+        // and the dedup row was never persisted — meaning once the 1h or
+        // 2h threshold passed, this cron would re-send the same email
+        // every 15 minutes forever. Provide the full required column set
+        // and wrap each INSERT in its own try/catch so an audit failure
+        // doesn't block the Brevo send.
+        let brevoStatus: "sent" | "failed" = "failed";
+        let brevoMessageId: string | null = null;
+        let errorMessage: string | null = null;
         try {
           const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
             method: "POST",
@@ -186,37 +197,64 @@ serve(async (req: Request) => {
           });
 
           const brevoData = await brevoRes.json().catch(() => ({}));
-
-          // Log to notification_log
-          await supabase.from("notification_log").insert({
-            event_type: event.type,
-            step_id: step.id,
-            metadata: {
-              vendor_id: step.vendor_id,
-              vendor_email: vendor.email,
-              order_number: orderLabel,
-              brevo_message_id: brevoData?.messageId ?? null,
-              is_urgent: isUrgent,
-              hours_elapsed: Math.round(hoursElapsed * 10) / 10,
-            },
-          });
-
-          sent++;
-          console.log(
-            `Sent ${event.type} for step=${step.id} vendor=${vendor.email}`,
-          );
+          if (brevoRes.ok) {
+            brevoStatus = "sent";
+            brevoMessageId = brevoData?.messageId ?? null;
+            sent++;
+            console.log(
+              `Sent ${event.type} for step=${step.id} vendor=${vendor.email}`,
+            );
+          } else {
+            errorMessage = `Brevo ${brevoRes.status}: ${JSON.stringify(brevoData).slice(0, 300)}`;
+            console.error(
+              `Brevo ${event.type} step=${step.id}: ${errorMessage}`,
+            );
+          }
         } catch (emailErr) {
+          errorMessage = String(emailErr).slice(0, 500);
           console.error(`Email send failed for ${event.type} step=${step.id}:`, emailErr);
-          // Log failure too
-          await supabase.from("notification_log").insert({
-            event_type: event.type,
-            step_id: step.id,
-            metadata: {
-              vendor_id: step.vendor_id,
-              error: String(emailErr),
-              is_urgent: isUrgent,
-            },
-          });
+        }
+
+        // Audit row — primary recipient is the vendor for the 1h tier,
+        // both vendor + admin for the urgent 2h tier; we record the
+        // vendor as recipient_email and put admin_email + recipients in
+        // metadata to preserve the (step_id, event_type) dedup contract.
+        try {
+          const { error: logErr } = await supabase
+            .from("notification_log")
+            .insert({
+              event_type: event.type,
+              recipient_type: "vendor",
+              recipient_email: vendor.email,
+              recipient_name: vendor.full_name ?? null,
+              recipient_id: step.vendor_id,
+              order_id: step.order_id,
+              step_id: step.id,
+              subject,
+              status: brevoStatus,
+              error_message: errorMessage,
+              metadata: {
+                vendor_id: step.vendor_id,
+                vendor_email: vendor.email,
+                order_number: orderLabel,
+                brevo_message_id: brevoMessageId,
+                is_urgent: isUrgent,
+                hours_elapsed: Math.round(hoursElapsed * 10) / 10,
+                cc_admin_email: isUrgent ? ADMIN_EMAIL : null,
+                recipients: recipients.map((r) => r.email),
+              },
+            });
+          if (logErr) {
+            console.error(
+              `notification_log insert error for ${event.type} step=${step.id}:`,
+              logErr,
+            );
+          }
+        } catch (logErr) {
+          console.error(
+            `notification_log insert threw for ${event.type} step=${step.id}:`,
+            logErr,
+          );
         }
       }
     }
