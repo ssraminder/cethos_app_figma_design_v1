@@ -3,6 +3,9 @@
 // Shared Brevo helpers for the step-lifecycle email events fired BY the admin:
 //   - notifyVendorStepApproved        → update-workflow-step.approve
 //   - notifyVendorRevisionRequested   → update-workflow-step.request_revision
+//   - notifyVendorUnassigned          → update-workflow-step.unassign_vendor
+//   - notifyVendorDeadlineChanged     → update-workflow-step.extend_deadline
+//   - notifyVendorPayableAdjusted     → manage-vendor-payables.adjust_payable
 //   - notifyVendorPayableInvoiced     → manage-vendor-payables.update_status('invoiced')
 //   - notifyVendorPayablePaid         → manage-vendor-payables.update_status('paid')
 //   - notifyCustomerWorkflowCompleted → update-workflow-step.approve (final step)
@@ -39,6 +42,32 @@ const fmtMoney = (amount: number | null | undefined, currency: string | null | u
   } catch {
     return `${amount} ${currency || ""}`.trim();
   }
+};
+
+const fmtDate = (iso: string | null | undefined): string => {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("en-CA", {
+      timeZone: "America/Edmonton",
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return iso;
+  }
+};
+
+// Human-readable labels for the unassign_reason enum the admin UI picks
+// from. Falls through to the raw value if a new reason is added before
+// this map is updated.
+const UNASSIGN_REASON_LABELS: Record<string, string> = {
+  vendor_unresponsive: "Vendor unresponsive",
+  vendor_unavailable: "Vendor unavailable",
+  reassigning: "Reassigning to another vendor",
+  quality_concerns: "Quality concerns",
+  scope_changed: "Scope changed",
+  cancelled_by_customer: "Order cancelled by customer",
+  other: "Other",
 };
 
 interface VendorRow {
@@ -369,6 +398,194 @@ export interface WorkflowCompletedContext {
   customer: { id: string; full_name: string | null; email: string };
   order: { id: string; order_number: string };
   workflowId: string;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// 6. notifyVendorUnassigned — admin removed the vendor from a step.
+// Fires AFTER the step has been reset (vendor_id cleared, unassigned_*
+// columns populated), so the caller must pass the previous vendor's row
+// in the context — we don't try to re-fetch off step.vendor_id (which is
+// now null).
+// ──────────────────────────────────────────────────────────────────────────
+export interface UnassignedContext extends StepLifecycleContext {
+  reason: string | null;
+  notes: string | null;
+}
+
+export async function notifyVendorUnassigned(ctx: UnassignedContext): Promise<void> {
+  const reasonLabel = ctx.reason
+    ? UNASSIGN_REASON_LABELS[ctx.reason] ?? ctx.reason
+    : "Not specified";
+  const subject = `Assignment removed: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
+  const lead = `Your assignment for order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been removed by the project manager. You no longer need to deliver this step. See details and reason below.`;
+  const items: Array<[string, string]> = [
+    ["Order", ctx.order.order_number],
+    ["Step", ctx.step.name || "—"],
+    ["Reason", reasonLabel],
+  ];
+  const note = ctx.notes ? noteBlock("Notes from project manager", ctx.notes) : "";
+  const html = emailShell(
+    "Assignment removed",
+    lead,
+    rows(items),
+    note,
+    "Open vendor portal",
+    `${VENDOR_PORTAL_URL}/jobs`,
+  );
+  await sendOne({
+    supabase: ctx.supabase,
+    eventType: "vendor_unassigned",
+    recipientEmail: ctx.vendor.email,
+    recipientName: ctx.vendor.full_name,
+    recipientId: ctx.vendor.id,
+    ccEmails: ccFor(ctx.vendor),
+    subject,
+    htmlContent: html,
+    orderId: ctx.order.id,
+    stepId: ctx.step.id,
+    metadata: {
+      reason: ctx.reason ?? null,
+      reason_label: reasonLabel,
+      notes: ctx.notes ?? null,
+    },
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// 7. notifyVendorDeadlineChanged — admin updated the step deadline.
+// Surfaces old → new so the vendor immediately sees what shifted.
+// ──────────────────────────────────────────────────────────────────────────
+export interface DeadlineChangedContext extends StepLifecycleContext {
+  old_deadline: string | null;
+  new_deadline: string;
+  reason: string | null;
+}
+
+export async function notifyVendorDeadlineChanged(ctx: DeadlineChangedContext): Promise<void> {
+  const subject = `Deadline updated: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
+  const now = Date.now();
+  const oldMs = ctx.old_deadline ? new Date(ctx.old_deadline).getTime() : null;
+  const newMs = new Date(ctx.new_deadline).getTime();
+  const shifted =
+    oldMs != null && Number.isFinite(oldMs) && Number.isFinite(newMs)
+      ? newMs > oldMs
+        ? "extended"
+        : newMs < oldMs
+          ? "shortened"
+          : "unchanged"
+      : null;
+  const lead =
+    shifted === "extended"
+      ? `The deadline for your assignment on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been <strong>extended</strong>. The new deadline is below.`
+      : shifted === "shortened"
+        ? `The deadline for your assignment on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been <strong>shortened</strong>. Please confirm you can still deliver by the new deadline.`
+        : `The deadline for your assignment on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been updated. Details below.`;
+  const items: Array<[string, string]> = [
+    ["Order", ctx.order.order_number],
+    ["Step", ctx.step.name || "—"],
+  ];
+  if (ctx.old_deadline) items.push(["Previous deadline", fmtDate(ctx.old_deadline)]);
+  items.push(["New deadline", fmtDate(ctx.new_deadline)]);
+  const note = ctx.reason ? noteBlock("Reason", ctx.reason) : "";
+  const html = emailShell(
+    "Deadline updated",
+    lead,
+    rows(items),
+    note,
+    "Open job",
+    `${VENDOR_PORTAL_URL}/jobs`,
+  );
+  await sendOne({
+    supabase: ctx.supabase,
+    eventType: "vendor_deadline_changed",
+    recipientEmail: ctx.vendor.email,
+    recipientName: ctx.vendor.full_name,
+    recipientId: ctx.vendor.id,
+    ccEmails: ccFor(ctx.vendor),
+    subject,
+    htmlContent: html,
+    orderId: ctx.order.id,
+    stepId: ctx.step.id,
+    metadata: {
+      old_deadline: ctx.old_deadline ?? null,
+      new_deadline: ctx.new_deadline,
+      direction: shifted,
+      reason: ctx.reason ?? null,
+      hours_from_now:
+        Number.isFinite(newMs) ? Math.round(((newMs - now) / 3600000) * 10) / 10 : null,
+    },
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// 8. notifyVendorPayableAdjusted — admin changed the rate or total on a
+// committed payable. The vendor needs to see this so they don't invoice
+// the old amount.
+// ──────────────────────────────────────────────────────────────────────────
+export interface PayableAdjustedContext extends StepLifecycleContext {
+  old_rate: number | null;
+  new_rate: number | null;
+  old_subtotal: number | null;
+  new_subtotal: number | null;
+  currency: string;
+  reason: string | null;
+}
+
+export async function notifyVendorPayableAdjusted(ctx: PayableAdjustedContext): Promise<void> {
+  const subject = `Payable adjusted: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
+  const direction =
+    ctx.old_subtotal != null && ctx.new_subtotal != null
+      ? ctx.new_subtotal > ctx.old_subtotal
+        ? "increased"
+        : ctx.new_subtotal < ctx.old_subtotal
+          ? "decreased"
+          : "unchanged"
+      : null;
+  const lead =
+    direction === "increased"
+      ? `The payable for your work on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been <strong>increased</strong>. Updated amounts below — please invoice the new total when ready.`
+      : direction === "decreased"
+        ? `The payable for your work on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been <strong>decreased</strong>. Updated amounts below — please invoice the new total when ready.`
+        : `The payable for your work on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been adjusted. Updated amounts below.`;
+  const items: Array<[string, string]> = [
+    ["Order", ctx.order.order_number],
+    ["Step", ctx.step.name || "—"],
+  ];
+  if (ctx.old_rate != null) items.push(["Previous rate", fmtMoney(ctx.old_rate, ctx.currency)]);
+  if (ctx.new_rate != null) items.push(["New rate", fmtMoney(ctx.new_rate, ctx.currency)]);
+  if (ctx.old_subtotal != null) items.push(["Previous total", fmtMoney(ctx.old_subtotal, ctx.currency)]);
+  if (ctx.new_subtotal != null) items.push(["New total", fmtMoney(ctx.new_subtotal, ctx.currency)]);
+  const note = ctx.reason ? noteBlock("Reason", ctx.reason) : "";
+  const html = emailShell(
+    "Payable adjusted",
+    lead,
+    rows(items),
+    note,
+    "View in vendor portal",
+    `${VENDOR_PORTAL_URL}/jobs`,
+  );
+  await sendOne({
+    supabase: ctx.supabase,
+    eventType: "vendor_payable_adjusted",
+    recipientEmail: ctx.vendor.email,
+    recipientName: ctx.vendor.full_name,
+    recipientId: ctx.vendor.id,
+    ccEmails: ccFor(ctx.vendor),
+    subject,
+    htmlContent: html,
+    orderId: ctx.order.id,
+    stepId: ctx.step.id,
+    payableId: ctx.payable?.id ?? null,
+    metadata: {
+      old_rate: ctx.old_rate,
+      new_rate: ctx.new_rate,
+      old_subtotal: ctx.old_subtotal,
+      new_subtotal: ctx.new_subtotal,
+      currency: ctx.currency,
+      direction,
+      reason: ctx.reason ?? null,
+    },
+  });
 }
 
 export async function notifyCustomerWorkflowCompleted(ctx: WorkflowCompletedContext): Promise<void> {

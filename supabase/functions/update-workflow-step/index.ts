@@ -26,6 +26,8 @@ import { notifyStaffAssignment } from "../_shared/notify-staff-assignment.ts";
 import {
   notifyVendorStepApproved,
   notifyVendorRevisionRequested,
+  notifyVendorUnassigned,
+  notifyVendorDeadlineChanged,
   notifyCustomerWorkflowCompleted,
 } from "../_shared/notify-step-lifecycle.ts";
 
@@ -417,6 +419,7 @@ serve(async (req: Request) => {
         // "stale offer in vendor portal" bug. The `retract_offers` body
         // flag is ignored now; we treat retraction as required.
         const { reason, notes, payable_action, adjusted_amount, preserve_files } = body;
+        const previousVendorId: string | null = step.vendor_id ?? null;
         await retractAllStepOffers(supabase, step_id);
         await supabase
           .from("order_workflow_steps")
@@ -440,13 +443,97 @@ serve(async (req: Request) => {
           const { data: payable } = await supabase.from("vendor_payables").select("id, subtotal, total").eq("workflow_step_id", step_id).neq("status", "cancelled").maybeSingle();
           if (payable) await supabase.from("vendor_payables").update({ original_subtotal: payable.subtotal, original_total: payable.total, subtotal: adjusted_amount, total: adjusted_amount, status: "approved" }).eq("id", payable.id);
         }
+        // Vendor email — fire-and-forget. The unassign write is already
+        // committed at this point; a Brevo / lookup failure must never
+        // surface as an error to the admin UI.
+        try {
+          if (previousVendorId) {
+            const [{ data: vendorRow }, { data: orderRow }] = await Promise.all([
+              supabase
+                .from("vendors")
+                .select("id, full_name, email, additional_emails")
+                .eq("id", previousVendorId)
+                .maybeSingle(),
+              workflow?.order_id
+                ? supabase
+                    .from("orders")
+                    .select("id, order_number")
+                    .eq("id", workflow.order_id)
+                    .maybeSingle()
+                : Promise.resolve({ data: null }),
+            ]);
+            if (vendorRow?.email && orderRow) {
+              await notifyVendorUnassigned({
+                supabase,
+                vendor: {
+                  id: vendorRow.id,
+                  full_name: vendorRow.full_name,
+                  email: vendorRow.email,
+                  additional_emails: Array.isArray(vendorRow.additional_emails)
+                    ? vendorRow.additional_emails
+                    : [],
+                },
+                order: { id: orderRow.id, order_number: orderRow.order_number },
+                step: { id: step.id, name: step.name, step_number: step.step_number },
+                reason: reason ?? null,
+                notes: notes ?? null,
+              });
+            }
+          }
+        } catch (e: any) {
+          console.error("vendor_unassigned email fan-out failed:", e?.message || e);
+        }
         return json({ success: true });
       }
       case "extend_deadline": {
-        const { new_deadline } = body;
+        const { new_deadline, reason } = body;
         if (!new_deadline) return json({ success: false, error: "Missing new_deadline" }, 400);
+        const previousDeadline: string | null = step.deadline ?? null;
         await supabase.from("order_workflow_steps").update({ deadline: new_deadline }).eq("id", step_id);
         await supabase.from("vendor_step_offers").update({ deadline: new_deadline }).eq("step_id", step_id).in("status", ["pending", "offered"]);
+        // Notify the committed vendor (if any) that their deadline shifted.
+        // We deliberately skip offered/pending-offer recipients here — there
+        // can be many of them and they haven't accepted. If they accept after
+        // this, the notification will already be reflected in the offer email
+        // they see in the portal.
+        try {
+          if (step.vendor_id) {
+            const [{ data: vendorRow }, { data: orderRow }] = await Promise.all([
+              supabase
+                .from("vendors")
+                .select("id, full_name, email, additional_emails")
+                .eq("id", step.vendor_id)
+                .maybeSingle(),
+              workflow?.order_id
+                ? supabase
+                    .from("orders")
+                    .select("id, order_number")
+                    .eq("id", workflow.order_id)
+                    .maybeSingle()
+                : Promise.resolve({ data: null }),
+            ]);
+            if (vendorRow?.email && orderRow) {
+              await notifyVendorDeadlineChanged({
+                supabase,
+                vendor: {
+                  id: vendorRow.id,
+                  full_name: vendorRow.full_name,
+                  email: vendorRow.email,
+                  additional_emails: Array.isArray(vendorRow.additional_emails)
+                    ? vendorRow.additional_emails
+                    : [],
+                },
+                order: { id: orderRow.id, order_number: orderRow.order_number },
+                step: { id: step.id, name: step.name, step_number: step.step_number },
+                old_deadline: previousDeadline,
+                new_deadline,
+                reason: reason ?? null,
+              });
+            }
+          }
+        } catch (e: any) {
+          console.error("vendor_deadline_changed email fan-out failed:", e?.message || e);
+        }
         return json({ success: true });
       }
       case "approve": {
