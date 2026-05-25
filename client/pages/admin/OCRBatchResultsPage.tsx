@@ -25,6 +25,7 @@ interface PageResult {
   word_count: number;
   character_count: number;
   ocr_provider?: string | null;
+  detected_language?: string | null;
 }
 
 interface FileResult {
@@ -82,6 +83,51 @@ function providerGroups(file: FileResult): Array<{ provider: string; pages: Page
   return [...known, ...extras];
 }
 
+const CJK_LANG_PREFIXES = new Set(["zh", "ja", "ko"]);
+
+function isCjkLang(lang: string | null | undefined): boolean {
+  if (!lang) return false;
+  return CJK_LANG_PREFIXES.has(lang.toLowerCase().split("-")[0].split("_")[0]);
+}
+
+const WORDS_PER_PAGE = 225;
+const CHARS_PER_PAGE_CJK = 500;
+
+function divisorForPages(pages: PageResult[]): number {
+  if (pages.length === 0) return WORDS_PER_PAGE;
+  const cjkCount = pages.filter((p) => isCjkLang(p.detected_language)).length;
+  return cjkCount > pages.length / 2 ? CHARS_PER_PAGE_CJK : WORDS_PER_PAGE;
+}
+
+function dominantLanguage(pages: PageResult[]): string | null {
+  const counts = new Map<string, number>();
+  for (const p of pages) {
+    if (p.detected_language) {
+      const lang = p.detected_language.toLowerCase();
+      counts.set(lang, (counts.get(lang) || 0) + 1);
+    }
+  }
+  if (counts.size === 0) return null;
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [lang, count] of counts) {
+    if (count > bestCount) { best = lang; bestCount = count; }
+  }
+  return best;
+}
+
+function langLabel(lang: string | null): string {
+  if (!lang) return "";
+  const map: Record<string, string> = {
+    zh: "Chinese", ja: "Japanese", ko: "Korean",
+    en: "English", es: "Spanish", fr: "French", de: "German",
+    pt: "Portuguese", it: "Italian", ru: "Russian", ar: "Arabic",
+    hi: "Hindi", vi: "Vietnamese", th: "Thai", nl: "Dutch",
+  };
+  const base = lang.toLowerCase().split("-")[0].split("_")[0];
+  return map[base] || lang.toUpperCase();
+}
+
 function providerLabel(provider: string): string {
   if (provider === 'google_document_ai') return 'Google';
   if (provider === 'mistral') return 'Mistral';
@@ -109,7 +155,10 @@ function ProviderBarsTable({
   if (pages.length === 0) return null;
   const maxWords = Math.max(...pages.map((p) => p.word_count), 1);
   const totalWords = pages.reduce((s, p) => s + (p.word_count || 0), 0);
-  const totalBillable = totalWords / 225;
+  const div = divisorForPages(pages);
+  const isCjk = div === CHARS_PER_PAGE_CJK;
+  const totalBillable = totalWords / div;
+  const detLang = dominantLanguage(pages);
 
   return (
     <div className="min-w-0">
@@ -140,10 +189,15 @@ function ProviderBarsTable({
                   Use for analysis
                 </button>
               ) : null}
+              {detLang && (
+                <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded">
+                  {langLabel(detLang)}
+                </span>
+              )}
             </div>
             <div className="text-xs text-gray-600 whitespace-nowrap tabular-nums">
               <span className="font-medium text-gray-900">{pages.length}</span> pages ·{' '}
-              <span className="font-medium text-gray-900">{totalWords.toLocaleString()}</span> words ·{' '}
+              <span className="font-medium text-gray-900">{totalWords.toLocaleString()}</span> {isCjk ? 'chars' : 'words'} ·{' '}
               <span className="font-medium text-gray-900">{totalBillable.toFixed(1)}</span> billable
             </div>
           </div>
@@ -153,8 +207,8 @@ function ProviderBarsTable({
         <thead className="bg-gray-50">
           <tr>
             <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Page</th>
-            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Words</th>
-            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Billable</th>
+            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">{isCjk ? 'Chars' : 'Words'}</th>
+            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Billable (÷{div})</th>
             {!compact && (
               <th className="px-4 py-2 w-1/2">
                 <span className="sr-only">Bar</span>
@@ -172,7 +226,7 @@ function ProviderBarsTable({
                   {page.word_count.toLocaleString()}
                 </td>
                 <td className="px-4 py-2 text-sm text-gray-500 text-right tabular-nums">
-                  {(page.word_count / 225).toFixed(2)}
+                  {(page.word_count / div).toFixed(2)}
                 </td>
                 {!compact && (
                   <td className="px-4 py-2">
@@ -467,49 +521,53 @@ export default function OCRBatchResultsPage() {
     return groups;
   }, [files]);
 
+  const allPages = useMemo(() => fileGroups.flatMap((g) => g.allPages), [fileGroups]);
+  const batchDiv = divisorForPages(allPages);
+  const batchIsCjk = batchDiv === CHARS_PER_PAGE_CJK;
+  const batchLang = dominantLanguage(allPages);
+
   const exportCSV = () => {
     if (!batch || fileGroups.length === 0) return;
 
-    const rows: string[] = ['Original File,Chunk,Page,Words,Billable'];
+    const rows: string[] = ['Original File,Chunk,Page,Words/Chars,Billable,Language'];
 
     fileGroups.forEach(group => {
       const origName = group.displayName;
+      const gDiv = divisorForPages(group.allPages);
+      const gLang = dominantLanguage(group.allPages);
 
       if (group.type === 'group') {
-        // Grouped: show each chunk's pages under original name
         group.files.forEach(file => {
           const chunkLabel = `Chunk ${file.chunk_index || '?'} (${file.filename})`;
           const pages = activePages(file);
           if (pages.length > 0) {
             pages.forEach(page => {
-              rows.push(`"${origName}","${chunkLabel}",${page.page_number},${page.word_count},${(page.word_count / 225).toFixed(2)}`);
+              rows.push(`"${origName}","${chunkLabel}",${page.page_number},${page.word_count},${(page.word_count / gDiv).toFixed(2)},${page.detected_language || ''}`);
             });
-            rows.push(`"${origName}","${chunkLabel}",Subtotal,${file.word_count},${(file.word_count / 225).toFixed(1)}`);
+            rows.push(`"${origName}","${chunkLabel}",Subtotal,${file.word_count},${(file.word_count / gDiv).toFixed(1)},${gLang || ''}`);
           } else {
-            rows.push(`"${origName}","${chunkLabel}",Error,"${file.error_message || 'Unknown'}",`);
+            rows.push(`"${origName}","${chunkLabel}",Error,"${file.error_message || 'Unknown'}",,`);
           }
         });
-        // Group total
-        rows.push(`"${origName}",TOTAL,,${group.totalWords},${(group.totalWords / 225).toFixed(1)}`);
-        rows.push(''); // blank separator
+        rows.push(`"${origName}",TOTAL,,${group.totalWords},${(group.totalWords / gDiv).toFixed(1)},${gLang || ''}`);
+        rows.push('');
       } else {
-        // Standalone: same as before
         const file = group.files[0];
         const pages = activePages(file);
         if (pages.length > 0) {
           pages.forEach(page => {
-            rows.push(`"${origName}",,${page.page_number},${page.word_count},${(page.word_count / 225).toFixed(2)}`);
+            rows.push(`"${origName}",,${page.page_number},${page.word_count},${(page.word_count / gDiv).toFixed(2)},${page.detected_language || ''}`);
           });
-          rows.push(`"${origName}",,Total,${file.word_count},${(file.word_count / 225).toFixed(1)}`);
+          rows.push(`"${origName}",,Total,${file.word_count},${(file.word_count / gDiv).toFixed(1)},${gLang || ''}`);
         } else {
-          rows.push(`"${origName}",,Error,"${file.error_message || 'Unknown'}",`);
+          rows.push(`"${origName}",,Error,"${file.error_message || 'Unknown'}",,`);
         }
         rows.push('');
       }
     });
 
     rows.push('');
-    rows.push(`Grand Total,,,${batch.totalWords},${(batch.totalWords / 225).toFixed(1)}`);
+    rows.push(`Grand Total,,,${batch.totalWords},${(batch.totalWords / batchDiv).toFixed(1)},${batchLang || ''}`);
 
     const csv = rows.join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -588,15 +646,18 @@ export default function OCRBatchResultsPage() {
               <p className="text-2xl font-bold text-green-900">{batch.totalPages}</p>
             </div>
             <div className="bg-purple-50 rounded-lg p-4">
-              <p className="text-sm text-purple-600">Total Words</p>
+              <p className="text-sm text-purple-600">Total {batchIsCjk ? 'Chars' : 'Words'}</p>
               <p className="text-2xl font-bold text-purple-900">{batch.totalWords.toLocaleString()}</p>
+              {batchLang && (
+                <p className="text-xs text-purple-500 mt-0.5">{langLabel(batchLang)}</p>
+              )}
             </div>
             <div className="bg-amber-50 rounded-lg p-4">
               <p className="text-sm text-amber-600">Billable Pages</p>
               <p className="text-2xl font-bold text-amber-900">
-                {(batch.totalWords / 225).toFixed(1)}
+                {(batch.totalWords / batchDiv).toFixed(1)}
               </p>
-              <p className="text-xs text-amber-600">at 225 words/page</p>
+              <p className="text-xs text-amber-600">at {batchDiv} {batchIsCjk ? 'chars' : 'words'}/page</p>
             </div>
           </div>
 
@@ -736,8 +797,11 @@ export default function OCRBatchResultsPage() {
                       )}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {group.totalPages} pages • {group.totalWords.toLocaleString()} words
-                      • {(group.totalWords / 225).toFixed(1)} billable
+                      {group.totalPages} pages • {group.totalWords.toLocaleString()} {divisorForPages(group.allPages) === CHARS_PER_PAGE_CJK ? 'chars' : 'words'}
+                      • {(group.totalWords / divisorForPages(group.allPages)).toFixed(1)} billable
+                      {dominantLanguage(group.allPages) && (
+                        <span className="ml-1 text-xs text-gray-400">({langLabel(dominantLanguage(group.allPages))})</span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -907,8 +971,8 @@ export default function OCRBatchResultsPage() {
                           Total ({group.displayName})
                         </span>
                         <span className="text-sm font-medium text-blue-900">
-                          {group.totalPages} pages • {group.totalWords.toLocaleString()} words
-                          • {(group.totalWords / 225).toFixed(1)} billable pages
+                          {group.totalPages} pages • {group.totalWords.toLocaleString()} {divisorForPages(group.allPages) === CHARS_PER_PAGE_CJK ? 'chars' : 'words'}
+                          • {(group.totalWords / divisorForPages(group.allPages)).toFixed(1)} billable pages
                         </span>
                       </div>
                     </div>
