@@ -57,9 +57,15 @@ export function getAdminClient(): SupabaseClient {
   const url = Deno.env.get("SUPABASE_URL") || "";
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!url || !key) throw new Error("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing");
+  // Default-schema deliberately left as public. Every rc-* function calls
+  // `admin.rpc("comms_*", …)` against SECURITY DEFINER wrappers that live
+  // in public — pointing the client at `comms` made PostgREST refuse with
+  // PGRST106 ("Invalid schema: comms"), which silently killed every
+  // upsert and forced the token cache to miss on every call (→ RC OAuth
+  // 429 storm). Token + log writes both go through public wrappers; no
+  // call site touches comms.* directly.
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
-    db: { schema: "comms" },
   });
 }
 
