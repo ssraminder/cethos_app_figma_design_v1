@@ -96,7 +96,7 @@ async function processQuotePayment(
       `id, quote_number, status, customer_id, converted_to_order_id,
        subtotal, certification_total, rush_fee, delivery_fee,
        tax_rate, tax_amount, total,
-       estimated_delivery_date, certification_type_id,
+       estimated_delivery_date,
        turnaround_type, currency`,
     )
     .eq("id", quoteId)
@@ -136,7 +136,6 @@ async function processQuotePayment(
       balance_due: 0,
       currency,
       estimated_delivery_date: quote.estimated_delivery_date || null,
-      certification_type_id: quote.certification_type_id || null,
       is_rush: quote.turnaround_type === "rush",
       paid_at: new Date().toISOString(),
     })
