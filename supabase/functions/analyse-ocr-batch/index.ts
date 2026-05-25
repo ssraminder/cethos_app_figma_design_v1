@@ -8,6 +8,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getDominantLanguage, getWordsPerPage } from "../_shared/word-count.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -316,17 +317,21 @@ serve(async (req) => {
     //         Return the inserted IDs so we can propagate them
     // ====================================================================
 
-    const analysisInsertRows = docsWithText.map((doc) => ({
-      job_id: job.id,
-      batch_id: batchId,
-      file_id: doc.primaryFileId,
-      file_group_id: doc.fileGroupId,
-      original_filename: doc.originalFilename,
-      ocr_word_count: doc.totalWordCount,
-      ocr_page_count: doc.totalPageCount,
-      billable_pages: parseFloat((doc.totalWordCount / 225).toFixed(2)),
-      processing_status: isBackground ? "pending" : "processing",
-    }));
+    const analysisInsertRows = docsWithText.map((doc) => {
+      const dominantLang = getDominantLanguage(doc.pages);
+      const wpp = getWordsPerPage(dominantLang);
+      return {
+        job_id: job.id,
+        batch_id: batchId,
+        file_id: doc.primaryFileId,
+        file_group_id: doc.fileGroupId,
+        original_filename: doc.originalFilename,
+        ocr_word_count: doc.totalWordCount,
+        ocr_page_count: doc.totalPageCount,
+        billable_pages: parseFloat((doc.totalWordCount / wpp).toFixed(2)),
+        processing_status: isBackground ? "pending" : "processing",
+      };
+    });
 
     const { data: insertedRows, error: insertError } = await supabaseAdmin
       .from("ocr_ai_analysis")
@@ -690,6 +695,7 @@ Use null for any field you cannot determine. Return ONLY valid JSON, no markdown
             .eq("id", analysisRowId);
         }
 
+        const failWpp = getWordsPerPage(getDominantLanguage(doc.pages));
         savedResults.push({
           id: analysisRowId,
           fileId: doc.primaryFileId,
@@ -702,7 +708,7 @@ Use null for any field you cannot determine. Return ONLY valid JSON, no markdown
           complexity: null,
           wordCount: doc.totalWordCount,
           billablePages: parseFloat(
-            (doc.totalWordCount / 225).toFixed(2)
+            (doc.totalWordCount / failWpp).toFixed(2)
           ),
           documentCount: 1,
           subDocuments: null,
@@ -768,6 +774,9 @@ Use null for any field you cannot determine. Return ONLY valid JSON, no markdown
         );
       }
 
+      const successWpp = getWordsPerPage(
+        result.detectedLanguage || getDominantLanguage(doc.pages)
+      );
       savedResults.push({
         id: analysisRowId,
         fileId: doc.primaryFileId,
@@ -780,7 +789,7 @@ Use null for any field you cannot determine. Return ONLY valid JSON, no markdown
         complexity: result.complexity || null,
         wordCount: doc.totalWordCount,
         billablePages: parseFloat(
-          (doc.totalWordCount / 225).toFixed(2)
+          (doc.totalWordCount / successWpp).toFixed(2)
         ),
         documentCount: result.documentCount || 1,
         subDocuments: result.subDocuments || null,
@@ -806,23 +815,26 @@ Use null for any field you cannot determine. Return ONLY valid JSON, no markdown
       .in("processing_status", ["pending", "processing"]);
 
     // Return failed results with correct IDs
-    return documents.map((doc) => ({
-      id: fileToAnalysisId.get(doc.primaryFileId) || null,
-      fileId: doc.primaryFileId,
-      originalFilename: doc.originalFilename,
-      documentType: null,
-      holderName: null,
-      detectedLanguage: null,
-      languageName: null,
-      issuingCountry: null,
-      complexity: null,
-      wordCount: doc.totalWordCount,
-      billablePages: parseFloat((doc.totalWordCount / 225).toFixed(2)),
-      documentCount: 1,
-      subDocuments: null,
-      actionableItems: [],
-      processingStatus: "failed",
-      errorMessage: error.message,
-    }));
+    return documents.map((doc) => {
+      const errWpp = getWordsPerPage(getDominantLanguage(doc.pages));
+      return {
+        id: fileToAnalysisId.get(doc.primaryFileId) || null,
+        fileId: doc.primaryFileId,
+        originalFilename: doc.originalFilename,
+        documentType: null,
+        holderName: null,
+        detectedLanguage: null,
+        languageName: null,
+        issuingCountry: null,
+        complexity: null,
+        wordCount: doc.totalWordCount,
+        billablePages: parseFloat((doc.totalWordCount / errWpp).toFixed(2)),
+        documentCount: 1,
+        subDocuments: null,
+        actionableItems: [],
+        processingStatus: "failed",
+        errorMessage: error.message,
+      };
+    });
   }
 }

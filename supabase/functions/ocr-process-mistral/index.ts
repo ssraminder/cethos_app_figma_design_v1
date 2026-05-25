@@ -23,6 +23,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { countWords } from "../_shared/word-count.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -357,10 +358,7 @@ function stripMarkdown(md: string): string {
     .trim();
 }
 
-function countWords(text: string): number {
-  if (!text) return 0;
-  return text.split(/\s+/).filter((w) => w.length > 0).length;
-}
+// countWords imported from ../_shared/word-count.ts (CJK-aware)
 
 async function updateBatchProgress(supabaseAdmin: any, batchId: string): Promise<void> {
   const { data: files } = await supabaseAdmin

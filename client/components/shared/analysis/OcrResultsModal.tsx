@@ -180,6 +180,7 @@ interface PricingRow {
   pageCount: number;
   documentCount: number;
   subDocuments: SubDocument[] | null;
+  language: string | null;
   entryMethod: "ocr" | "manual" | "ai_failed";
   processingStatus: string;
 
@@ -573,6 +574,20 @@ const actionableIcons: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Pricing helpers
 // ---------------------------------------------------------------------------
+
+const CJK_LANG_CODES = new Set(["zh", "ja", "ko"]);
+
+function isCjkLanguage(langCode: string | null | undefined): boolean {
+  if (!langCode) return false;
+  return CJK_LANG_CODES.has(langCode.toLowerCase().split("-")[0].split("_")[0]);
+}
+
+const WORDS_PER_PAGE_LATIN = 225;
+const CHARS_PER_PAGE_CJK = 500;
+
+function getWordsPerPage(langCode: string | null | undefined): number {
+  return isCjkLanguage(langCode) ? CHARS_PER_PAGE_CJK : WORDS_PER_PAGE_LATIN;
+}
 
 const complexityMultipliers: Record<string, number> = {
   easy: 1.0,
@@ -1383,9 +1398,10 @@ export default function OcrResultsModal({
       if (hasSaved && r.pricingBillablePages != null) {
         billable = r.pricingBillablePages;
       } else {
+        const wpp = isCjkLanguage(r.language) ? CHARS_PER_PAGE_CJK : pricingWordsPerPage;
         billable =
           r.billablePages ||
-          recalcBillablePages(r.wordCount, mult, pricingWordsPerPage);
+          recalcBillablePages(r.wordCount, mult, wpp);
       }
 
       // Certification — use saved if available
@@ -1466,6 +1482,7 @@ export default function OcrResultsModal({
         pageCount: r.pageCount,
         documentCount: docCount,
         subDocuments: r.subDocuments,
+        language: r.language || null,
         entryMethod: r.entryMethod || "ocr",
         processingStatus: r.processingStatus,
         billablePages: billable,
@@ -1558,12 +1575,12 @@ export default function OcrResultsModal({
           const cVal = value as "easy" | "medium" | "hard";
           updated.complexity = cVal;
           updated.complexityMultiplier = complexityMultipliers[cVal] || 1.0;
-          // Recalc billable pages unless manually overridden
           if (!updated.billablePagesOverridden) {
+            const rowWpp = isCjkLanguage(updated.language) ? CHARS_PER_PAGE_CJK : pricingWordsPerPage;
             updated.billablePages = recalcBillablePages(
               updated.wordCount,
               updated.complexityMultiplier,
-              pricingWordsPerPage
+              rowWpp
             );
           }
         } else if (field === "billablePages") {
@@ -1837,6 +1854,7 @@ export default function OcrResultsModal({
         pageCount: 1,
         documentCount: 1,
         subDocuments: null,
+        language: null,
         entryMethod: "manual",
         processingStatus: "manual",
         billablePages: 1.0,
@@ -3092,7 +3110,7 @@ export default function OcrResultsModal({
                     {analysis.billable_pages || "-"}
                   </p>
                   <p className="text-xs text-purple-500 mt-0.5">
-                    {analysis.ocr_word_count} words &divide; 225
+                    {analysis.ocr_word_count} {isCjkLanguage(analysis.detected_language) ? "chars" : "words"} &divide; {isCjkLanguage(analysis.detected_language) ? CHARS_PER_PAGE_CJK : WORDS_PER_PAGE_LATIN}
                   </p>
                 </div>
               </div>
@@ -3261,7 +3279,7 @@ export default function OcrResultsModal({
 
         <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600 space-y-1">
           <p><strong>Base Rate:</strong> ${(pricingBaseRate || 65).toFixed(2)}/page (before language/complexity adjustment)</p>
-          <p><strong>Words/Page:</strong> 225 words = 1 billable page</p>
+          <p><strong>Words/Page:</strong> {WORDS_PER_PAGE_LATIN} words = 1 billable page (CJK: {CHARS_PER_PAGE_CJK} chars/page)</p>
           <p><strong>Complexity Multipliers:</strong> Easy (1.0&times;), Medium (1.15&times;), Hard (1.25&times;)</p>
           {aiAnalysis.some(a => a.pricing_saved_at) && (
             <p className="text-teal-600">
@@ -3356,9 +3374,9 @@ export default function OcrResultsModal({
               </span>
             </div>
             <div className="text-xl font-bold text-amber-900">
-              {(totalWords / 225).toFixed(1)}
+              {(totalWords / WORDS_PER_PAGE_LATIN).toFixed(1)}
             </div>
-            <div className="text-sm text-amber-700">at 225 words/page</div>
+            <div className="text-sm text-amber-700">at {WORDS_PER_PAGE_LATIN} words/page</div>
           </div>
 
           <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
@@ -3469,7 +3487,7 @@ export default function OcrResultsModal({
                       </td>
                       <td className="px-3 py-2.5 text-right text-gray-700">
                         {row.status === "completed" || row.status === "partial"
-                          ? (row.totalWords / 225).toFixed(1)
+                          ? (row.totalWords / WORDS_PER_PAGE_LATIN).toFixed(1)
                           : "-"}
                       </td>
                       <td className="px-3 py-2.5 text-center">
