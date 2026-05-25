@@ -9,6 +9,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import {
   notifyVendorPayableInvoiced,
   notifyVendorPayablePaid,
+  notifyVendorPayableAdjusted,
 } from "../_shared/notify-step-lifecycle.ts";
 
 const CORS_HEADERS = {
@@ -217,10 +218,12 @@ serve(async (req: Request) => {
           return json({ success: false, error: "Provide new_rate or new_subtotal" }, 400);
         }
 
-        // Fetch current payable
+        // Fetch current payable — pull currency too so the email can format
+        // amounts in the vendor's currency. original_subtotal/original_total
+        // are read so we don't clobber a prior adjustment baseline.
         const { data: payable, error: fetchErr } = await supabase
           .from("vendor_payables")
-          .select("id, rate, rate_unit, units, subtotal, total, status")
+          .select("id, rate, rate_unit, units, subtotal, total, status, currency, original_subtotal, original_total")
           .eq("id", payable_id)
           .single();
 
@@ -235,6 +238,11 @@ serve(async (req: Request) => {
           }, 400);
         }
 
+        // Snapshot the pre-adjustment values so the vendor email can show
+        // the diff (old → new) rather than just the new amount.
+        const oldRate = payable.rate == null ? null : Number(payable.rate);
+        const oldSubtotal = payable.subtotal == null ? null : Number(payable.subtotal);
+
         const now = new Date().toISOString();
         const updateData: Record<string, unknown> = {
           original_subtotal: payable.original_subtotal ?? payable.subtotal,
@@ -247,9 +255,9 @@ serve(async (req: Request) => {
 
         if (new_rate != null) {
           updateData.rate = new_rate;
-          const newSubtotal = new_rate * payable.units;
-          updateData.subtotal = newSubtotal;
-          updateData.total = newSubtotal;
+          const newSubtotalCalc = new_rate * payable.units;
+          updateData.subtotal = newSubtotalCalc;
+          updateData.total = newSubtotalCalc;
         }
 
         if (new_subtotal != null) {
@@ -270,6 +278,28 @@ serve(async (req: Request) => {
         }
 
         console.log(`Payable ${payable_id} adjusted: reason=${adjustment_reason}`);
+
+        // Vendor email — fire-and-forget. The adjustment write is already
+        // committed; a Brevo / lookup failure must never surface to admin UI.
+        try {
+          const ctx = await loadPayableLifecycleContext(supabase, payable_id);
+          if (ctx) {
+            const finalRate = updateData.rate as number | undefined;
+            const finalSubtotal = updateData.subtotal as number | undefined;
+            await notifyVendorPayableAdjusted({
+              ...ctx,
+              old_rate: oldRate,
+              new_rate: finalRate == null ? null : Number(finalRate),
+              old_subtotal: oldSubtotal,
+              new_subtotal: finalSubtotal == null ? null : Number(finalSubtotal),
+              currency: payable.currency || "CAD",
+              reason: adjustment_reason ?? null,
+            });
+          }
+        } catch (e: any) {
+          console.error("vendor_payable_adjusted email fan-out failed:", e?.message || e);
+        }
+
         return json({ success: true });
       }
 
