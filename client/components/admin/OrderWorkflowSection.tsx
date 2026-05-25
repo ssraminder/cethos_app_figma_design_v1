@@ -2498,6 +2498,11 @@ function WorkflowPipeline({
   const [emailDeliveryFiles, setEmailDeliveryFiles] = useState<File[]>([]);
   const [emailDeliveryNotes, setEmailDeliveryNotes] = useState("");
   const [emailDeliveryLoading, setEmailDeliveryLoading] = useState(false);
+  // "Send to Client" — ships the Final Deliverable step's latest version
+  // to the customer (signed download links + completes the order).
+  const [sendFinalStep, setSendFinalStep] = useState<WorkflowStep | null>(null);
+  const [sendFinalMessage, setSendFinalMessage] = useState("");
+  const [sendFinalLoading, setSendFinalLoading] = useState(false);
 
   // Tracks which step is being promoted to a customer draft file so the
   // button can spin while the watermarked PDF is generated server-side
@@ -2590,6 +2595,38 @@ function WorkflowPipeline({
       toast.error("Failed to upload email delivery");
     } finally {
       setEmailDeliveryLoading(false);
+    }
+  };
+
+  // Ships the Final Deliverable step's latest version to the customer:
+  // signed download links via email, approves the step, completes the
+  // workflow and the order. The edge function is idempotent — a re-click
+  // after success returns success without re-sending.
+  const handleSendFinalDeliverable = async () => {
+    if (!sendFinalStep) return;
+    setSendFinalLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-final-deliverable", {
+        body: {
+          step_id: sendFinalStep.id,
+          staff_id: currentStaff?.staffId || null,
+          message: sendFinalMessage.trim() || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.already_sent) {
+        toast.info("Final deliverable was already sent to the client.");
+      } else {
+        toast.success(`Sent v${data.version} to client (${data.files_sent} file${data.files_sent !== 1 ? "s" : ""}). Order marked complete.`);
+      }
+      setSendFinalStep(null);
+      setSendFinalMessage("");
+      if (onRefresh) await onRefresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to send to client");
+    } finally {
+      setSendFinalLoading(false);
     }
   };
 
@@ -3958,10 +3995,12 @@ function WorkflowPipeline({
                       the step requires files AND is in a pre-approval status.
                       Opens a dedicated modal so admin can upload on behalf
                       of a vendor / reviewer without toggling the inline
-                      internal_work panel. */}
+                      internal_work panel. Final Deliverable also accepts
+                      uploads in 'pending' status (the step starts there). */}
                   {step.requires_file_upload &&
-                    ["accepted", "in_progress", "revision_requested"].includes(
-                      step.status,
+                    (
+                      ["accepted", "in_progress", "revision_requested"].includes(step.status) ||
+                      (step.name === "Final Deliverable" && !["approved", "skipped", "cancelled"].includes(step.status))
                     ) && (
                       <button
                         className="text-xs px-3 py-1 border border-purple-400 text-purple-700 rounded hover:bg-purple-50 flex items-center gap-1"
@@ -3971,11 +4010,40 @@ function WorkflowPipeline({
                           setUploadModalFiles([]);
                           setUploadModalNotes("");
                         }}
-                        title="Upload files on behalf of the assignee"
+                        title={step.name === "Final Deliverable" ? "Upload a new version of the final deliverable" : "Upload files on behalf of the assignee"}
                       >
-                        <Upload className="w-3 h-3" /> Upload Files
+                        <Upload className="w-3 h-3" /> {step.name === "Final Deliverable" ? "Upload Final Version" : "Upload Files"}
                       </button>
                     )}
+
+                  {/* Send to Client (Final Deliverable only). Enabled once
+                      at least one version has been uploaded. Hidden once
+                      the step is approved (already shipped). */}
+                  {step.name === "Final Deliverable" && step.status !== "approved" && (
+                    <button
+                      className="text-xs px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-1"
+                      disabled={!(step.delivery_count && step.delivery_count > 0) && !(step.deliveries && step.deliveries.length > 0)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSendFinalStep(step);
+                        setSendFinalMessage("");
+                      }}
+                      title={
+                        !(step.delivery_count && step.delivery_count > 0) && !(step.deliveries && step.deliveries.length > 0)
+                          ? "Upload at least one version before sending to the client"
+                          : "Email the final files to the customer + complete the order"
+                      }
+                    >
+                      <Mail className="w-3 h-3" /> Send to Client
+                    </button>
+                  )}
+
+                  {/* Sent indicator (Final Deliverable, already shipped) */}
+                  {step.name === "Final Deliverable" && step.status === "approved" && step.final_marked_at && (
+                    <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 inline-flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" /> Sent to client {new Date(step.final_marked_at).toLocaleDateString()}
+                    </span>
+                  )}
 
                   {/* Delivered by Email: available on any step that is
                       in an active or delivered state. Opens a file picker
@@ -4827,6 +4895,87 @@ function WorkflowPipeline({
           </div>
         </div>
       )}
+
+      {/* Send Final Deliverable to Client modal */}
+      {sendFinalStep && (() => {
+        const latest = sendFinalStep.deliveries && sendFinalStep.deliveries.length
+          ? [...sendFinalStep.deliveries].sort((a, b) => b.version - a.version)[0]
+          : sendFinalStep.latest_delivery;
+        const filePaths = latest?.file_paths ?? [];
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={() => !sendFinalLoading && setSendFinalStep(null)}
+          >
+            <div
+              className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b">
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-emerald-600" /> Send Final Deliverable to Client
+                </h3>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-sm text-gray-700">
+                  Email the customer the final files for this order. This will mark the step approved,
+                  complete the workflow, and mark the order complete.
+                </p>
+                {latest && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded p-3 text-xs text-emerald-900">
+                    <div className="font-medium mb-1">
+                      Sending v{latest.version} — uploaded by {latest.delivered_by_name || "staff"} on{" "}
+                      {new Date(latest.delivered_at).toLocaleString()}
+                    </div>
+                    {filePaths.length > 0 ? (
+                      <ul className="space-y-0.5 mt-1">
+                        {filePaths.map((p: string, i: number) => (
+                          <li key={i} className="flex items-center gap-1">
+                            <FileText className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{p.split("/").pop()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="text-amber-700">No files attached to this version.</div>
+                    )}
+                  </div>
+                )}
+                <textarea
+                  className="w-full text-sm border border-gray-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  rows={3}
+                  placeholder="Optional message to include in the email…"
+                  value={sendFinalMessage}
+                  onChange={(e) => setSendFinalMessage(e.target.value)}
+                  disabled={sendFinalLoading}
+                />
+                <p className="text-[11px] text-gray-500">
+                  Download links in the email are valid for 7 days. Files are also synced to the
+                  Dropbox <em>Final Deliverable</em> folder.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 p-4 border-t">
+                <button
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                  onClick={() => setSendFinalStep(null)}
+                  disabled={sendFinalLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-4 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded disabled:opacity-50 flex items-center gap-2"
+                  disabled={sendFinalLoading || filePaths.length === 0}
+                  onClick={handleSendFinalDeliverable}
+                >
+                  {sendFinalLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <Mail className="w-4 h-4" />
+                  Send to Client
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Approve Confirmation Modal */}
       {approveModalStep && (
