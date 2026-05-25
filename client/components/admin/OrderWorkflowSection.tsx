@@ -2355,6 +2355,17 @@ interface WorkflowPipelineProps {
   // on the last workflow step once it's in_progress, so the PM doesn't have
   // to scroll up to the Documents section to upload the signed certified PDF.
   onUploadFinalDeliverable?: () => void;
+  // Fired after promote-step-delivery-to-draft succeeds. Parent uses
+  // this to open the existing Send-to-Customer modal pre-selected with
+  // the newly promoted draft file id, so admin doesn't have to scroll
+  // up to Documents & Files, find the file, tick the checkbox, and
+  // click Send Selected to Customer.
+  onDraftPromoted?: (params: {
+    stepId: string;
+    quoteFileId: string;
+    reviewVersion: number;
+    sourceFilename: string;
+  }) => Promise<void> | void;
 }
 
 function WorkflowPipeline({
@@ -2388,6 +2399,7 @@ function WorkflowPipeline({
   minMarginPercent = 30,
   qmByStep = {},
   onUploadFinalDeliverable,
+  onDraftPromoted,
 }: WorkflowPipelineProps) {
   const [editDeadlineStepId, setEditDeadlineStepId] = useState<string | null>(null);
 
@@ -2593,9 +2605,44 @@ function WorkflowPipeline({
       if (error || !data || (data as any).error) {
         throw new Error((data as any)?.error || error?.message || "Promote failed");
       }
-      const r = data as { review_version: number; was_converted_from_word: boolean };
+      const r = data as {
+        review_version: number;
+        was_converted_from_word: boolean;
+        quote_file_id?: string;
+        source_filename?: string;
+      };
+      // When the parent wired onDraftPromoted, surface a one-click
+      // "Send to customer" action right on the toast — clicking it opens
+      // the existing send modal pre-selected with this new draft, so the
+      // admin doesn't have to scroll up to Documents & Files and re-tick
+      // the checkbox. The toast still appears (and the file still ends
+      // up in Documents & Files) for the manual path.
+      const hasSendAction = !!onDraftPromoted && !!r.quote_file_id;
       toast.success(
-        `Draft v${r.review_version} added to Documents & Files${r.was_converted_from_word ? " (Word → PDF + watermark)" : " (watermark applied)"}. Select it and click "Send Selected to Customer".`,
+        hasSendAction
+          ? `Draft v${r.review_version} added — ready to send`
+          : `Draft v${r.review_version} added to Documents & Files${
+              r.was_converted_from_word ? " (Word → PDF + watermark)" : " (watermark applied)"
+            }. Select it and click "Send Selected to Customer".`,
+        hasSendAction
+          ? {
+              description: r.was_converted_from_word
+                ? "Word → PDF + DRAFT watermark applied."
+                : "DRAFT watermark applied.",
+              action: {
+                label: "Send to customer",
+                onClick: () => {
+                  void onDraftPromoted!({
+                    stepId: step.id,
+                    quoteFileId: r.quote_file_id!,
+                    reviewVersion: r.review_version,
+                    sourceFilename: r.source_filename ?? "",
+                  });
+                },
+              },
+              duration: 10000,
+            }
+          : undefined,
       );
       if (onRefresh) await onRefresh();
     } catch (err: any) {
@@ -5175,7 +5222,7 @@ function UnassignVendorModal({ isOpen, onClose, step, onConfirm }: UnassignVendo
 
 // ── Main Exported Section Component ──
 
-export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refreshKey, onUploadFinalDeliverable }: { orderId: string; onWorkflowLoaded?: (data: any) => void; refreshKey?: number; onUploadFinalDeliverable?: () => void }) {
+export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refreshKey, onUploadFinalDeliverable, onDraftPromoted }: { orderId: string; onWorkflowLoaded?: (data: any) => void; refreshKey?: number; onUploadFinalDeliverable?: () => void; onDraftPromoted?: (params: { stepId: string; quoteFileId: string; reviewVersion: number; sourceFilename: string }) => Promise<void> | void }) {
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -5618,6 +5665,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
             onAdjustPayable={handleAdjustPayable}
             onRefresh={fetchWorkflow}
             onUploadFinalDeliverable={onUploadFinalDeliverable}
+            onDraftPromoted={onDraftPromoted}
           />
           {data.steps.some(s => s.has_pending_counter) && (
             <div className="text-xs text-orange-600 mt-1">

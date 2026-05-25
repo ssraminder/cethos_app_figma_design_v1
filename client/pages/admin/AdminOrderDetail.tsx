@@ -3719,6 +3719,20 @@ export default function AdminOrderDetail() {
                   setUploadType("final");
                   setShowUploadModal(true);
                 }}
+                onDraftPromoted={async ({ quoteFileId }) => {
+                  // Refresh the file list so orderFiles has the new
+                  // draft row (the send modal renders the filename by
+                  // looking it up in orderFiles).
+                  await fetchOrderFiles();
+                  // Pre-select the new draft + open the existing send
+                  // modal. The user can review the auto-filled file
+                  // list, type an optional note, and click Send Email —
+                  // no scrolling, no checkbox hunt.
+                  setSelectedDraftFileIds([quoteFileId]);
+                  setSendModalType("draft");
+                  setSendModalNotes("");
+                  setSendModalOpen(true);
+                }}
               />
             )}
           </div>
