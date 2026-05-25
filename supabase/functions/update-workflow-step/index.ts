@@ -301,7 +301,18 @@ serve(async (req: Request) => {
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
         const gate = await gateAssignment(supabase, "direct_assign", vendor_id, step, workflow);
         if (gate?.should_block) return json({ success: false, error: `QMS gating: ${gate.reason}`, qms_gating: gate }, 403);
-        await supabase.from("order_workflow_steps").update({ vendor_id, status: "assigned", pricing_mode: pricing_mode || "per_unit", vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null, vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD", deadline: deadline || null, instructions: instructions || null, assigned_at: new Date().toISOString(), assigned_by: body.staff_id || null }).eq("id", step_id);
+        // IMPORTANT: surface UPDATE errors. Without this, a CHECK constraint
+        // violation (e.g. an unexpected status value) returns success while
+        // the row stays untouched — and we still send the vendor email for
+        // an assignment that never persisted. The missing 'assigned' value
+        // in order_workflow_steps_status_check (fixed in migration
+        // 20260525_order_workflow_steps_allow_assigned_status.sql) is the
+        // exact failure mode this guard was added to catch.
+        const { error: updErr } = await supabase.from("order_workflow_steps").update({ vendor_id, status: "assigned", pricing_mode: pricing_mode || "per_unit", vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null, vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD", deadline: deadline || null, instructions: instructions || null, assigned_at: new Date().toISOString(), assigned_by: body.staff_id || null }).eq("id", step_id);
+        if (updErr) {
+          console.error("direct_assign step update failed:", updErr);
+          return json({ success: false, error: `Failed to assign step: ${updErr.message}` }, 500);
+        }
         if (pricing_mode !== "target" && vendor_rate && vendor_total) {
           const units = vendor_rate > 0 ? vendor_total / vendor_rate : 1;
           // Cancel any existing pending payable for this step to prevent duplicates
