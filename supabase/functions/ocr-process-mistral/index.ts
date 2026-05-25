@@ -23,7 +23,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { countWords } from "../_shared/word-count.ts";
+import { countWords, detectLanguageFromText } from "../_shared/word-count.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -321,7 +321,7 @@ async function processWithMistral(args: {
       raw_text: plain.substring(0, 50000),
       markdown_text: markdown.substring(0, 200000),
       confidence_score: null,
-      detected_language: null,
+      detected_language: detectLanguageFromText(plain),
       language_confidence: null,
       ocr_provider: "mistral",
     };

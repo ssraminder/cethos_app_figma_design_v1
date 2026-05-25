@@ -53,11 +53,24 @@ export function getWordsPerPage(langCode: string | null | undefined): number {
 }
 
 /**
+ * Detect CJK from raw text content when language metadata is unavailable.
+ * Returns "zh" if ≥ 30% of non-whitespace characters are CJK ideographs/kana/Hangul.
+ */
+export function detectLanguageFromText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const stripped = text.replace(/\s+/g, "");
+  if (stripped.length < 5) return null;
+  const cjkMatches = stripped.match(CJK_RANGE);
+  const cjkCount = cjkMatches ? cjkMatches.length : 0;
+  return cjkCount / stripped.length >= 0.3 ? "zh" : null;
+}
+
+/**
  * Determine the dominant language from an array of per-page language detections.
- * Returns the language code that covers the most pages, or null if none detected.
+ * Falls back to text-based CJK detection when no language metadata is available.
  */
 export function getDominantLanguage(
-  pages: Array<{ detectedLanguage: string | null }>
+  pages: Array<{ detectedLanguage: string | null; rawText?: string }>
 ): string | null {
   const counts = new Map<string, number>();
   for (const p of pages) {
@@ -66,7 +79,11 @@ export function getDominantLanguage(
       counts.set(lang, (counts.get(lang) || 0) + 1);
     }
   }
-  if (counts.size === 0) return null;
+  if (counts.size === 0) {
+    // No language metadata — detect from text content
+    const allText = pages.map((p) => p.rawText || "").join(" ");
+    return detectLanguageFromText(allText);
+  }
   let best: string | null = null;
   let bestCount = 0;
   for (const [lang, count] of counts) {
