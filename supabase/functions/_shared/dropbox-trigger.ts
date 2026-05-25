@@ -27,6 +27,7 @@ interface SyncOrderFileParams {
   quote_file_id?: string;
   step_delivery_id?: string;
   step_id?: string; // routes file to the step's Dropbox folder
+  delivery_version?: number; // nests files under v{N} subfolder
 }
 
 /**

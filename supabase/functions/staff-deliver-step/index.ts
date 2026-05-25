@@ -149,6 +149,7 @@ serve(async (req: Request) => {
         sync_trigger: "staff_delivery",
         filename: path.split("/").pop() ?? undefined,
         step_id: stepId,
+        delivery_version: deliveryVersion,
       });
 
       // When delivered by email, also sync a copy to the Final Deliverable folder

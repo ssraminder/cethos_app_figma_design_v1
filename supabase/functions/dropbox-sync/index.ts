@@ -534,9 +534,10 @@ async function handleSyncOrderFile(
     quote_file_id?: string;
     step_delivery_id?: string;
     step_id?: string;
+    delivery_version?: number;
   },
 ) {
-  const { order_id, source_bucket, source_path, sync_trigger, quote_id, quote_file_id, step_delivery_id, step_id } = body;
+  const { order_id, source_bucket, source_path, sync_trigger, quote_id, quote_file_id, step_delivery_id, step_id, delivery_version } = body;
 
   if (!order_id || !source_bucket || !source_path || !sync_trigger) {
     return jsonResponse({ error: "order_id, source_bucket, source_path, sync_trigger are required" }, 400);
@@ -556,6 +557,12 @@ async function handleSyncOrderFile(
 
   if (!subfolder) {
     return jsonResponse({ error: `Cannot resolve folder for sync_trigger: ${sync_trigger}` }, 400);
+  }
+
+  // When a delivery_version is provided, nest files under a version subfolder
+  // so each delivery round gets its own folder (e.g. Step 01 — Translation/v1/).
+  if (delivery_version) {
+    subfolder = `${subfolder}/v${delivery_version}`;
   }
 
   const resolved = await resolveOrderDropboxPath(supabase, order_id);
