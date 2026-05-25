@@ -14,6 +14,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { countWords } from "../_shared/word-count.ts";
 
 // Inline base64 encoding — avoids external Deno std import that can fail on edge functions
 function base64Encode(bytes: Uint8Array): string {
@@ -326,10 +327,7 @@ function extractPageText(fullText: string, page: any): string {
   return pageText;
 }
 
-function countWords(text: string): number {
-  if (!text) return 0;
-  return text.split(/\s+/).filter(word => word.length > 0).length;
-}
+// countWords imported from ../_shared/word-count.ts (CJK-aware)
 
 function extractPageLanguage(page: any): { language: string | null; confidence: number | null } {
   try {
