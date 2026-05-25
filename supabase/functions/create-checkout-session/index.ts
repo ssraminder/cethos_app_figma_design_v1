@@ -155,7 +155,7 @@ serve(async (req) => {
       })
       .eq("id", quoteId);
 
-    return jsonResp({ checkoutUrl: session.url });
+    return jsonResp({ success: true, checkoutUrl: session.url });
   } catch (err: any) {
     console.error("create-checkout-session error:", err);
     return jsonResp({ error: err.message || "Internal error" }, 500);
