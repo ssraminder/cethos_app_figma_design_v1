@@ -247,6 +247,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: FileSpreadsheet,
     section: "Vendor Finance",
   },
+  {
+    label: "Portal Invoices",
+    path: "/admin/invoices/portal",
+    icon: FileSpreadsheet,
+    section: "Vendor Finance",
+    isChild: true,
+  },
   // ── Finance tools ────────────────────────────────────────────────
   {
     label: "Quick Payment",

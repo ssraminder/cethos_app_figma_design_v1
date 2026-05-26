@@ -27,7 +27,7 @@ const CURRENCY_MAP: Record<number, string> = {
 
 // ── Types ──────────────────────────────────────────────────────────
 interface VendorInvoice {
-  id: number;
+  uid: string;
   final_number: string | null;
   internal_number: string | null;
   draft_number: string | null;
@@ -52,6 +52,10 @@ interface VendorInvoice {
   payments: any[] | null;
   branch: string | null;
   synced_at: string | null;
+  source: string;
+  cvp_status: string | null;
+  cvp_id: string | null;
+  currency_code: string | null;
 }
 
 // ── Column definitions ─────────────────────────────────────────────
@@ -176,7 +180,7 @@ export default function VendorInvoices() {
   const [visibleColumns, setVisibleColumns] = useState(loadVisibleColumns);
 
   // Expanded row
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Summary
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -195,7 +199,7 @@ export default function VendorInvoices() {
   // Load currency options once
   useEffect(() => {
     supabase
-      .from("xtrf_vendor_invoice_cache")
+      .from("vendor_invoices_all")
       .select("currency_id")
       .not("currency_id", "is", null)
       .then(({ data }) => {
@@ -248,7 +252,7 @@ export default function VendorInvoices() {
     setLoading(true);
     try {
       let query = supabase
-        .from("xtrf_vendor_invoice_cache")
+        .from("vendor_invoices_all")
         .select("*", { count: "exact" })
         .order("final_date", { ascending: false });
 
@@ -291,7 +295,7 @@ export default function VendorInvoices() {
     setSummaryLoading(true);
     try {
       let query = supabase
-        .from("xtrf_vendor_invoice_cache")
+        .from("vendor_invoices_all")
         .select("gross_cad, netto_cad, tax_cad, payment_status");
       query = applyFilters(query);
 
@@ -366,7 +370,7 @@ export default function VendorInvoices() {
     toast.info("Preparing CSV export...");
     try {
       let query = supabase
-        .from("xtrf_vendor_invoice_cache")
+        .from("vendor_invoices_all")
         .select("*")
         .order("final_date", { ascending: false });
       query = applyFilters(query);
@@ -453,12 +457,16 @@ export default function VendorInvoices() {
         return (
           <span className="tabular-nums">{fmtCurrency(val as number)}</span>
         );
-      case "currency_id":
-        return <span>{val != null ? (CURRENCY_MAP[val as number] ?? `ID:${val}`) : "\u2014"}</span>;
+      case "currency_id": {
+        const code = invoice.currency_code || (val != null ? CURRENCY_MAP[val as number] : null);
+        return <span>{code ?? "\u2014"}</span>;
+      }
       case "payment_status":
         return <PaymentBadge status={val} />;
       case "status":
-        return <StatusBadge status={val} />;
+        return invoice.source === "cvp"
+          ? <CvpStatusBadge status={invoice.cvp_status} />
+          : <StatusBadge status={val} />;
       case "branch":
         return <span>{branchLabel(val)}</span>;
       case "final_date":
@@ -847,10 +855,10 @@ export default function VendorInvoices() {
                 </tr>
               ) : (
                 invoices.map((inv) => (
-                  <Fragment key={inv.id}>
+                  <Fragment key={inv.uid}>
                     <tr
                       onClick={() =>
-                        setExpandedId(expandedId === inv.id ? null : inv.id)
+                        setExpandedId(expandedId === inv.uid ? null : inv.uid)
                       }
                       className="hover:bg-gray-50 cursor-pointer transition-colors"
                     >
@@ -875,7 +883,7 @@ export default function VendorInvoices() {
                         ),
                       )}
                     </tr>
-                    {expandedId === inv.id && (
+                    {expandedId === inv.uid && (
                       <tr>
                         <td
                           colSpan={
@@ -982,6 +990,27 @@ function StatusBadge({ status }: { status: string | null }) {
   const config: Record<string, { style: string; label: string }> = {
     CONFIRMED: { style: "bg-blue-100 text-blue-700", label: "Confirmed" },
     NOT_READY: { style: "bg-gray-100 text-gray-600", label: "Draft" },
+  };
+  const c = config[status || ""] || {
+    style: "bg-gray-100 text-gray-600",
+    label: status || "\u2014",
+  };
+  return (
+    <span
+      className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${c.style}`}
+    >
+      {c.label}
+    </span>
+  );
+}
+
+function CvpStatusBadge({ status }: { status: string | null }) {
+  const config: Record<string, { style: string; label: string }> = {
+    draft:     { style: "bg-gray-100 text-gray-600",   label: "Draft" },
+    submitted: { style: "bg-blue-100 text-blue-700",   label: "Submitted" },
+    approved:  { style: "bg-indigo-100 text-indigo-700", label: "Approved" },
+    paid:      { style: "bg-green-100 text-green-700", label: "Paid" },
+    cancelled: { style: "bg-red-100 text-red-700",     label: "Cancelled" },
   };
   const c = config[status || ""] || {
     style: "bg-gray-100 text-gray-600",

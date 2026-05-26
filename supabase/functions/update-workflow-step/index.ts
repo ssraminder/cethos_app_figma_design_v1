@@ -582,6 +582,54 @@ serve(async (req: Request) => {
             console.error("workflow_completed email fan-out failed:", e?.message || e);
           }
         }
+        // Auto-generate a draft invoice in cvp_payments so the vendor
+        // can review, attach their own invoice ref, and submit for payment.
+        try {
+          if (step.vendor_id && step.vendor_total && step.vendor_total > 0) {
+            const { data: existingInv } = await supabase
+              .from("cvp_payments")
+              .select("id")
+              .eq("step_id", step_id)
+              .in("status", ["draft", "submitted", "approved", "pending"])
+              .maybeSingle();
+            if (!existingInv) {
+              const invoiceNum = "PAY-" + crypto.randomUUID().slice(0, 8).toUpperCase();
+              let orderRef: string | null = null;
+              if (workflow?.order_id) {
+                const { data: ord } = await supabase
+                  .from("orders")
+                  .select("order_number")
+                  .eq("id", workflow.order_id)
+                  .maybeSingle();
+                orderRef = ord?.order_number ?? null;
+              }
+              const desc = [
+                step.name,
+                step.source_language && step.target_language
+                  ? `${step.source_language} → ${step.target_language}`
+                  : null,
+              ].filter(Boolean).join(" — ");
+              await supabase.from("cvp_payments").insert({
+                vendor_id: step.vendor_id,
+                step_id: step_id,
+                invoice_number: invoiceNum,
+                amount: step.vendor_total,
+                currency: step.vendor_currency || "CAD",
+                tax_amount: 0,
+                total_amount: step.vendor_total,
+                status: "draft",
+                invoice_date: new Date().toISOString().split("T")[0],
+                order_reference: orderRef
+                  ? `${orderRef} — ${desc}`
+                  : desc || null,
+                description: desc || null,
+                notes: `Rate: ${step.vendor_rate} per ${step.vendor_rate_unit || "word"}`,
+              });
+            }
+          }
+        } catch (invErr: any) {
+          console.error("Draft invoice creation failed (non-blocking):", invErr?.message || invErr);
+        }
         return json({ success: true });
       }
       case "request_revision": {

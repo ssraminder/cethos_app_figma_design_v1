@@ -114,6 +114,7 @@ import AdminKioskDevices from "./pages/admin/AdminKioskDevices";
 import KioskPairing from "./pages/kiosk/KioskPairing";
 import KioskShell from "./pages/kiosk/KioskShell";
 import VendorInvoices from "./pages/admin/invoices/VendorInvoices";
+import PortalInvoices from "./pages/admin/invoices/PortalInvoices";
 import CustomerInvoices from "./pages/admin/invoices/CustomerInvoices";
 import CreateInvoice from "./pages/admin/invoices/CreateInvoice";
 import AdminInvoiceDetail from "./pages/admin/AdminInvoiceDetail";
@@ -450,6 +451,7 @@ const App = () => (
                     <Route path="reports/aging" element={<ARAgingReport />} />
                     <Route path="reports/tax" element={<AdminTaxReports />} />
                     <Route path="invoices/vendor" element={<VendorInvoices />} />
+                    <Route path="invoices/portal" element={<PortalInvoices />} />
                     <Route path="invoices/customer" element={<CustomerInvoices />} />
                     <Route path="invoices/create" element={<CreateInvoice />} />
                     <Route path="invoices/customer/:invoiceId" element={<AdminInvoiceDetail />} />
