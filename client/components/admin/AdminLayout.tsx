@@ -181,6 +181,27 @@ const NAV_ITEMS: NavItem[] = [
     icon: Stamp,
     section: "Translation Review",
   },
+  // ── Transcription ─────────────────────────────────────────────
+  {
+    label: "Transcription Jobs",
+    path: "/admin/transcription",
+    icon: FileSearch,
+    section: "Transcription",
+  },
+  {
+    label: "Human Review",
+    path: "/admin/transcription/vendors",
+    icon: Users,
+    section: "Transcription",
+    isChild: true,
+  },
+  {
+    label: "Transcription Settings",
+    path: "/admin/settings/transcription",
+    icon: Settings,
+    section: "Transcription",
+    isChild: true,
+  },
   {
     label: "Trainings",
     path: "/admin/trainings",

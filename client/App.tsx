@@ -155,6 +155,10 @@ import BranchesSettings from "./pages/admin/settings/BranchesSettings";
 import DropboxSettings from "./pages/admin/settings/DropboxSettings";
 import CallRecordingSettings from "./pages/admin/settings/CallRecordingSettings";
 import CallIntelligenceReports from "./pages/admin/CallIntelligenceReports";
+import TranscriptionDashboard from "./pages/admin/transcription/TranscriptionDashboard";
+import TranscriptionJobDetail from "./pages/admin/transcription/TranscriptionJobDetail";
+import TranscriptionVendors from "./pages/admin/transcription/TranscriptionVendors";
+import TranscriptionSettings from "./pages/admin/settings/TranscriptionSettings";
 import GoogleTagManager from "./components/shared/GoogleTagManager";
 import QuoteTrackingLayout from "./components/layouts/QuoteTrackingLayout";
 
@@ -455,6 +459,12 @@ const App = () => (
                     <Route path="invoices/customer" element={<CustomerInvoices />} />
                     <Route path="invoices/create" element={<CreateInvoice />} />
                     <Route path="invoices/customer/:invoiceId" element={<AdminInvoiceDetail />} />
+
+                    {/* Transcription */}
+                    <Route path="transcription" element={<TranscriptionDashboard />} />
+                    <Route path="transcription/:id" element={<TranscriptionJobDetail />} />
+                    <Route path="transcription/vendors" element={<TranscriptionVendors />} />
+                    <Route path="settings/transcription" element={<TranscriptionSettings />} />
 
                     {/* Admin Settings screens */}
                     <Route
