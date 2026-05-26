@@ -79,8 +79,27 @@ function needsCompression(f: File): boolean {
   return isVideoFile(f) || f.size > COMPRESS_THRESHOLD_BYTES;
 }
 
-async function extractCompressedAudio(f: File): Promise<{ mp3: File; duration: number }> {
-  const { Mp3Encoder } = await import("lamejs");
+function encodePcmToMp3(pcm: Float32Array, sr: number, Mp3Encoder: any): Uint8Array[] {
+  const samples = new Int16Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]));
+    samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  const encoder = new Mp3Encoder(1, sr, 64);
+  const chunks: Uint8Array[] = [];
+  const blockSize = 1152;
+  for (let i = 0; i < samples.length; i += blockSize) {
+    const block = samples.subarray(i, i + blockSize);
+    const mp3chunk = encoder.encodeBuffer(block);
+    if (mp3chunk.length > 0) chunks.push(new Uint8Array(mp3chunk.buffer, mp3chunk.byteOffset, mp3chunk.byteLength));
+  }
+  const last = encoder.flush();
+  if (last.length > 0) chunks.push(new Uint8Array(last.buffer, last.byteOffset, last.byteLength));
+  return chunks;
+}
+
+// Fast path: decode entire file at once (audio files, small video files)
+async function compressViaDecode(f: File, Mp3Encoder: any): Promise<{ mp3: File; duration: number }> {
   const buf = await f.arrayBuffer();
   const ctx = new AudioContext();
   const decoded = await ctx.decodeAudioData(buf);
@@ -94,30 +113,93 @@ async function extractCompressedAudio(f: File): Promise<{ mp3: File; duration: n
   const rendered = await offline.startRendering();
   ctx.close();
 
-  const pcm = rendered.getChannelData(0);
-  const samples = new Int16Array(pcm.length);
-  for (let i = 0; i < pcm.length; i++) {
-    const s = Math.max(-1, Math.min(1, pcm[i]));
-    samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-  }
-
-  const encoder = new Mp3Encoder(1, sr, 64);
-  const chunks: Uint8Array[] = [];
-  const blockSize = 1152;
-  for (let i = 0; i < samples.length; i += blockSize) {
-    const block = samples.subarray(i, i + blockSize);
-    const mp3chunk = encoder.encodeBuffer(block);
-    if (mp3chunk.length > 0) chunks.push(new Uint8Array(mp3chunk.buffer, mp3chunk.byteOffset, mp3chunk.byteLength));
-  }
-  const last = encoder.flush();
-  if (last.length > 0) chunks.push(new Uint8Array(last.buffer, last.byteOffset, last.byteLength));
-
+  const chunks = encodePcmToMp3(rendered.getChannelData(0), sr, Mp3Encoder);
   const blob = new Blob(chunks as unknown as BlobPart[], { type: "audio/mpeg" });
   const baseName = f.name.replace(/\.[^.]+$/, "");
-  return {
-    mp3: new File([blob], `${baseName}.mp3`, { type: "audio/mpeg" }),
-    duration: Math.ceil(duration),
-  };
+  return { mp3: new File([blob], `${baseName}.mp3`, { type: "audio/mpeg" }), duration: Math.ceil(duration) };
+}
+
+// Slow path: real-time playback via <video> element (large video files)
+async function extractFromVideo(
+  f: File,
+  Mp3Encoder: any,
+  onProgress?: (msg: string) => void,
+): Promise<{ mp3: File; duration: number }> {
+  const url = URL.createObjectURL(f);
+  try {
+    const video = document.createElement("video");
+    video.preload = "auto";
+    video.src = url;
+
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("Browser cannot decode this video format"));
+      setTimeout(() => reject(new Error("Video load timeout")), 30000);
+    });
+
+    const duration = video.duration;
+    const sr = 16000;
+    const ctx = new AudioContext({ sampleRate: sr });
+    await ctx.resume();
+
+    const source = ctx.createMediaElementSource(video);
+    const processor = ctx.createScriptProcessor(4096, 1, 1);
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+
+    source.connect(processor);
+    processor.connect(gain);
+    gain.connect(ctx.destination);
+
+    const encoder = new Mp3Encoder(1, sr, 64);
+    const chunks: Uint8Array[] = [];
+
+    processor.onaudioprocess = (e: AudioProcessingEvent) => {
+      const input = e.inputBuffer.getChannelData(0);
+      const samples = new Int16Array(input.length);
+      for (let i = 0; i < input.length; i++) {
+        const s = Math.max(-1, Math.min(1, input[i]));
+        samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      const mp3chunk = encoder.encodeBuffer(samples);
+      if (mp3chunk.length > 0) {
+        chunks.push(new Uint8Array(mp3chunk.buffer, mp3chunk.byteOffset, mp3chunk.byteLength));
+      }
+      if (onProgress) {
+        const pct = Math.round((video.currentTime / duration) * 100);
+        onProgress(`Extracting audio… ${pct}%`);
+      }
+    };
+
+    await video.play();
+    await new Promise<void>((resolve) => { video.onended = () => resolve(); });
+    await new Promise((r) => setTimeout(r, 500));
+
+    const last = encoder.flush();
+    if (last.length > 0) chunks.push(new Uint8Array(last.buffer, last.byteOffset, last.byteLength));
+
+    processor.disconnect();
+    source.disconnect();
+    gain.disconnect();
+    ctx.close();
+
+    const blob = new Blob(chunks as unknown as BlobPart[], { type: "audio/mpeg" });
+    const baseName = f.name.replace(/\.[^.]+$/, "");
+    return { mp3: new File([blob], `${baseName}.mp3`, { type: "audio/mpeg" }), duration: Math.ceil(duration) };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function extractCompressedAudio(
+  f: File,
+  onProgress?: (msg: string) => void,
+): Promise<{ mp3: File; duration: number }> {
+  const { Mp3Encoder } = await import("lamejs");
+  if (isVideoFile(f)) {
+    return await extractFromVideo(f, Mp3Encoder, onProgress);
+  }
+  return await compressViaDecode(f, Mp3Encoder);
 }
 
 function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClose: () => void; onUploaded: () => void }) {
@@ -179,7 +261,7 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
       if (needsCompression(file)) {
         setProgress(isVideoFile(file) ? "Extracting audio from video..." : "Compressing audio...");
         try {
-          const { mp3, duration } = await extractCompressedAudio(file);
+          const { mp3, duration } = await extractCompressedAudio(file, setProgress);
           uploadFile = mp3;
           durationSeconds = duration;
           fileFormat = "mp3";
