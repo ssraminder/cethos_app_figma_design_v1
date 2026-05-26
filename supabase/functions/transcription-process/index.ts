@@ -47,10 +47,10 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Job not found" }, 404);
     }
 
-    if (job.status !== "processing" && job.status !== "pending") {
+    if (job.status !== "processing" && job.status !== "pending" && job.status !== "failed") {
       return jsonResponse({
         success: false,
-        error: `Job status is '${job.status}', expected 'processing' or 'pending'`,
+        error: `Job status is '${job.status}', expected 'processing', 'pending', or 'failed'`,
       }, 409);
     }
 
@@ -64,32 +64,62 @@ serve(async (req: Request) => {
       provider: job.provider,
     });
 
-    // ── Download audio from storage ──────────────────────────────────────
-
-    const { data: fileData, error: dlErr } = await admin.storage
-      .from("transcription-uploads")
-      .download(job.file_path);
-
-    if (dlErr || !fileData) {
-      console.error("Storage download failed:", dlErr);
-      await markFailed(admin, jobId, "Failed to download audio file");
-      return jsonResponse({ success: false, error: "File download failed" }, 500);
-    }
-
     // ── Call STT provider ────────────────────────────────────────────────
+    // AssemblyAI uses a signed URL (no download needed).
+    // OpenAI / ElevenLabs need blob download (100 MB memory guard).
+    // On any OpenAI/AssemblyAI failure → auto-fallback to ElevenLabs.
+
+    const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 
     let transcript: TranscriptResult;
-    const provider = job.provider ?? "assemblyai";
+    let provider = job.provider ?? "openai";
+    const fileSize = (job.file_size_bytes as number) ?? 0;
 
     try {
       if (provider === "assemblyai") {
-        transcript = await transcribeAssemblyAi(fileData, job);
-      } else if (provider === "openai") {
-        transcript = await transcribeOpenAi(fileData, job);
-      } else if (provider === "elevenlabs") {
-        transcript = await transcribeElevenLabs(fileData, job);
+        const { data: signedUrlData, error: urlErr } = await admin.storage
+          .from("transcription-uploads")
+          .createSignedUrl(job.file_path as string, 3600);
+        if (urlErr || !signedUrlData?.signedUrl) {
+          throw new Error("Failed to create signed URL for audio file");
+        }
+        transcript = await transcribeAssemblyAi(signedUrlData.signedUrl, job);
       } else {
-        throw new Error(`Unknown provider: ${provider}`);
+        if (fileSize > MAX_DOWNLOAD_BYTES) {
+          await markFailed(admin, jobId, `File too large (${(fileSize / 1024 / 1024).toFixed(0)} MB). Extract audio from video before uploading.`);
+          return jsonResponse({ success: false, error: "File too large — extract audio first" }, 400);
+        }
+
+        const { data: fileData, error: dlErr } = await admin.storage
+          .from("transcription-uploads")
+          .download(job.file_path);
+        if (dlErr || !fileData) {
+          console.error("Storage download failed:", dlErr);
+          throw new Error("Failed to download audio file");
+        }
+
+        try {
+          if (provider === "openai") {
+            transcript = await transcribeOpenAi(fileData, job);
+          } else {
+            transcript = await transcribeElevenLabs(fileData, job);
+          }
+        } catch (primaryErr) {
+          if (provider !== "elevenlabs") {
+            console.log(`${provider} failed, falling back to ElevenLabs:`, primaryErr);
+            const origProvider = provider;
+            provider = "elevenlabs";
+            await admin.from("transcription_jobs").update({ provider }).eq("id", jobId);
+            await auditLog(admin, jobId, "provider_fallback", "system", null, {
+              original: origProvider,
+              fallback: "elevenlabs",
+              reason: primaryErr instanceof Error ? primaryErr.message : String(primaryErr),
+            });
+            transcript = await transcribeElevenLabs(fileData, job);
+          } else {
+            throw primaryErr;
+          }
+        }
       }
     } catch (e) {
       console.error(`STT (${provider}) failed for ${jobId}:`, e);
@@ -190,32 +220,17 @@ interface TranscriptResult {
 // ── AssemblyAI ───────────────────────────────────────────────────────────────
 
 async function transcribeAssemblyAi(
-  audioBlob: Blob,
+  audioUrl: string,
   job: Record<string, unknown>,
 ): Promise<TranscriptResult> {
   const apiKey = Deno.env.get("ASSEMBLYAI_API_KEY");
   if (!apiKey) throw new Error("ASSEMBLYAI_API_KEY not configured");
 
-  // 1. Upload audio
-  const uploadResp = await fetch("https://api.assemblyai.com/v2/upload", {
-    method: "POST",
-    headers: { authorization: apiKey },
-    body: audioBlob,
-  });
-
-  if (!uploadResp.ok) {
-    throw new Error(`AssemblyAI upload failed: ${uploadResp.status}`);
-  }
-
-  const { upload_url } = await uploadResp.json();
-
-  // 2. Create transcript request
   const transcriptBody: Record<string, unknown> = {
-    audio_url: upload_url,
+    audio_url: audioUrl,
     language_detection: true,
   };
 
-  // If source language specified, set it
   if (job.source_language_id) {
     const admin = getServiceClient();
     const { data: lang } = await admin
@@ -329,40 +344,11 @@ async function transcribeOpenAi(
 
   const result = await resp.json();
 
-  // gpt-4o-transcribe returns { text, logprobs } with json format
-  // Try to detect language from the transcript text using a quick heuristic,
-  // or fall back to calling the model. For now, store raw result and let
-  // the AI quality check identify the language.
-  // Also try a second call with verbose_json on whisper-1 for language detection
-  // if the primary model doesn't provide it.
-  let detectedLang: string | undefined;
-
-  // Quick language detection: make a lightweight whisper-1 call just for language
-  try {
-    const langForm = new FormData();
-    langForm.append("file", new File([audioBlob], `audio.${ext}`, { type: audioBlob.type || "audio/mpeg" }));
-    langForm.append("model", "whisper-1");
-    langForm.append("response_format", "verbose_json");
-    // Only need first few seconds for language detection
-    const langResp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: langForm,
-    });
-    if (langResp.ok) {
-      const langResult = await langResp.json();
-      detectedLang = langResult.language;
-    }
-  } catch {
-    // Language detection is best-effort
-  }
-
   return {
     text: result.text ?? "",
     json: {
       logprobs: result.logprobs,
     },
-    detectedLanguage: detectedLang,
     providerJobId: null,
   };
 }

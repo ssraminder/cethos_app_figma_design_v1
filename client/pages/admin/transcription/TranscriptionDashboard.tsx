@@ -67,6 +67,59 @@ const PROVIDER_OPTIONS = [
   { value: "elevenlabs", label: "ElevenLabs Scribe v2", desc: "90+ languages" },
 ];
 
+const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "avi", "mkv", "webm", "wmv", "flv", "m4v"]);
+const COMPRESS_THRESHOLD_BYTES = 25 * 1024 * 1024; // 25 MB
+
+function isVideoFile(f: File): boolean {
+  const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+  return VIDEO_EXTENSIONS.has(ext) || f.type.startsWith("video/");
+}
+
+function needsCompression(f: File): boolean {
+  return isVideoFile(f) || f.size > COMPRESS_THRESHOLD_BYTES;
+}
+
+async function extractCompressedAudio(f: File): Promise<{ mp3: File; duration: number }> {
+  const { Mp3Encoder } = await import("lamejs");
+  const buf = await f.arrayBuffer();
+  const ctx = new AudioContext();
+  const decoded = await ctx.decodeAudioData(buf);
+  const duration = decoded.duration;
+  const sr = 16000;
+  const offline = new OfflineAudioContext(1, Math.ceil(duration * sr), sr);
+  const src = offline.createBufferSource();
+  src.buffer = decoded;
+  src.connect(offline.destination);
+  src.start();
+  const rendered = await offline.startRendering();
+  ctx.close();
+
+  const pcm = rendered.getChannelData(0);
+  const samples = new Int16Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]));
+    samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+
+  const encoder = new Mp3Encoder(1, sr, 64);
+  const chunks: Uint8Array[] = [];
+  const blockSize = 1152;
+  for (let i = 0; i < samples.length; i += blockSize) {
+    const block = samples.subarray(i, i + blockSize);
+    const mp3chunk = encoder.encodeBuffer(block);
+    if (mp3chunk.length > 0) chunks.push(new Uint8Array(mp3chunk.buffer, mp3chunk.byteOffset, mp3chunk.byteLength));
+  }
+  const last = encoder.flush();
+  if (last.length > 0) chunks.push(new Uint8Array(last.buffer, last.byteOffset, last.byteLength));
+
+  const blob = new Blob(chunks as unknown as BlobPart[], { type: "audio/mpeg" });
+  const baseName = f.name.replace(/\.[^.]+$/, "");
+  return {
+    mp3: new File([blob], `${baseName}.mp3`, { type: "audio/mpeg" }),
+    duration: Math.ceil(duration),
+  };
+}
+
 function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClose: () => void; onUploaded: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -119,28 +172,44 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
 
     try {
       const jobId = crypto.randomUUID();
-      const ext = file.name.split(".").pop() ?? "mp3";
-      const storagePath = `${jobId}/source/audio.${ext}`;
+      let uploadFile = file;
+      let durationSeconds = 60;
+      let fileFormat = file.name.split(".").pop()?.toLowerCase() ?? "mp3";
 
+      if (needsCompression(file)) {
+        setProgress(isVideoFile(file) ? "Extracting audio from video..." : "Compressing audio...");
+        try {
+          const { mp3, duration } = await extractCompressedAudio(file);
+          uploadFile = mp3;
+          durationSeconds = duration;
+          fileFormat = "mp3";
+        } catch (e) {
+          console.error("Audio compression failed:", e);
+          throw new Error("Failed to compress audio — try converting to MP3 first");
+        }
+      }
+
+      const storagePath = `${jobId}/source/audio.${fileFormat}`;
       setProgress("Uploading audio file...");
-      const buf = await file.arrayBuffer();
+      const buf = await uploadFile.arrayBuffer();
       const { error: upErr } = await supabase.storage
         .from("transcription-uploads")
         .upload(storagePath, buf, {
-          contentType: file.type || "application/octet-stream",
+          contentType: uploadFile.type || "application/octet-stream",
           upsert: false,
         });
 
       if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
 
-      let durationSeconds = 60;
-      try {
-        const audioCtx = new AudioContext();
-        const audioBuffer = await audioCtx.decodeAudioData(buf.slice(0));
-        durationSeconds = Math.ceil(audioBuffer.duration);
-        audioCtx.close();
-      } catch {
-        durationSeconds = Math.max(1, Math.ceil(file.size / 16000));
+      if (!needsCompression(file)) {
+        try {
+          const audioCtx = new AudioContext();
+          const audioBuffer = await audioCtx.decodeAudioData(buf.slice(0));
+          durationSeconds = Math.ceil(audioBuffer.duration);
+          audioCtx.close();
+        } catch {
+          durationSeconds = Math.max(1, Math.ceil(uploadFile.size / 16000));
+        }
       }
 
       setProgress("Creating job...");
@@ -154,8 +223,8 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
           file_path: storagePath,
           file_name: file.name,
           file_duration_seconds: durationSeconds,
-          file_size_bytes: file.size,
-          file_format: ext,
+          file_size_bytes: uploadFile.size,
+          file_format: fileFormat,
           status: "processing",
           provider,
           pricing_tier: "free",
