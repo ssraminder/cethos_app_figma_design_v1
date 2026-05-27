@@ -592,6 +592,14 @@ export default function Step1Upload() {
       }
 
       // 3. Fire AI processing (fire and forget — don't await)
+      // keepalive: true tells the browser to hold the connection open even
+      // if the page navigates away before the response arrives. Without it,
+      // navigating from Step 1 → Step 2 immediately after the call (which
+      // happens on line 614) cancels the request before it reaches the
+      // server — the quote ends up with the file uploaded but OCR never
+      // triggered, processing_status stuck at 'pending'. Caught on
+      // QT26-10514 where the file sat on disk and no ocr_batches were ever
+      // created. keepalive caps the body at 64 KB; our payload is < 100 B.
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -602,8 +610,12 @@ export default function Step1Upload() {
           Authorization: `Bearer ${supabaseAnonKey}`,
         },
         body: JSON.stringify({ quoteId }),
+        keepalive: true,
+      }).catch((err) => {
+        // Defensive: with keepalive the request is durable, but we still
+        // want a visible signal if the fetch initialization itself failed.
+        console.error("process-quote-documents fire-and-forget failed:", err);
       });
-      // Do NOT await — fire and forget
 
       // 4. Track file upload conversion event
       const totalSizeMB = localFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024);
