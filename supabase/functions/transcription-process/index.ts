@@ -23,6 +23,7 @@ import {
   TRANSCRIPT_FORMAT_VERSION,
 } from "../_shared/transcript-segments.ts";
 import { getGoogleAccessToken, getGoogleProjectId } from "../_shared/google-auth.ts";
+import { extractAudioViaCloudRun, isVideoFile } from "../_shared/extract-audio.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return preflight();
@@ -98,6 +99,88 @@ serve(async (req: Request) => {
           duration: (job.file_duration_seconds as number) ?? 0,
           format: (job.file_format as string) ?? "mp3",
         }];
+
+    // ── Server-side audio extraction (videos only) ───────────────────────
+    // Browser uploads raw video bytes; we extract audio via Cloud Run before
+    // STT so the upload modal isn't blocked on multi-hour real-time playback.
+    // For audio files this is a no-op.
+    //
+    // The extractor produces 16 kHz mono Opus/WebM regardless of source
+    // codec — STT-friendly + small (≈ 32 kbps). For multi-file jobs we extract
+    // each video file in sequence (cheap; each call returns in 1-3 min for a
+    // typical 2hr input).
+    for (let fi = 0; fi < sourceFiles.length; fi++) {
+      const sf = sourceFiles[fi];
+      if (!isVideoFile(sf.format)) continue;
+
+      await auditLog(admin, jobId, "audio_extraction_started", "system", null, {
+        file_index: fi,
+        file_name: sf.name,
+        source_format: sf.format,
+        source_size_bytes: sf.size,
+      });
+
+      // Path convention: same job dir, `audio/` subfolder, .webm output.
+      const extractedPath = `${jobId}/audio/extracted_${fi}.webm`;
+      const result = await extractAudioViaCloudRun({
+        inputBucket: "transcription-uploads",
+        inputPath: sf.path,
+        outputBucket: "transcription-uploads",
+        outputPath: extractedPath,
+      });
+
+      if (!result.success) {
+        await markFailed(admin, jobId, `Audio extraction failed: ${result.error}`);
+        await auditLog(admin, jobId, "audio_extraction_failed", "system", null, {
+          file_index: fi,
+          error: result.error,
+        });
+        return jsonResponse({ success: false, error: result.error }, 500);
+      }
+
+      // Rewrite the source file entry to point at the extracted audio so the
+      // rest of the pipeline transparently uses it.
+      sourceFiles[fi] = {
+        ...sf,
+        path: result.outputPath,
+        format: result.outputFormat,
+        size: result.outputSizeBytes,
+        // Prefer the duration ffmpeg measured (server-side, accurate) over
+        // whatever the browser guessed. Keep the original if extraction
+        // somehow returned 0.
+        duration: result.durationSeconds > 0 ? result.durationSeconds : sf.duration,
+      };
+
+      await auditLog(admin, jobId, "audio_extraction_completed", "system", null, {
+        file_index: fi,
+        extracted_path: result.outputPath,
+        extracted_size_bytes: result.outputSizeBytes,
+        duration_seconds: result.durationSeconds,
+        extract_ms: result.extractMs,
+        total_ms: result.totalMs,
+      });
+    }
+
+    // Persist updated source_files (path swaps from .mp4 → .webm etc.) so a
+    // failure mid-STT doesn't lose the extracted audio reference.
+    if (sourceFiles.length > 1) {
+      await admin
+        .from("transcription_jobs")
+        .update({ source_files: sourceFiles })
+        .eq("id", jobId);
+    } else {
+      // Single-file job — also keep file_path / file_format / size in sync.
+      const sf = sourceFiles[0];
+      await admin
+        .from("transcription_jobs")
+        .update({
+          file_path: sf.path,
+          file_format: sf.format,
+          file_size_bytes: sf.size,
+          file_duration_seconds: sf.duration,
+        })
+        .eq("id", jobId);
+    }
 
     // ── Call STT provider (per file, then merge) ────────────────────────
     // Resolve the per-language fallback chain once per job (provider may be overridden

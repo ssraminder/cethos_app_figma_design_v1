@@ -1,0 +1,17 @@
+{
+  "name": "cethos-audio-extractor",
+  "version": "1.0.0",
+  "description": "Cloud Run service: download video/audio from a URL, extract audio via ffmpeg, upload to a signed URL. Used by transcription-process to avoid blocking the upload modal on multi-hour audio extraction.",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "fluent-ffmpeg": "^2.1.3"
+  }
+}
