@@ -201,9 +201,16 @@ export default function QuoteFlow() {
         return;
       }
 
-      // Check there are files
-      if (!quoteFiles || quoteFiles.length === 0) {
-        // No files — something went wrong, let user start fresh at step 1
+      // Allow the page to proceed when either uploaded files or manual
+      // line items (ai_analysis_results) exist. Manual quotes created via
+      // /admin/quotes/fast-create or /admin/orders/new only have
+      // ai_analysis_results — no quote_files — so the old "no files →
+      // start over at step 1" bailout kicked the customer back to Upload
+      // and the admin-set delivery dates / line items were invisible.
+      const analysisRows: any[] = (snapshot as any).analysis || [];
+      const hasFiles = !!quoteFiles && quoteFiles.length > 0;
+      const hasAnalysis = analysisRows.length > 0;
+      if (!hasFiles && !hasAnalysis) {
         setIsHydrating(false);
         return;
       }
@@ -239,7 +246,7 @@ export default function QuoteFlow() {
         // Since these were uploaded externally (not in portal), the actual
         // File object is unavailable. We create stub entries so the UI can
         // display file info where needed.
-        files: quoteFiles.map((f: any) => ({
+        files: (quoteFiles || []).map((f: any) => ({
           id: f.id,
           name: f.original_filename,
           size: f.file_size,
