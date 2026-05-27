@@ -89,6 +89,7 @@ interface Version {
   provider: string | null;
   model: string | null;
   transcript_text: string | null;
+  transcript_json: Record<string, unknown> | null;
   word_count: number | null;
   cost: number | null;
   is_active: boolean;
@@ -771,7 +772,6 @@ function FileCard({
           <FileTranscriptSection
             file={file}
             translatedText={file.translated_text}
-            showPlainText={fileVersions.some(v => v.is_active && v.version_type !== "original")}
           />
 
           {/* 3. Versions list */}
@@ -810,10 +810,9 @@ function FileCard({
 
 // ── 1. Transcript preview section ───────────────────────────────────────────
 
-function FileTranscriptSection({ file, translatedText, showPlainText }: {
+function FileTranscriptSection({ file, translatedText }: {
   file: SourceFile;
   translatedText?: string;
-  showPlainText?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -851,7 +850,7 @@ function FileTranscriptSection({ file, translatedText, showPlainText }: {
       </div>
       <div className={`${expanded ? "" : "max-h-[300px]"} overflow-y-auto rounded-lg border border-gray-100 p-3 bg-gray-50/50`}>
         <SpeakerTranscript
-          transcriptJson={showPlainText ? null : (file.transcript_json ?? null)}
+          transcriptJson={file.transcript_json ?? null}
           transcriptText={file.transcript_text}
           translatedText={translatedText}
           compact
@@ -884,7 +883,9 @@ function FileVersionsSection({ job, versions, fileIndex, isSyntheticSingleFile, 
       } else {
         const files = [...(job.source_files ?? [])];
         if (files[fileIndex]) {
-          files[fileIndex] = { ...files[fileIndex], transcript_text: version.transcript_text ?? undefined };
+          const patch: Record<string, unknown> = { ...files[fileIndex], transcript_text: version.transcript_text ?? undefined };
+          if (version.transcript_json) patch.transcript_json = version.transcript_json;
+          files[fileIndex] = patch;
           await supabase
             .from("transcription_jobs")
             .update({ source_files: files })

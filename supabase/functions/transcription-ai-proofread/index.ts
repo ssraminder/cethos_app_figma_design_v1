@@ -55,32 +55,58 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Job not found" }, 404);
     }
 
-    type Word = { text: string; speaker_id?: string; start?: number; type?: string };
+    type Word = { text: string; speaker_id?: string; start?: number; end?: number; type?: string };
     type TranscriptJson = { words?: Word[] };
     type SourceFile = { name?: string; transcript_text?: string; translated_text?: string; transcript_json?: TranscriptJson };
     const files = (job.source_files as SourceFile[]) ?? [];
 
     // Build numbered speaker segments from transcript_json for structured proofing
-    type SpeakerSegment = { speaker: string; text: string };
+    type SpeakerSegment = { speaker: string; text: string; start: number; end: number };
     function buildSpeakerSegments(json: TranscriptJson | undefined): SpeakerSegment[] | null {
       if (!json?.words?.length) return null;
       const segments: SpeakerSegment[] = [];
       let currentSpeaker = "";
       let currentText = "";
+      let segStart = 0;
+      let segEnd = 0;
       for (const w of json.words) {
         if (w.type === "spacing") continue;
         const spk = w.speaker_id ?? "unknown";
         if (spk !== currentSpeaker && currentText.trim()) {
-          segments.push({ speaker: currentSpeaker, text: currentText.trim() });
+          segments.push({ speaker: currentSpeaker, text: currentText.trim(), start: segStart, end: segEnd });
           currentText = "";
+        }
+        if (spk !== currentSpeaker) {
+          segStart = w.start ?? 0;
         }
         currentSpeaker = spk;
         currentText += w.text;
+        segEnd = w.end ?? w.start ?? 0;
       }
       if (currentText.trim()) {
-        segments.push({ speaker: currentSpeaker, text: currentText.trim() });
+        segments.push({ speaker: currentSpeaker, text: currentText.trim(), start: segStart, end: segEnd });
       }
       return segments.length > 0 ? segments : null;
+    }
+
+    // Reconstruct transcript_json from proofread segments, preserving speaker IDs and timestamps
+    function reconstructTranscriptJson(
+      originalSegments: SpeakerSegment[],
+      proofreadSegmentTexts: string[],
+    ): TranscriptJson {
+      const newWords: Word[] = [];
+      const count = Math.min(proofreadSegmentTexts.length, originalSegments.length);
+      for (let i = 0; i < count; i++) {
+        if (i > 0) newWords.push({ text: " ", type: "spacing" });
+        newWords.push({
+          text: proofreadSegmentTexts[i],
+          speaker_id: originalSegments[i].speaker,
+          start: originalSegments[i].start,
+          end: originalSegments[i].end,
+          type: "text",
+        });
+      }
+      return { words: newWords };
     }
 
     // Resolve transcript + translation text for the target file
@@ -269,12 +295,12 @@ ${transcriptText}`;
     // Parse response: split transcript and translation if both were proofread
     let proofreadText: string;
     let proofreadTranslation: string | null = null;
+    let proofreadJson: TranscriptJson | null = null;
 
-    // Helper: parse numbered lines "[1] text" → array of text, joined by \n\n
-    function parseNumberedLines(section: string): string {
+    // Helper: parse numbered lines "[1] text" → array of individual segment strings
+    function parseNumberedSegments(section: string): string[] {
       const lines = section.split("\n").filter(l => l.trim());
-      const parsed = lines.map(l => l.replace(/^\[\d+\]\s*/, "").trim()).filter(Boolean);
-      return parsed.join("\n\n");
+      return lines.map(l => l.replace(/^\[\d+\]\s*/, "").trim()).filter(Boolean);
     }
 
     if (rawText.includes("---TRANSCRIPT---")) {
@@ -284,9 +310,14 @@ ${transcriptText}`;
       const rawTranslation = translationMatch?.[1]?.trim() ?? null;
 
       if (useNumberedSegments && rawTranscript.includes("[1]")) {
-        // Numbered format: strip [N] prefixes, join with paragraph breaks
-        proofreadText = parseNumberedLines(rawTranscript);
-        proofreadTranslation = rawTranslation ? parseNumberedLines(rawTranslation) : null;
+        const transcriptParts = parseNumberedSegments(rawTranscript);
+        const translationParts = rawTranslation ? parseNumberedSegments(rawTranslation) : null;
+        proofreadText = transcriptParts.join("\n\n");
+        proofreadTranslation = translationParts ? translationParts.join("\n\n") : null;
+        // Reconstruct transcript_json preserving speaker IDs and timestamps
+        if (speakerSegments) {
+          proofreadJson = reconstructTranscriptJson(speakerSegments, transcriptParts);
+        }
       } else {
         proofreadText = rawTranscript;
         proofreadTranslation = rawTranslation;
@@ -296,6 +327,20 @@ ${transcriptText}`;
     }
 
     const wordCount = proofreadText.split(/\s+/).filter(Boolean).length;
+
+    // Backfill the original version's transcript_json so reverting restores the speaker view
+    if (proofreadJson && fileIndex !== null) {
+      const originalJson = files[fileIndex]?.transcript_json;
+      if (originalJson) {
+        await admin
+          .from("transcription_versions")
+          .update({ transcript_json: originalJson })
+          .eq("job_id", jobId)
+          .eq("file_index", fileIndex)
+          .eq("version_type", "original")
+          .is("transcript_json", null);
+      }
+    }
 
     // Save proofread transcript as a new version
     const { error: versionErr } = await admin
@@ -309,6 +354,7 @@ ${transcriptText}`;
         word_count: wordCount,
         cost,
         is_active: false,
+        ...(proofreadJson ? { transcript_json: proofreadJson } : {}),
         ...(fileIndex !== null ? { file_index: fileIndex } : {}),
       });
 
