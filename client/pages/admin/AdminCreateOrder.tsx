@@ -224,6 +224,7 @@ export default function AdminCreateOrder() {
   const [branchOverrideOpen, setBranchOverrideOpen] = useState(false);
   const [poNumber, setPoNumber] = useState<string>("");
   const [clientProjectNumber, setClientProjectNumber] = useState<string>("");
+  const [applyVolumeDiscount, setApplyVolumeDiscount] = useState(true);
   // ── Client PM picker (typeahead over company_project_managers) ──
   // Customer-side contact person responsible for this order — distinct
   // from our internal staff_users. Lives in a per-company directory that
@@ -1134,6 +1135,7 @@ export default function AdminCreateOrder() {
             invoicingBranchId: branchId,
             poNumber: poNumber.trim() || null,
             clientProjectNumber: clientProjectNumber.trim() || null,
+            applyVolumeDiscount,
           },
           documents,
           pricing,
@@ -1182,6 +1184,7 @@ export default function AdminCreateOrder() {
           clientProjectNumber: clientProjectNumber.trim() || null,
           workflowTemplateCode: workflowTemplateCode || null,
           clientPmId: clientPmId || null,
+          applyVolumeDiscount,
         },
         documents,
         pricing,
@@ -2409,6 +2412,26 @@ export default function AdminCreateOrder() {
                 receivable rows — each carries its own description,
                 quantity, rate, tax, PO, and client project number. The
                 order's subtotal / tax / total recompute automatically.
+              </p>
+            </section>
+          )}
+
+          {/* Auto volume discount toggle */}
+          {mode === "quote" && (
+            <section className="bg-white border rounded-lg p-4 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={applyVolumeDiscount}
+                  onChange={(e) => setApplyVolumeDiscount(e.target.checked)}
+                  className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                />
+                <span className="text-sm font-semibold text-gray-700">
+                  Apply auto volume discount
+                </span>
+              </label>
+              <p className="pl-6 text-xs text-gray-500">
+                When on, the standard volume discount (10% over $1,000, 15% over $2,000) is applied automatically. Turn off for manual quotes that shouldn't get it.
               </p>
             </section>
           )}

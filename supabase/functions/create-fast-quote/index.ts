@@ -179,6 +179,7 @@ serve(async (req: Request) => {
         processing_status: "quote_ready",
         promised_delivery_date: quote.promisedDeliveryDate || null,
         internal_project_id: internalProjectId,
+        auto_discount_suppressed: quote.applyVolumeDiscount === false,
       })
       .select("id, quote_number")
       .single();
