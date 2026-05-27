@@ -25,6 +25,7 @@ import {
   Lock,
   AlertCircle,
   X,
+  Download,
 } from "lucide-react";
 import StartOverLink from "@/components/StartOverLink";
 import { toast } from "sonner";
@@ -192,6 +193,43 @@ export default function Step4ReviewCheckout() {
   }, []);
 
   // === STATE FROM STEP 4 (Review & Rush) ===
+
+  // Download quote as PDF — on-demand, no caching.
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const handleDownloadQuotePdf = async () => {
+    if (!state.quoteId) return;
+    setIsDownloadingPdf(true);
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const resp = await fetch(
+        `${SUPABASE_URL}/functions/v1/generate-quote-pdf`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ quote_id: state.quoteId }),
+        },
+      );
+      if (!resp.ok) throw new Error(await resp.text());
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(state.quoteNumber || "quote").replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download quote PDF failed:", err);
+      toast.error("Failed to download quote PDF");
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   // HITL Request State
   const [showHitlModal, setShowHitlModal] = useState(false);
@@ -3364,7 +3402,7 @@ export default function Step4ReviewCheckout() {
                 </div>
               )}
 
-              {/* Save & Email */}
+              {/* Save & Email + Download PDF */}
               <div className="text-center mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs text-gray-500 mb-1">Not ready to pay now?</p>
                 <button
@@ -3374,6 +3412,18 @@ export default function Step4ReviewCheckout() {
                 >
                   {savingQuote ? "Saving..." : "Save and email my quote"}
                 </button>
+                {state.quoteId && (
+                  <div className="mt-2">
+                    <button
+                      onClick={handleDownloadQuotePdf}
+                      disabled={isDownloadingPdf}
+                      className="inline-flex items-center gap-1.5 text-sm text-cethos-teal hover:underline disabled:opacity-50"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {isDownloadingPdf ? "Building PDF..." : "Download as PDF"}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Quote info */}

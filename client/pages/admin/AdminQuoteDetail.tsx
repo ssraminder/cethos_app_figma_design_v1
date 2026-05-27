@@ -2919,6 +2919,48 @@ export default function AdminQuoteDetail() {
     }
   };
 
+  // Download quote as PDF — calls the on-demand generate-quote-pdf edge
+  // function and triggers a browser download. No caching — fresh totals
+  // every click.
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const handleDownloadQuotePdf = async () => {
+    if (!id || !quote) return;
+    setIsDownloadingPdf(true);
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const resp = await fetch(
+        `${SUPABASE_URL}/functions/v1/generate-quote-pdf`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ quote_id: id }),
+        },
+      );
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || `HTTP ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(quote.quote_number || "quote").replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download quote PDF failed:", err);
+      toast.error("Failed to download quote PDF: " + (err as Error).message);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
   // Create Payment Link — generate the Stripe payment URL and store it on
   // the quote without emailing. Populates the Payment Link field so the
   // admin can preview/copy before sending.
@@ -3586,6 +3628,17 @@ export default function AdminQuoteDetail() {
               )}
             </>
           )}
+
+          {/* Download Quote PDF — always visible */}
+          <button
+            onClick={handleDownloadQuotePdf}
+            disabled={isDownloadingPdf}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+            title="Download this quote as a PDF"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {isDownloadingPdf ? "Building PDF..." : "Download PDF"}
+          </button>
 
           {/* Receive Payment Button - visible when payment hasn't been received yet */}
           {["draft", "quote_ready", "awaiting_payment", "pending_payment", "checkout_started"].includes(quote.status) && (
