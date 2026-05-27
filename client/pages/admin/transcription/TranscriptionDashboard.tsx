@@ -62,9 +62,9 @@ const FORMAT_OPTIONS = [
 ];
 
 const PROVIDER_OPTIONS = [
-  { value: "deepgram", label: "Deepgram Nova-3", desc: "Fast + cheap, 30+ langs, diarization" },
-  { value: "elevenlabs", label: "ElevenLabs Scribe v2", desc: "Best for Indic/RTL, 90+ langs" },
-  { value: "google", label: "Google STT v2 (Chirp 2)", desc: "Widest catalog, rare langs" },
+  { value: "google", label: "Google STT v2 (Chirp 2)", desc: "Widest catalog, 100+ langs incl. Punjabi/Persian/Pashto" },
+  { value: "elevenlabs", label: "ElevenLabs Scribe v2", desc: "Strong for Indic/RTL, 90+ langs" },
+  { value: "deepgram", label: "Deepgram Nova-3", desc: "Fast + cheap, but only 36 langs (no Punjabi/Persian)" },
   { value: "assemblyai", label: "AssemblyAI Universal-2", desc: "50+ languages" },
   { value: "openai", label: "OpenAI gpt-4o-transcribe", desc: "99+ languages" },
 ];
@@ -238,7 +238,7 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
 
   // Configuration
   const [email, setEmail] = useState("");
-  const [provider, setProvider] = useState("deepgram");
+  const [provider, setProvider] = useState("google");
   const [sourceLanguageId, setSourceLanguageId] = useState("");
   const [formats, setFormats] = useState<Set<string>>(new Set(["txt", "docx"]));
   const [translationEnabled, setTranslationEnabled] = useState(false);
@@ -276,7 +276,7 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
   const resetForm = () => {
     setFiles([]);
     setEmail("");
-    setProvider("deepgram");
+    setProvider("google");
     setSourceLanguageId("");
     setFormats(new Set(["txt", "docx"]));
     setTranslationEnabled(false);
