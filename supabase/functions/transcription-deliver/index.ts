@@ -347,6 +347,20 @@ function extractSpeakerSegments(
   const json = job.transcript_json as Record<string, unknown> | null;
   if (!json) return null;
 
+  // v2 canonical: { format_version: 2, segments: [{id, speaker_id, start, end, text}] }
+  if (json.format_version === 2 && Array.isArray(json.segments)) {
+    type V2Seg = { speaker_id?: string | null; start: number; end: number; text: string };
+    const segs = json.segments as V2Seg[];
+    return segs
+      .filter((s) => (s.text ?? "").trim())
+      .map((s, i) => ({
+        speaker: s.speaker_id ?? `Segment ${i + 1}`,
+        startMs: Math.round(s.start ?? 0),
+        endMs: Math.round(s.end ?? 0),
+        text: s.text,
+      }));
+  }
+
   // AssemblyAI: utterances already grouped by speaker
   const utterances = json.utterances as
     | Array<{ text: string; start: number; end: number; speaker: string }>

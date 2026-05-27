@@ -11,6 +11,11 @@ import {
   getServiceClient,
   auditLog,
 } from "../_shared/transcription.ts";
+import {
+  type Segment,
+  readSegments,
+  diffSegmentCounts,
+} from "../_shared/transcript-segments.ts";
 
 const CLAUDE_MODELS: Record<string, { id: string; inputPer1M: number; outputPer1M: number }> = {
   haiku:  { id: "claude-haiku-4-5-20251001", inputPer1M: 0.25, outputPer1M: 1.25 },
@@ -48,7 +53,7 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await admin
       .from("transcription_jobs")
-      .select("id, transcript_text, detected_language, ai_total_cost, source_files")
+      .select("id, transcript_text, transcript_json, detected_language, ai_total_cost, source_files")
       .eq("id", jobId)
       .is("deleted_at", null)
       .maybeSingle();
@@ -57,7 +62,7 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Job not found" }, 404);
     }
 
-    // Resolve the "current" transcript text (per-file or combined)
+    // Resolve the "current" transcript (text + json, per-file or combined)
     const currentText = (() => {
       if (fileIndex !== null) {
         const files = job.source_files as Array<{ transcript_text?: string }> | null;
@@ -65,45 +70,73 @@ serve(async (req: Request) => {
       }
       return job.transcript_text ?? "";
     })();
+    const currentJson = (() => {
+      if (fileIndex !== null) {
+        const files = job.source_files as Array<{ transcript_json?: unknown }> | null;
+        return files?.[fileIndex]?.transcript_json ?? null;
+      }
+      return job.transcript_json ?? null;
+    })();
 
-    // Resolve text for version A
+    async function fetchVersion(id: string) {
+      const { data: v } = await admin
+        .from("transcription_versions")
+        .select("transcript_text, transcript_json, version_type, provider, model")
+        .eq("id", id)
+        .eq("job_id", jobId)
+        .maybeSingle();
+      return v;
+    }
+
     let textA = "";
     let labelA = "";
+    let jsonA: unknown = null;
     if (versionA === "current") {
       textA = currentText;
       labelA = "Current (active)";
+      jsonA = currentJson;
     } else {
-      const { data: va } = await admin
-        .from("transcription_versions")
-        .select("transcript_text, version_type, provider, model")
-        .eq("id", versionA)
-        .eq("job_id", jobId)
-        .maybeSingle();
-      if (!va?.transcript_text) {
-        return jsonResponse({ success: false, error: "Version A not found" }, 404);
-      }
+      const va = await fetchVersion(versionA);
+      if (!va?.transcript_text) return jsonResponse({ success: false, error: "Version A not found" }, 404);
       textA = va.transcript_text;
       labelA = `${va.version_type} (${va.provider}/${va.model})`;
+      jsonA = va.transcript_json;
     }
 
-    // Resolve text for version B
     let textB = "";
     let labelB = "";
+    let jsonB: unknown = null;
     if (versionB === "current") {
       textB = currentText;
       labelB = "Current (active)";
+      jsonB = currentJson;
     } else {
-      const { data: vb } = await admin
-        .from("transcription_versions")
-        .select("transcript_text, version_type, provider, model")
-        .eq("id", versionB)
-        .eq("job_id", jobId)
-        .maybeSingle();
-      if (!vb?.transcript_text) {
-        return jsonResponse({ success: false, error: "Version B not found" }, 404);
-      }
+      const vb = await fetchVersion(versionB);
+      if (!vb?.transcript_text) return jsonResponse({ success: false, error: "Version B not found" }, 404);
       textB = vb.transcript_text;
       labelB = `${vb.version_type} (${vb.provider}/${vb.model})`;
+      jsonB = vb.transcript_json;
+    }
+
+    // ── Deterministic per-segment diff when both sides are v2 ──────────────
+    let segmentDiff: ReturnType<typeof diffSegmentCounts> | null = null;
+    let perSegmentChanges: Array<{ id: string; source_a: string; source_b: string }> = [];
+    const isV2A = jsonA && typeof jsonA === "object" &&
+      (jsonA as { format_version?: number }).format_version === 2;
+    const isV2B = jsonB && typeof jsonB === "object" &&
+      (jsonB as { format_version?: number }).format_version === 2;
+    if (isV2A && isV2B) {
+      const segsA: Segment[] = await readSegments(jsonA);
+      const segsB: Segment[] = await readSegments(jsonB);
+      segmentDiff = diffSegmentCounts(segsA, segsB);
+      const aById = new Map(segsA.map((s) => [s.id, s] as const));
+      for (const sb of segsB) {
+        const sa = aById.get(sb.id);
+        if (sa && sa.text !== sb.text) {
+          perSegmentChanges.push({ id: sb.id, source_a: sa.text, source_b: sb.text });
+          if (perSegmentChanges.length >= 20) break; // cap response size
+        }
+      }
     }
 
     if (!textA.trim() || !textB.trim()) {
@@ -203,6 +236,8 @@ List the 5-10 most significant differences. Focus on meaning-changing difference
       job_id: jobId,
       model: modelKey,
       comparison,
+      segment_diff: segmentDiff,
+      changed_segments: perSegmentChanges,
       cost: Number(cost.toFixed(6)),
       ai_total_cost: Number(newTotalCost.toFixed(6)),
     });
