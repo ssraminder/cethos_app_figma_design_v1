@@ -12,6 +12,16 @@ import {
   getTranscriptionSettings,
   auditLog,
 } from "../_shared/transcription.ts";
+import {
+  type Segment,
+  type ProviderHint,
+  normalizeToSegments,
+  buildTranscriptJsonV2,
+  mergeReprocessedSegments,
+  readSegments,
+  denormalizeText,
+  TRANSCRIPT_FORMAT_VERSION,
+} from "../_shared/transcript-segments.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return preflight();
@@ -73,6 +83,9 @@ serve(async (req: Request) => {
       size: number;
       duration: number;
       format: string;
+      transcript_text?: string;
+      transcript_json?: unknown;
+      translated_text?: string;
     }
 
     const sourceFiles: SourceFile[] = (job.source_files as SourceFile[] | null)?.length
@@ -172,78 +185,19 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Transcription failed" }, 500);
     }
 
-    // Persist per-file transcripts in source_files JSONB
-    if (sourceFiles.length > 1) {
-      await admin
-        .from("transcription_jobs")
-        .update({ source_files: sourceFiles })
-        .eq("id", jobId);
-    }
-
-    // Merge transcripts from all files
+    // Merge transcripts from all files (legacy raw shape — passed to script conv)
     const transcript = mergeTranscripts(allTranscripts);
-
-    // ── Store transcript ─────────────────────────────────────────────────
-
-    const wordCount = transcript.text.split(/\s+/).filter(Boolean).length;
 
     // Estimate STT provider cost based on duration
     const totalDurationMin = sourceFiles.reduce((acc, sf) => acc + (sf.duration / 60), 0);
     const STT_RATES: Record<string, number> = { assemblyai: 0.0025, openai: 0.006, elevenlabs: 0.007 };
     const sttCost = totalDurationMin * (STT_RATES[provider] ?? 0.006);
 
-    // Check if this is a reprocess (job already had a transcript)
-    const isReprocess = !!job.transcript_text?.trim();
-
-    // Save version record
-    await admin.from("transcription_versions").insert({
-      job_id: jobId,
-      version_type: isReprocess ? "reprocess" : "original",
-      provider,
-      model: provider === "openai" ? "gpt-4o-transcribe" : provider === "assemblyai" ? "universal-2" : "scribe-v2",
-      transcript_text: transcript.text,
-      transcript_json: transcript.json,
-      word_count: wordCount,
-      cost: sttCost,
-      is_active: true,
-    });
-
-    // Accumulate cost
-    const prevCost = (job.ai_total_cost as number) ?? 0;
-    const newTotalCost = prevCost + sttCost;
-
-    const { error: updateErr } = await admin
-      .from("transcription_jobs")
-      .update({
-        transcript_text: transcript.text,
-        transcript_json: transcript.json,
-        detected_language: transcript.detectedLanguage ?? null,
-        language_confidence: transcript.languageConfidence ?? null,
-        word_count: wordCount,
-        provider_job_id: transcript.providerJobId ?? null,
-        provider_cost: sttCost,
-        ai_total_cost: newTotalCost,
-      })
-      .eq("id", jobId);
-
-    if (updateErr) {
-      console.error("Transcript update failed:", updateErr);
-      await markFailed(admin, jobId, "Failed to store transcript");
-      return jsonResponse({ success: false, error: "Failed to store transcript" }, 500);
-    }
-
-    await auditLog(admin, jobId, "transcription_completed", "system", null, {
-      provider,
-      word_count: wordCount,
-      detected_language: transcript.detectedLanguage,
-      stt_cost: sttCost.toFixed(6),
-    });
-
-    // ── Script enforcement ─────────────────────────────────────────────
-    // If a source language is set, check that the transcript is in the correct
-    // script. STT providers sometimes output in the wrong script (e.g. Punjabi
-    // in Devanagari instead of Gurmukhi). If wrong, use Claude to convert.
-
+    // ── Script enforcement (in-memory; mutates `transcript` before v2 normalize) ──
+    // If a source language is set and the transcript came back in the wrong script,
+    // we ask Claude to transliterate the combined text + word-level json in place.
+    // Result feeds the v2 normalization below — single persist at the end.
+    let scriptConvCost = 0;
     if (job.source_language_id && transcript.text.trim()) {
       const { data: srcLang } = await admin
         .from("languages")
@@ -271,10 +225,8 @@ serve(async (req: Request) => {
             );
 
             if (converted.text) {
-              let totalConvCost = converted.cost;
-
-              // Also convert word-level texts in transcript_json so DOCX/SRT builders use correct script
-              let convertedJson = transcript.json;
+              scriptConvCost += converted.cost;
+              transcript.text = converted.text;
               if (transcript.json) {
                 const jsonConverted = await convertJsonWordTexts(
                   transcript.json as Record<string, unknown>,
@@ -283,43 +235,160 @@ serve(async (req: Request) => {
                   expected.label,
                 );
                 if (jsonConverted.json) {
-                  convertedJson = jsonConverted.json;
-                  totalConvCost += jsonConverted.cost;
+                  transcript.json = jsonConverted.json;
+                  scriptConvCost += jsonConverted.cost;
                 }
               }
-
-              // Update the stored transcript with corrected script
-              await admin
-                .from("transcription_jobs")
-                .update({
-                  transcript_text: converted.text,
-                  transcript_json: convertedJson,
-                  ai_total_cost: newTotalCost + totalConvCost,
-                })
-                .eq("id", jobId);
-
-              // Also update the version record
-              await admin
-                .from("transcription_versions")
-                .update({
-                  transcript_text: converted.text,
-                  transcript_json: convertedJson,
-                })
-                .eq("job_id", jobId)
-                .eq("is_active", true)
-                .order("created_at", { ascending: false })
-                .limit(1);
-
               await auditLog(admin, jobId, "script_converted", "system", null, {
                 from_script: dominant,
                 to_script: expected.script,
-                cost: totalConvCost.toFixed(6),
+                cost: scriptConvCost.toFixed(6),
               });
             }
           }
         }
       }
     }
+
+    // ── Normalize STT output to canonical v2 segments ──────────────────────
+    const providerHint: ProviderHint =
+      provider === "assemblyai" ? "assemblyai" :
+      provider === "elevenlabs" ? "elevenlabs" :
+      provider === "openai" ? "openai" : "unknown";
+
+    const isReprocess = !!job.transcript_text?.trim();
+
+    // For reprocess: load prior active version segments, keyed by file_index
+    const priorSegmentsByFile = new Map<number | null, Segment[]>();
+    if (isReprocess) {
+      const { data: priorVersions } = await admin
+        .from("transcription_versions")
+        .select("file_index, transcript_json")
+        .eq("job_id", jobId)
+        .eq("is_active", true);
+      for (const v of priorVersions ?? []) {
+        const segs = await readSegments(v.transcript_json);
+        priorSegmentsByFile.set((v.file_index as number | null) ?? null, segs);
+      }
+    }
+
+    type MergeStat = { preserved: number; added: number; reused_translations: number };
+    const mergeStats: Array<{ file_index: number | null } & MergeStat> = [];
+
+    // Per-file: normalize, merge with prior if reprocess, write v2 source_files entries
+    const perFileSegments: Segment[][] = [];
+    for (let fi = 0; fi < sourceFiles.length; fi++) {
+      const rawJson = sourceFiles.length > 1
+        ? sourceFiles[fi].transcript_json as unknown
+        : transcript.json;
+      let newSegs = await normalizeToSegments(rawJson, {
+        provider: providerHint,
+        idStrategy: "random",
+      });
+      const key = sourceFiles.length > 1 ? fi : null;
+      const prior = priorSegmentsByFile.get(key);
+      if (prior && prior.length > 0) {
+        const { segments: merged, summary } = mergeReprocessedSegments(prior, newSegs);
+        newSegs = merged;
+        mergeStats.push({ file_index: key, ...summary });
+      }
+      perFileSegments.push(newSegs);
+
+      if (sourceFiles.length > 1) {
+        const fileV2 = buildTranscriptJsonV2(newSegs, {
+          provider,
+          language_code: transcript.detectedLanguage,
+          audio_duration: sourceFiles[fi].duration,
+        });
+        sourceFiles[fi].transcript_json = fileV2;
+        sourceFiles[fi].transcript_text = denormalizeText(newSegs);
+      }
+    }
+
+    // Combined v2 segments (concat per-file for multi; single for solo)
+    const combinedSegments: Segment[] = sourceFiles.length > 1
+      ? perFileSegments.flat()
+      : perFileSegments[0] ?? [];
+    const combinedV2 = buildTranscriptJsonV2(combinedSegments, {
+      provider,
+      language_code: transcript.detectedLanguage,
+      language_probability: transcript.languageConfidence,
+    });
+    const combinedText = denormalizeText(combinedSegments) || transcript.text;
+    const wordCount = combinedText.split(/\s+/).filter(Boolean).length;
+
+    // Persist source_files (multi-file)
+    if (sourceFiles.length > 1) {
+      const { error: sfErr } = await admin
+        .from("transcription_jobs")
+        .update({ source_files: sourceFiles })
+        .eq("id", jobId);
+      if (sfErr) console.error("source_files update failed:", sfErr);
+    }
+
+    // ── Single persist: deactivate prior, insert new version, update job ──
+    if (isReprocess) {
+      await admin
+        .from("transcription_versions")
+        .update({ is_active: false })
+        .eq("job_id", jobId)
+        .eq("is_active", true);
+    }
+
+    const { error: versionErr } = await admin
+      .from("transcription_versions")
+      .insert({
+        job_id: jobId,
+        version_type: isReprocess ? "reprocess" : "original",
+        provider,
+        model: provider === "openai" ? "gpt-4o-transcribe" : provider === "assemblyai" ? "universal-2" : "scribe-v2",
+        transcript_text: combinedText,
+        transcript_json: combinedV2,
+        transcript_format_version: TRANSCRIPT_FORMAT_VERSION,
+        word_count: wordCount,
+        cost: sttCost + scriptConvCost,
+        is_active: true,
+      });
+    if (versionErr) {
+      console.error("Version insert failed:", versionErr);
+      await markFailed(admin, jobId, "Failed to save version");
+      return jsonResponse({ success: false, error: "Failed to save version" }, 500);
+    }
+
+    const prevCost = (job.ai_total_cost as number) ?? 0;
+    const newTotalCost = prevCost + sttCost + scriptConvCost;
+
+    const { error: updateErr } = await admin
+      .from("transcription_jobs")
+      .update({
+        transcript_text: combinedText,
+        transcript_json: combinedV2,
+        transcript_format_version: TRANSCRIPT_FORMAT_VERSION,
+        detected_language: transcript.detectedLanguage ?? null,
+        language_confidence: transcript.languageConfidence ?? null,
+        word_count: wordCount,
+        provider_job_id: transcript.providerJobId ?? null,
+        provider_cost: sttCost,
+        ai_total_cost: newTotalCost,
+      })
+      .eq("id", jobId);
+
+    if (updateErr) {
+      console.error("Transcript update failed:", updateErr);
+      await markFailed(admin, jobId, "Failed to store transcript");
+      return jsonResponse({ success: false, error: "Failed to store transcript" }, 500);
+    }
+
+    await auditLog(admin, jobId, "transcription_completed", "system", null, {
+      provider,
+      word_count: wordCount,
+      segment_count: combinedSegments.length,
+      detected_language: transcript.detectedLanguage,
+      stt_cost: sttCost.toFixed(6),
+      script_conv_cost: scriptConvCost.toFixed(6),
+      reprocess: isReprocess,
+      merge_stats: mergeStats.length > 0 ? mergeStats : undefined,
+    });
 
     // ── Chain: AI quality check ──────────────────────────────────────────
 

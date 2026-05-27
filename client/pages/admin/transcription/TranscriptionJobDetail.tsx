@@ -728,7 +728,7 @@ function FileCard({
   onToggleSelect: () => void;
   onToggle: () => void;
   onUpdate: () => void;
-  targetLanguages: Array<{ id: string; name: string; native_name?: string }>;
+  targetLanguages: Array<{ id: string; code?: string; name: string; native_name?: string }>;
   isSyntheticSingleFile: boolean;
   showCheckbox: boolean;
 }) {
@@ -736,6 +736,11 @@ function FileCard({
   const hasTranscript = !!file.transcript_text;
   const hasTranslation = !!file.translated_text;
   const wordCount = file.transcript_text ? file.transcript_text.split(/\s+/).filter(Boolean).length : 0;
+  const translatedLangCode = useMemo<string | null>(() => {
+    if (!job.translation_target_language_id) return null;
+    const lang = targetLanguages.find((l) => l.id === job.translation_target_language_id);
+    return lang?.code ?? null;
+  }, [job.translation_target_language_id, targetLanguages]);
 
   return (
     <div className={`bg-white rounded-lg border overflow-hidden transition ${isSelected ? "border-teal-300 ring-1 ring-teal-200" : "border-gray-200"}`}>
@@ -794,8 +799,13 @@ function FileCard({
         <div className="border-t border-gray-100 px-4 py-4 pl-11 space-y-5">
           {/* 1. Transcript + inline translation */}
           <FileTranscriptSection
+            job={job}
             file={file}
+            fileIndex={fileIndex}
+            isSyntheticSingleFile={isSyntheticSingleFile}
             translatedText={file.translated_text}
+            translatedLangCode={translatedLangCode}
+            onChanged={onUpdate}
           />
 
           {/* 3. Versions list */}
@@ -834,11 +844,94 @@ function FileCard({
 
 // ── 1. Transcript preview section ───────────────────────────────────────────
 
-function FileTranscriptSection({ file, translatedText }: {
+function FileTranscriptSection({
+  job,
+  file,
+  fileIndex,
+  isSyntheticSingleFile,
+  translatedText,
+  translatedLangCode,
+  onChanged,
+}: {
+  job: Job;
   file: SourceFile;
+  fileIndex: number;
+  isSyntheticSingleFile: boolean;
   translatedText?: string;
+  translatedLangCode?: string | null;
+  onChanged: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState<SpeakerSeg | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ versionId: string; applied: number; sourceEdits: number; translationEdits: number } | null>(null);
+
+  // file_index argument: null when this is a synthetic single-file job (the
+  // transcript lives on the job row, not in source_files), otherwise the index.
+  const effectiveFileIndex = isSyntheticSingleFile ? null : fileIndex;
+
+  const isV2 = useMemo(() => {
+    const json = file.transcript_json as Record<string, unknown> | null;
+    return !!json && json.format_version === 2 && Array.isArray(json.segments);
+  }, [file.transcript_json]);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const langs = translatedLangCode ? [translatedLangCode] : [];
+      const { data, error } = await supabase.functions.invoke("transcription-export-xlsx", {
+        body: { job_id: job.id, file_index: effectiveFileIndex, include_languages: langs },
+      });
+      if (error || !data?.success) {
+        toast.error(data?.error || error?.message || "Export failed");
+        return;
+      }
+      if (data.url) {
+        window.open(data.url, "_blank");
+      }
+      toast.success(`Exported ${data.segment_count} segments`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImport = async (file: File) => {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const arrayBuf = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuf);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      const b64 = btoa(bin);
+      const { data, error } = await supabase.functions.invoke("transcription-import-xlsx", {
+        body: { job_id: job.id, file_index: effectiveFileIndex, file_base64: b64 },
+      });
+      if (error || !data?.success) {
+        toast.error(data?.error || error?.message || "Import failed");
+        return;
+      }
+      if (typeof data.applied === "number" && data.applied > 0) {
+        setImportResult({
+          versionId: data.version_id,
+          applied: data.applied,
+          sourceEdits: data.source_edits ?? 0,
+          translationEdits: data.translation_edits ?? 0,
+        });
+        toast.success(`Staged ${data.applied} edits as a new version — activate from Versions tab to apply`);
+      } else {
+        toast.info(data.message ?? "No changes detected");
+      }
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   if (!file.transcript_text) {
     return (
@@ -851,9 +944,36 @@ function FileTranscriptSection({ file, translatedText }: {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
         <SectionLabel label={translatedText ? "Transcript & Translation" : "Transcript"} />
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
+          {isV2 && (
+            <>
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 rounded border border-emerald-200 disabled:opacity-50"
+                title="Download segments as xlsx for human review"
+              >
+                {exporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                Export xlsx
+              </button>
+              <label className={`flex items-center gap-1 px-2 py-1 text-xs text-amber-700 hover:text-amber-900 hover:bg-amber-50 rounded border border-amber-200 cursor-pointer ${importing ? "opacity-50 pointer-events-none" : ""}`}>
+                {importing ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                Import xlsx
+                <input
+                  type="file"
+                  accept=".xlsx"
+                  hidden
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) await handleImport(f);
+                  }}
+                />
+              </label>
+            </>
+          )}
           <button
             onClick={() => {
               navigator.clipboard.writeText(file.transcript_text ?? "");
@@ -872,13 +992,159 @@ function FileTranscriptSection({ file, translatedText }: {
           </button>
         </div>
       </div>
+      {!isV2 && (
+        <div className="mb-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          Legacy v1 transcript. Run the segment-id backfill on this job to enable inline edit + xlsx round-trip.
+        </div>
+      )}
+      {importResult && (
+        <div className="mb-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 flex items-center justify-between gap-2">
+          <span>
+            Staged {importResult.applied} edits ({importResult.sourceEdits} source, {importResult.translationEdits} translation). Activate from the Versions tab.
+          </span>
+          <button
+            onClick={() => setImportResult(null)}
+            className="text-amber-600 hover:text-amber-900 px-1"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className={`${expanded ? "" : "max-h-[300px]"} overflow-y-auto rounded-lg border border-gray-100 p-3 bg-gray-50/50`}>
         <SpeakerTranscript
           transcriptJson={file.transcript_json ?? null}
           transcriptText={file.transcript_text}
           translatedText={translatedText}
+          translatedLangCode={translatedLangCode}
           compact
+          onSegmentEdit={isV2 ? (seg) => setEditing(seg) : undefined}
         />
+      </div>
+      {editing && (
+        <SegmentEditModal
+          jobId={job.id}
+          fileIndex={effectiveFileIndex}
+          translatedLangCode={translatedLangCode ?? null}
+          segment={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            onChanged();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Segment edit modal (inline per-segment source + translation) ────────────
+
+function SegmentEditModal({
+  jobId,
+  fileIndex,
+  translatedLangCode,
+  segment,
+  onClose,
+  onSaved,
+}: {
+  jobId: string;
+  fileIndex: number | null;
+  translatedLangCode: string | null;
+  segment: SpeakerSeg;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const initialTrans = translatedLangCode ? (segment.translations?.[translatedLangCode] ?? "") : "";
+  const [text, setText] = useState(segment.text);
+  const [translation, setTranslation] = useState(initialTrans);
+  const [saving, setSaving] = useState(false);
+
+  const dirty = text !== segment.text || translation !== initialTrans;
+
+  const save = async () => {
+    if (!segment.id || !dirty) {
+      onClose();
+      return;
+    }
+    setSaving(true);
+    try {
+      const edit: Record<string, unknown> = { id: segment.id };
+      if (text !== segment.text) edit.text = text;
+      if (translatedLangCode && translation !== initialTrans) {
+        edit.translations = { [translatedLangCode]: translation };
+      }
+      const { data, error } = await supabase.functions.invoke("transcription-segment-edit", {
+        body: { job_id: jobId, file_index: fileIndex, edits: [edit] },
+      });
+      if (error || !data?.success) {
+        toast.error(data?.error || error?.message || "Save failed");
+        return;
+      }
+      toast.success("Segment updated");
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-5 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-semibold text-gray-900">Edit segment</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+        </div>
+        <div className="text-xs text-gray-500 mb-3 flex items-center gap-3 flex-wrap">
+          <span className="font-mono text-gray-400">{segment.id?.slice(0, 8) ?? "—"}</span>
+          {segment.speaker && <span className="font-medium">{segment.speaker}</span>}
+          <span className="font-mono">{fmtTs(segment.startMs)}</span>
+        </div>
+
+        <label className="block text-xs font-medium text-gray-700 mb-1">Source text</label>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className="w-full text-sm border border-gray-200 rounded-lg p-2 mb-3 min-h-[80px] focus:ring-2 focus:ring-blue-200 focus:outline-none"
+        />
+
+        {translatedLangCode && (
+          <>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Translation <span className="font-mono text-gray-400 text-[10px]">[{translatedLangCode}]</span>
+            </label>
+            <textarea
+              value={translation}
+              onChange={(e) => setTranslation(e.target.value)}
+              className="w-full text-sm border border-purple-200 rounded-lg p-2 mb-3 min-h-[80px] focus:ring-2 focus:ring-purple-200 focus:outline-none text-purple-900"
+            />
+          </>
+        )}
+
+        <div className="flex justify-end gap-2 mt-2">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={!dirty || saving}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
+          >
+            {saving && <Loader2 className="w-3 h-3 animate-spin" />}
+            Save edit
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1467,20 +1733,50 @@ function ActionButtons({ onRun, onCancel, disabled, loading, label, loadingLabel
 // ── Speaker-formatted transcript view ────────────────────────────────────────
 
 interface SpeakerSeg {
+  id?: string;                       // v2 only — stable segment UUID
   speaker: string;
   startMs: number;
   text: string;
+  translations?: Record<string, string>; // v2 only
 }
 
-function SpeakerTranscript({ transcriptJson, transcriptText, translatedText, compact }: {
+function SpeakerTranscript({
+  transcriptJson,
+  transcriptText,
+  translatedText,
+  translatedLangCode,
+  compact,
+  onSegmentEdit,
+}: {
   transcriptJson: Record<string, unknown> | null;
   transcriptText?: string | null;
   translatedText?: string | null;
+  translatedLangCode?: string | null;
   compact?: boolean;
+  onSegmentEdit?: (seg: SpeakerSeg) => void;
 }) {
   const segments = useMemo<SpeakerSeg[] | null>(() => {
     const json = transcriptJson;
     if (!json) return null;
+
+    // v2 canonical: { format_version: 2, segments: [{id, speaker_id, start, end, text, translations?}] }
+    if (json.format_version === 2 && Array.isArray(json.segments)) {
+      type V2Seg = {
+        id: string;
+        speaker_id?: string | null;
+        start: number;
+        end: number;
+        text: string;
+        translations?: Record<string, string>;
+      };
+      return (json.segments as V2Seg[]).map((s, i) => ({
+        id: s.id,
+        speaker: s.speaker_id ?? `Segment ${i + 1}`,
+        startMs: Math.round(s.start ?? 0),
+        text: s.text,
+        translations: s.translations,
+      }));
+    }
 
     const utterances = json.utterances as
       | Array<{ text: string; start: number; end: number; speaker: string }>
@@ -1530,45 +1826,49 @@ function SpeakerTranscript({ transcriptJson, transcriptText, translatedText, com
     return null;
   }, [transcriptJson]);
 
-  // Align translated text with speaker segments by distributing sentences proportionally
+  // v2: per-segment translations come from segment.translations[lang] directly.
+  // Legacy: distribute the flat translated_text blob across speaker segments
+  // proportionally by word count (this is the buggy heuristic — only used for v1).
   const translatedSegments = useMemo(() => {
-    if (!translatedText || !segments) return null;
+    if (!segments) return null;
 
-    // Try newline-split first; fall back to sentence-split
+    // v2 path: every segment carries its own translations[lang].
+    const isV2 = segments.length > 0 && segments[0].id !== undefined;
+    if (isV2 && translatedLangCode) {
+      return segments.map((s) => s.translations?.[translatedLangCode] ?? "");
+    }
+
+    // Legacy heuristic alignment
+    if (!translatedText) return null;
     let parts = translatedText.split(/\n+/).filter(p => p.trim());
     if (parts.length <= 1) {
-      // No newlines — split by sentence boundaries
       parts = translatedText.match(/[^.!?]+[.!?]+[\s]*/g) || [translatedText];
       parts = parts.map(s => s.trim()).filter(Boolean);
     }
     if (parts.length === 0) return null;
     if (parts.length === segments.length) return parts;
 
-    // Distribute parts proportionally across segments by matching word-count ratios
     const segWordCounts = segments.map(s => s.text.split(/\s+/).length);
     const totalSegWords = segWordCounts.reduce((a, b) => a + b, 0) || 1;
     const result: string[] = [];
     let partIdx = 0;
     for (let i = 0; i < segments.length; i++) {
       const ratio = segWordCounts[i] / totalSegWords;
-      // How many translation parts this segment should get (at least 1 if parts remain)
       const targetCount = Math.max(1, Math.round(ratio * parts.length));
       const chunk = parts.slice(partIdx, partIdx + targetCount);
       result.push(chunk.join(" "));
       partIdx += targetCount;
       if (partIdx >= parts.length && i < segments.length - 1) {
-        // Ran out of parts — fill remaining with empty
         for (let j = i + 1; j < segments.length; j++) result.push("");
         break;
       }
     }
-    // If parts remain, append to last non-empty segment
     if (partIdx < parts.length) {
       const remaining = parts.slice(partIdx).join(" ");
       if (result.length > 0) result[result.length - 1] += " " + remaining;
     }
     return result;
-  }, [translatedText, segments]);
+  }, [translatedText, translatedLangCode, segments]);
 
   const speakerColorMap = useMemo(() => {
     const map = new Map<string, (typeof SPEAKER_COLORS)[0]>();
@@ -1618,13 +1918,22 @@ function SpeakerTranscript({ transcriptJson, transcriptText, translatedText, com
         {segments.map((seg, i) => {
           const color = speakerColorMap.get(seg.speaker);
           const transText = translatedSegments?.[i];
+          const editable = !!onSegmentEdit && !!seg.id;
           return (
-            <div key={i} className={`rounded-lg p-2.5 ${color?.bg ?? "bg-gray-50"}`}>
+            <div
+              key={seg.id ?? i}
+              className={`rounded-lg p-2.5 ${color?.bg ?? "bg-gray-50"} ${editable ? "cursor-pointer hover:ring-2 hover:ring-blue-200" : ""}`}
+              onClick={editable ? () => onSegmentEdit!(seg) : undefined}
+              title={editable ? "Click to edit this segment" : undefined}
+            >
               <div className="flex items-center gap-2 mb-1">
                 {seg.speaker && (
                   <span className={`text-xs font-semibold ${color?.text ?? "text-gray-700"}`}>{seg.speaker}</span>
                 )}
                 <span className="text-xs text-gray-400 font-mono">{fmtTs(seg.startMs)}</span>
+                {seg.id && (
+                  <span className="text-[10px] text-gray-300 font-mono ml-auto">{seg.id.slice(0, 8)}</span>
+                )}
               </div>
               <p className="text-sm text-gray-800 leading-relaxed">{seg.text}</p>
               {transText && (
