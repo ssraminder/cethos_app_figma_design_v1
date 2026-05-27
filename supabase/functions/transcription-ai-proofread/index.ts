@@ -69,7 +69,7 @@ serve(async (req: Request) => {
     const admin = getServiceClient();
     const { data: job, error: jobErr } = await admin
       .from("transcription_jobs")
-      .select("id, transcript_text, transcript_json, transcript_format_version, translated_text, detected_language, source_language_id, translation_target_language_id, ai_total_cost, source_files")
+      .select("id, transcript_text, transcript_json, transcript_format_version, translated_text, detected_language, source_language_id, translation_target_language_id, ai_total_cost, source_files, custom_instructions")
       .eq("id", jobId)
       .is("deleted_at", null)
       .maybeSingle();
@@ -165,6 +165,18 @@ serve(async (req: Request) => {
           return `File ${i + 1} (${f.name ?? "unknown"}): ${excerpt}`;
         })
         .join("\n\n");
+    }
+
+    // Customer-supplied custom instructions (free-form text from the upload form).
+    // Prepend to contextBlock so Claude sees customer intent before automatic
+    // context. Wrapped in a labeled block so the model can distinguish it
+    // from machine-generated context.
+    const customInstructions = (job.custom_instructions as string | null)?.trim();
+    if (customInstructions) {
+      const customBlock = `CUSTOMER INSTRUCTIONS (free-form, follow these in addition to the default rules):\n${customInstructions}`;
+      contextBlock = contextBlock
+        ? `${customBlock}\n\n---\n\n${contextBlock}`
+        : customBlock;
     }
 
     // ── Build prompt ───────────────────────────────────────────────────────
