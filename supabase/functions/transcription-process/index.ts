@@ -22,6 +22,7 @@ import {
   denormalizeText,
   TRANSCRIPT_FORMAT_VERSION,
 } from "../_shared/transcript-segments.ts";
+import { getGoogleAccessToken, getGoogleProjectId } from "../_shared/google-auth.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return preflight();
@@ -1014,12 +1015,11 @@ async function transcribeGoogle(
   audioBlob: Blob,
   job: Record<string, unknown>,
 ): Promise<TranscriptResult> {
-  // Accept either the dedicated STT-only secrets or the project-wide Google secrets
-  // (the project already has GOOGLE_API_KEY + GOOGLE_CLOUD_PROJECT set for other features).
-  const apiKey = Deno.env.get("GOOGLE_STT_API_KEY") ?? Deno.env.get("GOOGLE_API_KEY");
-  const projectId = Deno.env.get("GOOGLE_PROJECT_ID") ?? Deno.env.get("GOOGLE_CLOUD_PROJECT");
-  if (!apiKey) throw new Error("GOOGLE_STT_API_KEY (or GOOGLE_API_KEY) not configured");
-  if (!projectId) throw new Error("GOOGLE_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) not configured");
+  // Auth: service-account JWT exchange (same pattern as ocr-process-next).
+  // Reuses GOOGLE_APPLICATION_CREDENTIALS_JSON + GOOGLE_CLOUD_PROJECT already
+  // set for Document AI — no new secrets required for STT.
+  const accessToken = await getGoogleAccessToken();
+  const projectId = getGoogleProjectId();
 
   // Determine language code: Google v2 wants BCP-47 (e.g. en-US, fr-FR, es-ES).
   // We pass the language code from `languages` table and rely on Google's
@@ -1068,15 +1068,24 @@ async function transcribeGoogle(
     content: audioBase64,
   };
 
-  const url = `https://speech.googleapis.com/v2/projects/${projectId}/locations/global/recognizers/_:recognize?key=${apiKey}`;
+  const url = `https://speech.googleapis.com/v2/projects/${projectId}/locations/global/recognizers/_:recognize`;
   const resp = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: JSON.stringify(body),
   });
 
   if (!resp.ok) {
     const errText = await resp.text();
+    // Most common cause on first run: Speech-to-Text API not enabled on the project.
+    if (resp.status === 403 && /Speech-to-Text|speech\.googleapis\.com|SERVICE_DISABLED/i.test(errText)) {
+      throw new Error(
+        `Google STT v2: Cloud Speech-to-Text API is not enabled on project ${projectId}. Enable it at https://console.cloud.google.com/apis/library/speech.googleapis.com — original error: ${errText.slice(0, 300)}`,
+      );
+    }
     throw new Error(`Google STT v2 failed: ${resp.status} — ${errText}`);
   }
 
