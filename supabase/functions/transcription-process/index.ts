@@ -574,25 +574,39 @@ async function transcribeElevenLabs(
 // ── Multi-file helpers ──────────────────────────────────────────────────────
 
 function offsetTimestamps(json: Record<string, unknown>, offsetMs: number) {
+  // Detect timestamp units: ElevenLabs uses seconds, AssemblyAI/OpenAI use milliseconds.
+  // If max timestamp < 100000, timestamps are in seconds — convert offset to seconds too.
   const words = json.words as Array<Record<string, unknown>> | undefined;
+  const segments = json.segments as Array<Record<string, unknown>> | undefined;
+  const utterances = json.utterances as Array<Record<string, unknown>> | undefined;
+
+  let maxTs = 0;
+  for (const arr of [words, segments, utterances]) {
+    if (arr) {
+      for (const item of arr) {
+        if (typeof item.end === "number" && item.end > maxTs) maxTs = item.end;
+      }
+    }
+  }
+  const isSeconds = maxTs > 0 && maxTs < 100000;
+  const offset = isSeconds ? offsetMs / 1000 : offsetMs;
+
   if (words) {
     for (const w of words) {
-      if (typeof w.start === "number") w.start = w.start + offsetMs;
-      if (typeof w.end === "number") w.end = w.end + offsetMs;
+      if (typeof w.start === "number") w.start = w.start + offset;
+      if (typeof w.end === "number") w.end = w.end + offset;
     }
   }
-  const segments = json.segments as Array<Record<string, unknown>> | undefined;
   if (segments) {
     for (const s of segments) {
-      if (typeof s.start === "number") s.start = s.start + offsetMs;
-      if (typeof s.end === "number") s.end = s.end + offsetMs;
+      if (typeof s.start === "number") s.start = s.start + offset;
+      if (typeof s.end === "number") s.end = s.end + offset;
     }
   }
-  const utterances = json.utterances as Array<Record<string, unknown>> | undefined;
   if (utterances) {
     for (const u of utterances) {
-      if (typeof u.start === "number") u.start = u.start + offsetMs;
-      if (typeof u.end === "number") u.end = u.end + offsetMs;
+      if (typeof u.start === "number") u.start = u.start + offset;
+      if (typeof u.end === "number") u.end = u.end + offset;
     }
   }
 }
