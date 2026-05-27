@@ -1627,6 +1627,10 @@ export default function AdminQuoteDetail() {
 
     // Step 4 - Upload each chunk to ocr-uploads bucket
     const baseName = quoteFile.original_filename.replace(/\.pdf$/i, '');
+    // file_group_id is a UUID column on ocr_batch_files (no FK) — generate
+    // one per source file so all chunks of the same file share a group.
+    // Null for single-chunk matches the historical behavior.
+    const fileGroupId = chunks.length > 1 ? crypto.randomUUID() : null;
     const uploadedFiles: Array<{
       filename: string;
       originalFilename: string;
@@ -1663,9 +1667,7 @@ export default function AdminQuoteDetail() {
         storagePath,
         fileSize: chunkBytes.byteLength,
         chunkIndex: i,
-        // Always set a fileGroupId so the server can group chunks belonging
-        // to the same source file, even within a multi-file batch.
-        fileGroupId: `quote-${id}-${fileId}-${timestamp}`,
+        fileGroupId,
       });
     }
 
