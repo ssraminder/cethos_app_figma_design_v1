@@ -79,27 +79,8 @@ function needsCompression(f: File): boolean {
   return isVideoFile(f) || f.size > COMPRESS_THRESHOLD_BYTES;
 }
 
-function encodePcmToMp3(pcm: Float32Array, sr: number, Mp3Encoder: any): Uint8Array[] {
-  const samples = new Int16Array(pcm.length);
-  for (let i = 0; i < pcm.length; i++) {
-    const s = Math.max(-1, Math.min(1, pcm[i]));
-    samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-  }
-  const encoder = new Mp3Encoder(1, sr, 64);
-  const chunks: Uint8Array[] = [];
-  const blockSize = 1152;
-  for (let i = 0; i < samples.length; i += blockSize) {
-    const block = samples.subarray(i, i + blockSize);
-    const mp3chunk = encoder.encodeBuffer(block);
-    if (mp3chunk.length > 0) chunks.push(new Uint8Array(mp3chunk.buffer, mp3chunk.byteOffset, mp3chunk.byteLength));
-  }
-  const last = encoder.flush();
-  if (last.length > 0) chunks.push(new Uint8Array(last.buffer, last.byteOffset, last.byteLength));
-  return chunks;
-}
-
-// Fast path: decode entire file at once (audio files, small video files)
-async function compressViaDecode(f: File, Mp3Encoder: any): Promise<{ mp3: File; duration: number }> {
+// Fast path for large audio files: resample to 16kHz mono WAV (no external lib)
+async function compressToWav(f: File): Promise<{ audio: File; duration: number; format: string }> {
   const buf = await f.arrayBuffer();
   const ctx = new AudioContext();
   const decoded = await ctx.decodeAudioData(buf);
@@ -113,18 +94,44 @@ async function compressViaDecode(f: File, Mp3Encoder: any): Promise<{ mp3: File;
   const rendered = await offline.startRendering();
   ctx.close();
 
-  const chunks = encodePcmToMp3(rendered.getChannelData(0), sr, Mp3Encoder);
-  const blob = new Blob(chunks as unknown as BlobPart[], { type: "audio/mpeg" });
+  const pcm = rendered.getChannelData(0);
+  const wavBuf = new ArrayBuffer(44 + pcm.length * 2);
+  const dv = new DataView(wavBuf);
+  const ws = (o: number, s: string) => {
+    for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i));
+  };
+  ws(0, "RIFF");
+  dv.setUint32(4, 36 + pcm.length * 2, true);
+  ws(8, "WAVE");
+  ws(12, "fmt ");
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true);
+  dv.setUint16(22, 1, true);
+  dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * 2, true);
+  dv.setUint16(32, 2, true);
+  dv.setUint16(34, 16, true);
+  ws(36, "data");
+  dv.setUint32(40, pcm.length * 2, true);
+  for (let i = 0; i < pcm.length; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]));
+    dv.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+
+  const blob = new Blob([wavBuf], { type: "audio/wav" });
   const baseName = f.name.replace(/\.[^.]+$/, "");
-  return { mp3: new File([blob], `${baseName}.mp3`, { type: "audio/mpeg" }), duration: Math.ceil(duration) };
+  return {
+    audio: new File([blob], `${baseName}.wav`, { type: "audio/wav" }),
+    duration: Math.ceil(duration),
+    format: "wav",
+  };
 }
 
-// Slow path: real-time playback via <video> element (large video files)
+// Video files: real-time playback via <video> + MediaRecorder (WebM/Opus, no external lib)
 async function extractFromVideo(
   f: File,
-  Mp3Encoder: any,
   onProgress?: (msg: string) => void,
-): Promise<{ mp3: File; duration: number }> {
+): Promise<{ audio: File; duration: number; format: string }> {
   const url = URL.createObjectURL(f);
   try {
     const video = document.createElement("video");
@@ -138,54 +145,51 @@ async function extractFromVideo(
     });
 
     const duration = video.duration;
-    const sr = 16000;
-    const ctx = new AudioContext({ sampleRate: sr });
+    const ctx = new AudioContext();
     await ctx.resume();
 
     const source = ctx.createMediaElementSource(video);
-    const processor = ctx.createScriptProcessor(4096, 1, 1);
-    const gain = ctx.createGain();
-    gain.gain.value = 0;
+    const dest = ctx.createMediaStreamDestination();
+    source.connect(dest);
 
-    source.connect(processor);
-    processor.connect(gain);
-    gain.connect(ctx.destination);
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+    const recorder = new MediaRecorder(dest.stream, { mimeType, audioBitsPerSecond: 64000 });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
 
-    const encoder = new Mp3Encoder(1, sr, 64);
-    const chunks: Uint8Array[] = [];
+    const recordingDone = new Promise<Blob>((resolve) => {
+      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+    });
+    const playbackDone = new Promise<void>((resolve) => {
+      video.onended = () => resolve();
+    });
 
-    processor.onaudioprocess = (e: AudioProcessingEvent) => {
-      const input = e.inputBuffer.getChannelData(0);
-      const samples = new Int16Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        const s = Math.max(-1, Math.min(1, input[i]));
-        samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-      }
-      const mp3chunk = encoder.encodeBuffer(samples);
-      if (mp3chunk.length > 0) {
-        chunks.push(new Uint8Array(mp3chunk.buffer, mp3chunk.byteOffset, mp3chunk.byteLength));
-      }
+    const progressInterval = setInterval(() => {
       if (onProgress) {
         const pct = Math.round((video.currentTime / duration) * 100);
         onProgress(`Extracting audio… ${pct}%`);
       }
-    };
+    }, 1000);
 
+    recorder.start(1000);
     await video.play();
-    await new Promise<void>((resolve) => { video.onended = () => resolve(); });
+    await playbackDone;
+    clearInterval(progressInterval);
     await new Promise((r) => setTimeout(r, 500));
-
-    const last = encoder.flush();
-    if (last.length > 0) chunks.push(new Uint8Array(last.buffer, last.byteOffset, last.byteLength));
-
-    processor.disconnect();
-    source.disconnect();
-    gain.disconnect();
+    recorder.stop();
+    const blob = await recordingDone;
     ctx.close();
 
-    const blob = new Blob(chunks as unknown as BlobPart[], { type: "audio/mpeg" });
     const baseName = f.name.replace(/\.[^.]+$/, "");
-    return { mp3: new File([blob], `${baseName}.mp3`, { type: "audio/mpeg" }), duration: Math.ceil(duration) };
+    return {
+      audio: new File([blob], `${baseName}.webm`, { type: mimeType }),
+      duration: Math.ceil(duration),
+      format: "webm",
+    };
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -194,12 +198,11 @@ async function extractFromVideo(
 async function extractCompressedAudio(
   f: File,
   onProgress?: (msg: string) => void,
-): Promise<{ mp3: File; duration: number }> {
-  const { Mp3Encoder } = await import("lamejs");
+): Promise<{ audio: File; duration: number; format: string }> {
   if (isVideoFile(f)) {
-    return await extractFromVideo(f, Mp3Encoder, onProgress);
+    return await extractFromVideo(f, onProgress);
   }
-  return await compressViaDecode(f, Mp3Encoder);
+  return await compressToWav(f);
 }
 
 function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClose: () => void; onUploaded: () => void }) {
@@ -261,10 +264,10 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
       if (needsCompression(file)) {
         setProgress(isVideoFile(file) ? "Extracting audio from video..." : "Compressing audio...");
         try {
-          const { mp3, duration } = await extractCompressedAudio(file, setProgress);
-          uploadFile = mp3;
-          durationSeconds = duration;
-          fileFormat = "mp3";
+          const result = await extractCompressedAudio(file, setProgress);
+          uploadFile = result.audio;
+          durationSeconds = result.duration;
+          fileFormat = result.format;
         } catch (e) {
           console.error("Audio compression failed:", e);
           throw new Error("Failed to compress audio — try converting to MP3 first");
