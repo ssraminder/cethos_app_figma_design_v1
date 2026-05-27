@@ -1575,85 +1575,195 @@ export default function AdminQuoteDetail() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const handleRunPreprocessOcr = async (quoteFile: QuoteFile) => {
+  // Split + upload one quote_file's chunks. Returns the uploadedFiles[]
+  // entries to submit to ocr-batch-create. Updates per-file UI state.
+  // Throws on failure — caller is responsible for marking the file as 'error'.
+  const prepareOcrChunksForFile = async (
+    quoteFile: QuoteFile,
+    timestamp: number,
+  ): Promise<Array<{
+    filename: string;
+    originalFilename: string;
+    storagePath: string;
+    fileSize: number;
+    chunkIndex: number;
+    fileGroupId: string | null;
+  }>> => {
     const fileId = quoteFile.id;
-    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-
     const updateState = (patch: Partial<typeof ocrRunState[string]>) =>
       setOcrRunState(prev => ({ ...prev, [fileId]: { ...prev[fileId], ...patch } }));
 
+    // Step 1 - Get signed download URL
+    updateState({ status: 'downloading', message: 'Downloading file...' });
+
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from('quote-files')
+      .createSignedUrl(quoteFile.storage_path, 300);
+
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      throw new Error(`Could not generate download URL for ${quoteFile.original_filename}`);
+    }
+
+    // Step 2 - Download PDF into memory
+    const pdfResponse = await fetch(signedUrlData.signedUrl);
+    if (!pdfResponse.ok) throw new Error(`Failed to download ${quoteFile.original_filename}: HTTP ${pdfResponse.status}`);
+    const pdfArrayBuffer = await pdfResponse.arrayBuffer();
+
+    // Step 3 - Split into <= 3 page chunks
+    updateState({ status: 'splitting', message: 'Splitting into chunks...' });
+
+    const srcDoc = await PDFDocument.load(pdfArrayBuffer);
+    const totalPages = srcDoc.getPageCount();
+    const CHUNK_SIZE = 3;
+    const chunks: { doc: PDFDocument; startPage: number; endPage: number }[] = [];
+
+    for (let start = 0; start < totalPages; start += CHUNK_SIZE) {
+      const end = Math.min(start + CHUNK_SIZE, totalPages);
+      const chunkDoc = await PDFDocument.create();
+      const pages = await chunkDoc.copyPages(srcDoc, Array.from({ length: end - start }, (_, i) => start + i));
+      pages.forEach(p => chunkDoc.addPage(p));
+      chunks.push({ doc: chunkDoc, startPage: start + 1, endPage: end });
+    }
+
+    // Step 4 - Upload each chunk to ocr-uploads bucket
+    const baseName = quoteFile.original_filename.replace(/\.pdf$/i, '');
+    const uploadedFiles: Array<{
+      filename: string;
+      originalFilename: string;
+      storagePath: string;
+      fileSize: number;
+      chunkIndex: number;
+      fileGroupId: string | null;
+    }> = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      updateState({ status: 'uploading', message: `Uploading chunk ${i + 1} of ${chunks.length}...` });
+
+      const chunk = chunks[i];
+      const chunkBytes = await chunk.doc.save();
+      const chunkBlob = new Blob([chunkBytes], { type: 'application/pdf' });
+
+      // Per-file timestamp suffix keeps chunk filenames unique even when
+      // multiple files are uploaded in the same bulk run.
+      const chunkFilename = chunks.length === 1
+        ? `${baseName}_${timestamp}_${fileId.slice(0, 8)}.pdf`
+        : `${baseName}_p${chunk.startPage}-${chunk.endPage}_${timestamp}_${fileId.slice(0, 8)}.pdf`;
+
+      const storagePath = `quote-reprocess/${id}/${chunkFilename}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('ocr-uploads')
+        .upload(storagePath, chunkBlob, { contentType: 'application/pdf', upsert: true });
+
+      if (uploadError) throw new Error(`Upload failed for ${quoteFile.original_filename} chunk ${i + 1}: ${uploadError.message}`);
+
+      uploadedFiles.push({
+        filename: chunkFilename,
+        originalFilename: quoteFile.original_filename,
+        storagePath,
+        fileSize: chunkBytes.byteLength,
+        chunkIndex: i,
+        // Always set a fileGroupId so the server can group chunks belonging
+        // to the same source file, even within a multi-file batch.
+        fileGroupId: `quote-${id}-${fileId}-${timestamp}`,
+      });
+    }
+
+    updateState({
+      status: 'submitting',
+      message: 'Waiting for batch submission...',
+      chunkCount: chunks.length,
+    });
+
+    return uploadedFiles;
+  };
+
+  // Bulk OCR orchestrator — splits + uploads every passed file, then makes a
+  // SINGLE ocr-batch-create call so all files land in the same ocr_batches row.
+  // This restores the pre-regression behavior (1 quote → 1 OCR batch with N
+  // files). Per-file UI state still updates so each row shows its own progress.
+  const handleRunPreprocessOcrForFiles = async (quoteFiles: QuoteFile[]) => {
+    if (!quoteFiles.length || !id) return;
+
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const timestamp = Date.now();
+
+    // Duplicate-batch guard: warn if this quote already has OCR batches.
     try {
-      // Step 1 - Get signed download URL
-      updateState({ status: 'downloading', message: 'Downloading file...' });
+      const { count } = await supabase
+        .from('ocr_batches')
+        .select('id', { head: true, count: 'exact' })
+        .eq('quote_id', id);
 
-      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-        .from('quote-files')
-        .createSignedUrl(quoteFile.storage_path, 300);
-
-      if (signedUrlError || !signedUrlData?.signedUrl) {
-        throw new Error(`Could not generate download URL for ${quoteFile.original_filename}`);
+      if ((count ?? 0) > 0) {
+        const ok = window.confirm(
+          `This quote already has ${count} OCR batch${count === 1 ? '' : 'es'}. ` +
+          `Running OCR again will create another batch and re-bill for these ${quoteFiles.length} file(s). Continue?`,
+        );
+        if (!ok) return;
       }
+    } catch (err) {
+      console.warn('Could not check existing OCR batches; proceeding anyway:', err);
+    }
 
-      // Step 2 - Download PDF into memory
-      const pdfResponse = await fetch(signedUrlData.signedUrl);
-      if (!pdfResponse.ok) throw new Error(`Failed to download file: HTTP ${pdfResponse.status}`);
-      const pdfArrayBuffer = await pdfResponse.arrayBuffer();
-
-      // Step 3 - Split into <= 5 page chunks
-      updateState({ status: 'splitting', message: 'Splitting into chunks...' });
-
-      const srcDoc = await PDFDocument.load(pdfArrayBuffer);
-      const totalPages = srcDoc.getPageCount();
-      const CHUNK_SIZE = 3;
-      const chunks: { doc: PDFDocument; startPage: number; endPage: number }[] = [];
-
-      for (let start = 0; start < totalPages; start += CHUNK_SIZE) {
-        const end = Math.min(start + CHUNK_SIZE, totalPages);
-        const chunkDoc = await PDFDocument.create();
-        const pages = await chunkDoc.copyPages(srcDoc, Array.from({ length: end - start }, (_, i) => start + i));
-        pages.forEach(p => chunkDoc.addPage(p));
-        chunks.push({ doc: chunkDoc, startPage: start + 1, endPage: end });
+    // Initialise per-file state up-front so every row immediately shows
+    // 'queued' rather than 'idle' while earlier files are still uploading.
+    setOcrRunState(prev => {
+      const next = { ...prev };
+      for (const qf of quoteFiles) {
+        next[qf.id] = { status: 'downloading', message: 'Queued...' };
       }
+      return next;
+    });
 
-      // Step 4 - Upload each chunk to ocr-uploads bucket
-      const baseName = quoteFile.original_filename.replace('.pdf', '');
-      const timestamp = Date.now();
-      const uploadedFiles = [];
+    // Phase 1: split + upload every file's chunks sequentially to avoid
+    // saturating the storage API. Accumulate into a single uploadedFiles[].
+    const uploadedFiles: Array<{
+      filename: string;
+      originalFilename: string;
+      storagePath: string;
+      fileSize: number;
+      chunkIndex: number;
+      fileGroupId: string | null;
+    }> = [];
+    const failedFileIds: string[] = [];
 
-      for (let i = 0; i < chunks.length; i++) {
-        updateState({ status: 'uploading', message: `Uploading chunk ${i + 1} of ${chunks.length}...` });
-
-        const chunk = chunks[i];
-        const chunkBytes = await chunk.doc.save();
-        const chunkBlob = new Blob([chunkBytes], { type: 'application/pdf' });
-
-        const chunkFilename = chunks.length === 1
-          ? `${baseName}_${timestamp}.pdf`
-          : `${baseName}_p${chunk.startPage}-${chunk.endPage}_${timestamp}.pdf`;
-
-        const storagePath = `quote-reprocess/${id}/${chunkFilename}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('ocr-uploads')
-          .upload(storagePath, chunkBlob, { contentType: 'application/pdf', upsert: true });
-
-        if (uploadError) throw new Error(`Upload failed for chunk ${i + 1}: ${uploadError.message}`);
-
-        uploadedFiles.push({
-          filename: chunkFilename,
-          originalFilename: quoteFile.original_filename,
-          storagePath,
-          fileSize: chunkBytes.byteLength,
-          chunkIndex: i,
-          fileGroupId: chunks.length > 1 ? `quote-${id}-${timestamp}` : null,
-        });
+    for (const quoteFile of quoteFiles) {
+      try {
+        const chunks = await prepareOcrChunksForFile(quoteFile, timestamp);
+        uploadedFiles.push(...chunks);
+      } catch (err: any) {
+        console.error(`Preprocess error for ${quoteFile.original_filename}:`, err);
+        failedFileIds.push(quoteFile.id);
+        setOcrRunState(prev => ({
+          ...prev,
+          [quoteFile.id]: { ...prev[quoteFile.id], status: 'error', error: err.message || 'Unknown error' },
+        }));
+        toast.error(`Prep failed for ${quoteFile.original_filename}: ${err.message}`);
       }
+    }
 
-      // Step 5 - Call ocr-batch-create
-      updateState({ status: 'submitting', message: 'Submitting to OCR queue...' });
+    if (uploadedFiles.length === 0) {
+      toast.error('No files could be prepared for OCR.');
+      return;
+    }
 
+    // Phase 2: one ocr-batch-create call for ALL prepared chunks.
+    try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Not authenticated');
+
+      const succeededFiles = quoteFiles.filter(qf => !failedFileIds.includes(qf.id));
+      const fileLabels = succeededFiles.map(f => f.original_filename).join(', ');
+
+      // Mark all succeeded files as submitting while the POST is in flight.
+      setOcrRunState(prev => {
+        const next = { ...prev };
+        for (const qf of succeededFiles) {
+          next[qf.id] = { ...next[qf.id], status: 'submitting', message: 'Submitting to OCR queue...' };
+        }
+        return next;
+      });
 
       const batchRes = await fetch(`${SUPABASE_URL}/functions/v1/ocr-batch-create`, {
         method: 'POST',
@@ -1664,25 +1774,70 @@ export default function AdminQuoteDetail() {
         body: JSON.stringify({
           files: uploadedFiles,
           quoteId: id,
-          notes: `Re-processed from AdminQuoteDetail for quote ${quote?.quote_number}`,
+          notes: `Re-processed from AdminQuoteDetail for quote ${quote?.quote_number} ` +
+                 `(${succeededFiles.length} file${succeededFiles.length === 1 ? '' : 's'}: ${fileLabels})`,
         }),
       });
 
       const batchResult = await batchRes.json();
       if (!batchResult.success) throw new Error(batchResult.error || 'Batch creation failed');
 
-      updateState({
-        status: 'done',
-        message: `OCR batch queued - ${chunks.length} chunk(s) submitted.`,
-        batchId: batchResult.batchId,
-        chunkCount: chunks.length,
+      // Mark every succeeded file as done with the shared batchId.
+      setOcrRunState(prev => {
+        const next = { ...prev };
+        for (const qf of succeededFiles) {
+          const chunkCount = uploadedFiles.filter(u => u.originalFilename === qf.original_filename).length;
+          next[qf.id] = {
+            ...next[qf.id],
+            status: 'done',
+            message: `OCR batch queued — ${chunkCount} chunk(s) submitted.`,
+            batchId: batchResult.batchId,
+            chunkCount,
+          };
+        }
+        return next;
       });
-      toast.success(`OCR batch queued for ${quoteFile.original_filename}`);
+
+      if (succeededFiles.length === 1) {
+        toast.success(`OCR batch queued for ${succeededFiles[0].original_filename}`);
+      } else {
+        toast.success(`OCR batch queued — ${succeededFiles.length} files, ${uploadedFiles.length} chunks.`);
+      }
     } catch (err: any) {
-      console.error('Preprocess & OCR error:', err);
-      updateState({ status: 'error', error: err.message || 'Unknown error' });
-      toast.error(`OCR failed: ${err.message}`);
+      console.error('OCR batch submission error:', err);
+      const succeededFiles = quoteFiles.filter(qf => !failedFileIds.includes(qf.id));
+      setOcrRunState(prev => {
+        const next = { ...prev };
+        for (const qf of succeededFiles) {
+          next[qf.id] = { ...next[qf.id], status: 'error', error: err.message || 'Batch submission failed' };
+        }
+        return next;
+      });
+      toast.error(`OCR submission failed: ${err.message}`);
     }
+  };
+
+  // Single-file wrapper — kept for the per-row "Re-OCR this file" button.
+  const handleRunPreprocessOcr = async (quoteFile: QuoteFile) => {
+    return handleRunPreprocessOcrForFiles([quoteFile]);
+  };
+
+  // Bulk handler used by the panel-header "Run OCR for all source files" button.
+  // Filters to files that still need OCR (pending or failed) and are PDFs.
+  const handleRunPreprocessOcrAll = async () => {
+    const eligible = files.filter(f => {
+      const status = f.ai_processing_status;
+      const isEligibleStatus = status === 'pending' || status === 'failed' || !status;
+      const isPdf = f.mime_type === 'application/pdf';
+      return isEligibleStatus && isPdf;
+    });
+
+    if (eligible.length === 0) {
+      toast.error('No source PDF files are pending OCR.');
+      return;
+    }
+
+    return handleRunPreprocessOcrForFiles(eligible);
   };
 
   const getSignedUrl = async (file: NormalizedFile): Promise<string | null> => {
@@ -3730,6 +3885,34 @@ export default function AdminQuoteDetail() {
                       Uploaded Files ({translateFiles.length})
                     </h2>
                     <div className="flex items-center gap-2">
+                      {(() => {
+                        // Show the bulk OCR button when at least one source file
+                        // still needs OCR (pending/failed) — restores the
+                        // pre-regression "1 quote → 1 batch" behavior. We're
+                        // intentionally permissive: any in-flight file pauses
+                        // the button.
+                        const bulkEligible = files.filter(f => {
+                          const status = f.ai_processing_status;
+                          const isEligibleStatus =
+                            status === 'pending' || status === 'failed' || !status;
+                          return isEligibleStatus && f.mime_type === 'application/pdf';
+                        });
+                        const anyBusy = Object.values(ocrRunState).some(
+                          s => s && !['idle', 'done', 'error'].includes(s.status),
+                        );
+                        if (bulkEligible.length < 2) return null;
+                        return (
+                          <button
+                            onClick={handleRunPreprocessOcrAll}
+                            disabled={anyBusy}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-700 border border-orange-300 rounded hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title={`Run Preprocess & OCR for all ${bulkEligible.length} source PDFs in one batch`}
+                          >
+                            <Cpu className="w-3.5 h-3.5" />
+                            Run OCR for all {bulkEligible.length} files
+                          </button>
+                        );
+                      })()}
                       {isZipping && zipProgress && (
                         <span className="text-xs text-gray-500">
                           Zipping {zipProgress.current} of {zipProgress.total}...
