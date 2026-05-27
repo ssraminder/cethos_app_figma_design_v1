@@ -207,6 +207,9 @@ interface AIAnalysis {
   _groupId?: string;
   _displayName?: string;
   certification_type_id?: string | null;
+  manual_filename?: string | null;
+  calculation_unit?: string | null;
+  unit_quantity?: number | string | null;
 }
 
 interface QuoteDocumentGroup {
@@ -5233,18 +5236,45 @@ export default function AdminQuoteDetail() {
                       const qf = files.find(
                         (f) => f.id === item.quote_file_id,
                       );
-                      const fileName = item._displayName || nf?.displayName || qf?.original_filename || `Document ${index + 1}`;
+                      const fileName = item._displayName || nf?.displayName || qf?.original_filename || item.manual_filename || `Document ${index + 1}`;
+                      const unit = item.calculation_unit;
+                      const qty = Number(item.unit_quantity ?? 0);
+                      const rate = Number(item.base_rate ?? 0);
+                      const unitLabel: Record<string, string> = {
+                        per_page: qty === 1 ? "page" : "pages",
+                        per_word: qty === 1 ? "word" : "words",
+                        per_hour: qty === 1 ? "hour" : "hours",
+                        per_minute: qty === 1 ? "min" : "min",
+                        flat: "flat",
+                      };
+                      const breakdown = unit && unit !== "flat" && qty > 0 && rate > 0
+                        ? `${qty} ${unitLabel[unit] ?? unit} × $${rate.toFixed(2)}/${unitLabel[unit]?.replace(/s$/, "") ?? unit}`
+                        : unit === "flat" && rate > 0
+                          ? `Flat $${rate.toFixed(2)}`
+                          : null;
                       return (
                         <div
                           key={item.id}
-                          className="flex justify-between items-center text-sm group"
+                          className="flex justify-between items-start text-sm group"
                         >
-                          <span
-                            className="text-gray-600 truncate pr-3"
-                            title={fileName}
-                          >
-                            {fileName}
-                          </span>
+                          <div className="min-w-0 pr-3">
+                            <div
+                              className="text-gray-600 truncate"
+                              title={fileName}
+                            >
+                              {fileName}
+                            </div>
+                            {breakdown && (
+                              <div className="text-xs text-gray-400 truncate" title={breakdown}>
+                                {breakdown}
+                              </div>
+                            )}
+                            {item.detected_document_type && (
+                              <div className="text-xs text-gray-400 truncate">
+                                {item.detected_document_type}
+                              </div>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-gray-600">
                               {/* line_total is translation-only under the
