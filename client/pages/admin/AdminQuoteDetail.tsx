@@ -850,6 +850,8 @@ export default function AdminQuoteDetail() {
     if (!quote?.customer_id || !quote?.id) return;
 
     const fetchQuoteToken = async () => {
+      // maybeSingle() returns null (not a 406) when no rows match — quotes
+      // without a Create Quote Link click yet are the common case here.
       const { data } = await supabase
         .from('customer_magic_links')
         .select('token, expires_at')
@@ -859,7 +861,7 @@ export default function AdminQuoteDetail() {
         .eq('is_valid', true)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (data) {
         setQuoteReviewToken(data.token);
