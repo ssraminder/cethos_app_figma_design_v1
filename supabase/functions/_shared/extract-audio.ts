@@ -10,12 +10,17 @@
 // goes through this path.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { generateSignedUrl, getSttInputBucketName, ensureSttInputBucket } from "./google-storage.ts";
 
 export type ExtractResult = {
   success: true;
   durationSeconds: number;
   outputSizeBytes: number;
+  // For Supabase-source jobs: output written to Supabase, outputPath is the
+  // bucket-relative path. For GCS-source jobs: output written to GCS,
+  // outputGcsUri is the gs:// URI (outputPath is the object name).
   outputPath: string;
+  outputGcsUri?: string;
   outputFormat: "webm";
   extractMs: number;
   totalMs: number;
@@ -26,11 +31,17 @@ export type ExtractResult = {
 
 export interface ExtractOptions {
   // Path inside the transcription-uploads bucket where the source file lives.
-  inputBucket: string;
-  inputPath: string;
-  // Where to write the extracted audio (same bucket, derived path is fine).
-  outputBucket: string;
-  outputPath: string;
+  // Set when the source is in Supabase Storage (legacy path).
+  inputBucket?: string;
+  inputPath?: string;
+  // gs:// URI of source in Google Cloud Storage (GCS-direct path).
+  // When set, takes precedence over inputBucket/inputPath. Output also
+  // goes to GCS instead of Supabase.
+  inputGcsUri?: string;
+  // Where to write the extracted audio (Supabase path — used when input
+  // is also Supabase).
+  outputBucket?: string;
+  outputPath?: string;
   // Optional ffmpeg knobs — defaults are STT-friendly (Opus 32 kbps mono 16 kHz).
   bitrateKbps?: number;
   channels?: number;
@@ -54,33 +65,76 @@ export async function extractAudioViaCloudRun(opts: ExtractOptions): Promise<Ext
     return { success: false, error: "CETHOS_AUDIO_EXTRACTOR_SECRET not configured" };
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const admin = createClient(supabaseUrl, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  // Two source paths: GCS-direct (preferred, new) or Supabase Storage (legacy).
+  // GCS path skips Supabase entirely — relevant when the browser uploaded
+  // directly to GCS via transcription-create-gcs-upload-url.
 
-  // 1) Signed URL the extractor will download from
-  const { data: signedIn, error: signInErr } = await admin.storage
-    .from(opts.inputBucket)
-    .createSignedUrl(opts.inputPath, 60 * 60);   // 1 hour
-  if (signInErr || !signedIn?.signedUrl) {
-    return { success: false, error: `failed to sign input URL: ${signInErr?.message ?? "unknown"}` };
+  let inputUrl: string;
+  let outputUploadUrl: string;
+  let outputPath: string;
+  let outputGcsUri: string | undefined;
+
+  if (opts.inputGcsUri) {
+    // GCS source → GCS output. Derive output path from input path by replacing
+    // the prefix `uploads/{jobId}/raw_{i}.{ext}` → `extracted/{jobId}/audio_{i}.webm`.
+    const match = opts.inputGcsUri.match(/^gs:\/\/([^/]+)\/(.+)$/);
+    if (!match) return { success: false, error: `invalid inputGcsUri: ${opts.inputGcsUri}` };
+    const [, inputBucket, inputObject] = match;
+
+    const bucketName = await ensureSttInputBucket();
+    if (bucketName !== inputBucket) {
+      console.warn(`extract: input bucket ${inputBucket} differs from STT bucket ${bucketName}`);
+    }
+
+    // Derive a parallel "extracted/" path under the same bucket.
+    const outObject = inputObject
+      .replace(/^uploads\//, "extracted/")
+      .replace(/\.[^.]+$/, ".webm");
+    outputPath = outObject;
+    outputGcsUri = `gs://${inputBucket}/${outObject}`;
+
+    inputUrl = await generateSignedUrl(inputBucket, inputObject, {
+      method: "GET",
+      expirySeconds: 60 * 60,
+    });
+    outputUploadUrl = await generateSignedUrl(inputBucket, outObject, {
+      method: "PUT",
+      contentType: "audio/webm",
+      expirySeconds: 60 * 60,
+    });
+  } else {
+    // Supabase source (legacy path) → Supabase output.
+    if (!opts.inputBucket || !opts.inputPath || !opts.outputBucket || !opts.outputPath) {
+      return { success: false, error: "Supabase mode requires inputBucket, inputPath, outputBucket, outputPath" };
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const admin = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data: signedIn, error: signInErr } = await admin.storage
+      .from(opts.inputBucket)
+      .createSignedUrl(opts.inputPath, 60 * 60);
+    if (signInErr || !signedIn?.signedUrl) {
+      return { success: false, error: `failed to sign input URL: ${signInErr?.message ?? "unknown"}` };
+    }
+    const { data: signedOut, error: signOutErr } = await admin.storage
+      .from(opts.outputBucket)
+      .createSignedUploadUrl(opts.outputPath);
+    if (signOutErr || !signedOut?.signedUrl) {
+      return { success: false, error: `failed to sign output URL: ${signOutErr?.message ?? "unknown"}` };
+    }
+    inputUrl = signedIn.signedUrl;
+    outputUploadUrl = signedOut.signedUrl;
+    outputPath = opts.outputPath;
   }
 
-  // 2) Signed upload URL the extractor will PUT to
-  const { data: signedOut, error: signOutErr } = await admin.storage
-    .from(opts.outputBucket)
-    .createSignedUploadUrl(opts.outputPath);
-  if (signOutErr || !signedOut?.signedUrl) {
-    return { success: false, error: `failed to sign output URL: ${signOutErr?.message ?? "unknown"}` };
-  }
-
-  // 3) Call the extractor. Cloud Run signed-upload-url expects a PUT.
   const extractEndpoint = `${extractorUrl.replace(/\/+$/, "")}/extract`;
   const body = {
-    input_url: signedIn.signedUrl,
-    output_upload_url: signedOut.signedUrl,
+    input_url: inputUrl,
+    output_upload_url: outputUploadUrl,
     output_upload_method: "PUT",
     output_content_type: "audio/webm",
     bitrate_kbps: opts.bitrateKbps ?? 32,
@@ -120,7 +174,8 @@ export async function extractAudioViaCloudRun(opts: ExtractOptions): Promise<Ext
     success: true,
     durationSeconds: Number(json.duration_seconds ?? 0),
     outputSizeBytes: Number(json.output_size_bytes ?? 0),
-    outputPath: opts.outputPath,
+    outputPath,
+    outputGcsUri,
     outputFormat: "webm",
     extractMs: Number(json.extract_ms ?? 0),
     totalMs: Number(json.total_ms ?? 0),

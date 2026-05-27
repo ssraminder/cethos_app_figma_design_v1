@@ -85,6 +85,10 @@ serve(async (req: Request) => {
       size: number;
       duration: number;
       format: string;
+      // GCS-direct upload path (preferred). When set, the source file lives
+      // in Google Cloud Storage instead of Supabase storage, and downstream
+      // code uses it directly without round-tripping via Supabase.
+      gcs_uri?: string;
       transcript_text?: string;
       transcript_json?: unknown;
       translated_text?: string;
@@ -121,13 +125,20 @@ serve(async (req: Request) => {
       });
 
       // Path convention: same job dir, `audio/` subfolder, .webm output.
+      // For GCS-source files: extractAudioViaCloudRun handles its own
+      // input/output path derivation (uploads/ → extracted/ in the same
+      // bucket). For Supabase-source files: we pass explicit bucket+path.
       const extractedPath = `${jobId}/audio/extracted_${fi}.webm`;
-      const result = await extractAudioViaCloudRun({
-        inputBucket: "transcription-uploads",
-        inputPath: sf.path,
-        outputBucket: "transcription-uploads",
-        outputPath: extractedPath,
-      });
+      const result = sf.gcs_uri
+        ? await extractAudioViaCloudRun({
+            inputGcsUri: sf.gcs_uri,
+          })
+        : await extractAudioViaCloudRun({
+            inputBucket: "transcription-uploads",
+            inputPath: sf.path,
+            outputBucket: "transcription-uploads",
+            outputPath: extractedPath,
+          });
 
       if (!result.success) {
         await markFailed(admin, jobId, `Audio extraction failed: ${result.error}`);
@@ -139,10 +150,13 @@ serve(async (req: Request) => {
       }
 
       // Rewrite the source file entry to point at the extracted audio so the
-      // rest of the pipeline transparently uses it.
+      // rest of the pipeline transparently uses it. For GCS sources the
+      // extracted audio is also in GCS; for Supabase sources it stays in
+      // Supabase storage.
       sourceFiles[fi] = {
         ...sf,
         path: result.outputPath,
+        gcs_uri: result.outputGcsUri ?? sf.gcs_uri,
         format: result.outputFormat,
         size: result.outputSizeBytes,
         // Prefer the duration ffmpeg measured (server-side, accurate) over
@@ -799,7 +813,7 @@ async function resolveProviderChain(
 
 async function callProvider(
   providerName: string,
-  sf: { name: string; path: string; size: number; duration: number; format: string },
+  sf: { name: string; path: string; size: number; duration: number; format: string; gcs_uri?: string },
   job: Record<string, unknown>,
   admin: ReturnType<typeof getServiceClient>,
   jobId: string,
@@ -808,39 +822,76 @@ async function callProvider(
   const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
   const fileJob = { ...job, file_format: sf.format };
 
-  // URL-ingest providers: AssemblyAI, Deepgram (Phase 1) — no edge-function download.
-  if (providerName === "assemblyai" || providerName === "deepgram") {
-    const { data: signedUrlData, error: urlErr } = await admin.storage
+  // Helper: obtain a download URL for the source file regardless of where it lives
+  // (Supabase storage path OR GCS uri). URL-ingest providers consume this directly;
+  // download-required providers fetch from it.
+  const getSignedDownloadUrl = async (): Promise<string> => {
+    if (sf.gcs_uri) {
+      const { generateSignedUrl } = await import("../_shared/google-storage.ts");
+      const match = sf.gcs_uri.match(/^gs:\/\/([^/]+)\/(.+)$/);
+      if (!match) throw new Error(`invalid gcs_uri on source file: ${sf.gcs_uri}`);
+      const [, bucket, object] = match;
+      return generateSignedUrl(bucket, object, { method: "GET", expirySeconds: 3600 });
+    }
+    const { data, error } = await admin.storage
       .from("transcription-uploads")
       .createSignedUrl(sf.path, 3600);
-    if (urlErr || !signedUrlData?.signedUrl) {
-      throw new Error(`Failed to create signed URL for ${sf.name}`);
+    if (error || !data?.signedUrl) {
+      throw new Error(`Failed to sign URL for ${sf.name}: ${error?.message ?? "unknown"}`);
     }
+    return data.signedUrl;
+  };
+
+  const downloadSourceBlob = async (): Promise<Blob> => {
+    if (sf.size > MAX_DOWNLOAD_BYTES) {
+      throw new Error(`File too large for ${providerName}: ${sf.name} (${(sf.size / 1024 / 1024).toFixed(0)} MB)`);
+    }
+    if (sf.gcs_uri) {
+      const url = await getSignedDownloadUrl();
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`failed to fetch GCS source for ${sf.name}: ${resp.status}`);
+      return resp.blob();
+    }
+    const { data, error } = await admin.storage
+      .from("transcription-uploads")
+      .download(sf.path);
+    if (error || !data) throw new Error(`Failed to download ${sf.name}: ${error?.message ?? "unknown"}`);
+    return data;
+  };
+
+  // URL-ingest providers — no edge-function download. AssemblyAI + Deepgram
+  // accept any HTTP(S) URL, including GCS signed URLs.
+  if (providerName === "assemblyai" || providerName === "deepgram") {
+    const signedUrl = await getSignedDownloadUrl();
     return providerName === "assemblyai"
-      ? transcribeAssemblyAi(signedUrlData.signedUrl, fileJob)
-      : transcribeDeepgram(signedUrlData.signedUrl, fileJob);
+      ? transcribeAssemblyAi(signedUrl, fileJob)
+      : transcribeDeepgram(signedUrl, fileJob);
   }
 
-  // Download-required providers: OpenAI, ElevenLabs, Google (Phase 1 sync recognize).
-  if (sf.size > MAX_DOWNLOAD_BYTES) {
-    throw new Error(`File too large for ${providerName}: ${sf.name} (${(sf.size / 1024 / 1024).toFixed(0)} MB)`);
+  // Download-required providers: OpenAI, ElevenLabs, Google (sync recognize).
+  // Google batch path takes a different route via routingHints.gcsUri below.
+  if (providerName === "openai") {
+    const blob = await downloadSourceBlob();
+    return transcribeOpenAi(blob, fileJob);
   }
-  const { data: fileData, error: dlErr } = await admin.storage
-    .from("transcription-uploads")
-    .download(sf.path);
-  if (dlErr || !fileData) {
-    throw new Error(`Failed to download ${sf.name}`);
+  if (providerName === "elevenlabs") {
+    const blob = await downloadSourceBlob();
+    return transcribeElevenLabs(blob, fileJob);
   }
-
-  if (providerName === "openai") return transcribeOpenAi(fileData, fileJob);
-  if (providerName === "elevenlabs") return transcribeElevenLabs(fileData, fileJob);
-  if (providerName === "google") return transcribeGoogle(fileData, fileJob, {
-    jobId,
-    fileIndex,
-    fileFormat: sf.format,
-    durationSec: sf.duration,
-    sizeBytes: sf.size,
-  });
+  if (providerName === "google") {
+    // Google routes to sync or batch inside transcribeGoogle. For batch we
+    // can skip the in-function uploadAudioToGcs step entirely if the file
+    // is already in GCS — pass gcsUri as a routing hint.
+    const blob = sf.gcs_uri ? new Blob([]) : await downloadSourceBlob();
+    return transcribeGoogle(blob, fileJob, {
+      jobId,
+      fileIndex,
+      fileFormat: sf.format,
+      durationSec: sf.duration,
+      sizeBytes: sf.size,
+      gcsUri: sf.gcs_uri,
+    });
+  }
   throw new Error(`Unknown provider: ${providerName}`);
 }
 
@@ -1309,12 +1360,17 @@ async function transcribeGoogleSync(
 // name. The main handler stores the name on the job and exits; the cron
 // function transcription-poll-google-batch polls until done and fills in the
 // transcript.
+//
+// When existingGcsUri is provided (GCS-direct upload path), we skip the
+// audio re-upload — the file is already in GCS and batchRecognize can read
+// it in place.
 async function transcribeGoogleBatch(
   audioBlob: Blob,
   job: Record<string, unknown>,
   jobId: string,
   fileIndex: number,
   fileFormat: string,
+  existingGcsUri?: string,
 ): Promise<TranscriptResult> {
   const { ensureSttInputBucket, uploadAudioToGcs } = await import("../_shared/google-storage.ts");
 
@@ -1322,11 +1378,16 @@ async function transcribeGoogleBatch(
   const projectId = getGoogleProjectId();
   const languageCodes = await resolveGoogleLanguageCodes(job);
 
-  // Stage the audio in GCS so batchRecognize can read it.
-  const bucketName = await ensureSttInputBucket();
-  const objectName = `jobs/${jobId}/audio_${fileIndex}.${fileFormat}`;
-  const contentType = audioBlob.type || `audio/${fileFormat}`;
-  const gcsUri = await uploadAudioToGcs(bucketName, objectName, audioBlob, contentType);
+  // Use existing GCS file when available; otherwise stage the blob.
+  let gcsUri: string;
+  if (existingGcsUri) {
+    gcsUri = existingGcsUri;
+  } else {
+    const bucketName = await ensureSttInputBucket();
+    const objectName = `jobs/${jobId}/audio_${fileIndex}.${fileFormat}`;
+    const contentType = audioBlob.type || `audio/${fileFormat}`;
+    gcsUri = await uploadAudioToGcs(bucketName, objectName, audioBlob, contentType);
+  }
 
   // Kick off the long-running batch operation.
   const body = {
@@ -1377,7 +1438,7 @@ async function transcribeGoogleBatch(
 async function transcribeGoogle(
   audioBlob: Blob,
   job: Record<string, unknown>,
-  routingHints?: { jobId?: string; fileIndex?: number; fileFormat?: string; durationSec?: number; sizeBytes?: number },
+  routingHints?: { jobId?: string; fileIndex?: number; fileFormat?: string; durationSec?: number; sizeBytes?: number; gcsUri?: string },
 ): Promise<TranscriptResult> {
   const SYNC_MAX_BYTES = 10 * 1024 * 1024;
   const SYNC_MAX_SECONDS = 60;
@@ -1386,11 +1447,21 @@ async function transcribeGoogle(
   const needsBatch = size > SYNC_MAX_BYTES || duration > SYNC_MAX_SECONDS;
 
   if (!needsBatch) {
+    // Sync path requires the bytes inline. If caller passed gcsUri (no blob),
+    // we have to download from GCS for the inline base64 request.
+    if (routingHints?.gcsUri && audioBlob.size === 0) {
+      const { generateSignedUrl } = await import("../_shared/google-storage.ts");
+      const match = routingHints.gcsUri.match(/^gs:\/\/([^/]+)\/(.+)$/);
+      if (!match) throw new Error(`invalid gcsUri: ${routingHints.gcsUri}`);
+      const [, bucket, object] = match;
+      const url = await generateSignedUrl(bucket, object, { method: "GET", expirySeconds: 3600 });
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`failed to download GCS source for sync recognize: ${resp.status}`);
+      audioBlob = await resp.blob();
+    }
     return transcribeGoogleSync(audioBlob, job);
   }
   if (!routingHints?.jobId) {
-    // Caller didn't pass enough context to upload to GCS. Should not happen
-    // in normal flow — callProvider always passes them — but fail loud.
     throw new Error(`Google STT batch routing requires jobId + fileIndex + fileFormat in routingHints`);
   }
   return transcribeGoogleBatch(
@@ -1399,6 +1470,7 @@ async function transcribeGoogle(
     routingHints.jobId,
     routingHints.fileIndex ?? 0,
     routingHints.fileFormat ?? "audio",
+    routingHints.gcsUri,
   );
 }
 
