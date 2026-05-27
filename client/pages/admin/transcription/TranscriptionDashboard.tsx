@@ -104,6 +104,35 @@ function needsCompression(f: File): boolean {
   return isVideoFile(f) || f.size > COMPRESS_THRESHOLD_BYTES;
 }
 
+// Quick duration probe for video files — uses <video preload="metadata"> so
+// the browser only reads the container header, not the whole file. Resolves
+// in well under a second for any reasonable file. We need a rough duration at
+// upload time so the per-language fallback chain can drop providers whose
+// duration cap is exceeded; the server-side extraction will refine it with
+// ffmpeg's exact reading later.
+async function probeVideoDuration(f: File): Promise<number> {
+  const url = URL.createObjectURL(f);
+  try {
+    return await new Promise<number>((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.src = url;
+      const timer = setTimeout(() => reject(new Error("metadata load timeout")), 10000);
+      video.onloadedmetadata = () => {
+        clearTimeout(timer);
+        const d = isFinite(video.duration) ? video.duration : 0;
+        resolve(d > 0 ? Math.ceil(d) : 0);
+      };
+      video.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error("video metadata load failed"));
+      };
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 // Fast path for large audio files: resample to 16kHz mono WAV (no external lib)
 async function compressToWav(f: File): Promise<{ audio: File; duration: number; format: string }> {
   const buf = await f.arrayBuffer();
@@ -299,47 +328,51 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
     const sourceFiles: Array<{ name: string; path: string; size: number; duration: number; format: string }> = [];
 
     try {
-      // Upload each file to storage under the same job ID
+      // Upload each file to storage under the same job ID.
+      //
+      // Browser-side audio extraction has been removed — transcription-process
+      // calls the cethos-stt-extractor Cloud Run service for any video file
+      // before STT runs. So we just upload raw bytes (video or audio) here and
+      // let the server do the heavy lifting. This makes the modal close in
+      // seconds instead of hours even for a 2hr video.
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         setProgress(`Uploading file ${i + 1} of ${files.length}: ${file.name}`);
 
-        let uploadFile = file;
-        let durationSeconds = 60;
-        let fileFormat = file.name.split(".").pop()?.toLowerCase() ?? "mp3";
-
-        if (needsCompression(file)) {
-          setProgress(isVideoFile(file) ? `Extracting audio: ${file.name}` : `Compressing: ${file.name}`);
-          const result = await extractCompressedAudio(file, setProgress);
-          uploadFile = result.audio;
-          durationSeconds = result.duration;
-          fileFormat = result.format;
-        }
-
-        const storagePath = `${jobId}/source/audio_${i}.${fileFormat}`;
-        const buf = await uploadFile.arrayBuffer();
-        const contentType = (uploadFile.type || "application/octet-stream").split(";")[0];
+        const fileFormat = file.name.split(".").pop()?.toLowerCase() ?? "bin";
+        const storagePath = `${jobId}/source/raw_${i}.${fileFormat}`;
+        const buf = await file.arrayBuffer();
+        const contentType = (file.type || "application/octet-stream").split(";")[0];
 
         const { error: upErr } = await supabase.storage
           .from("transcription-uploads")
           .upload(storagePath, buf, { contentType, upsert: false });
         if (upErr) throw new Error(`Upload failed for ${file.name}: ${upErr.message}`);
 
-        if (!needsCompression(file)) {
-          try {
+        // Best-effort duration probe. For audio files AudioContext works
+        // directly; for video files the <video> element reads container
+        // metadata without playing through (metadata preload).
+        let durationSeconds = 60;
+        try {
+          if (isVideoFile(file)) {
+            durationSeconds = await probeVideoDuration(file);
+          } else {
             const audioCtx = new AudioContext();
             const audioBuffer = await audioCtx.decodeAudioData(buf.slice(0));
             durationSeconds = Math.ceil(audioBuffer.duration);
             audioCtx.close();
-          } catch {
-            durationSeconds = Math.max(1, Math.ceil(uploadFile.size / 16000));
           }
+        } catch {
+          // Couldn't probe — server-side ffmpeg will overwrite with the
+          // accurate duration during extraction (for videos) or STT will
+          // report it (for audio).
+          durationSeconds = Math.max(1, Math.ceil(file.size / 16000));
         }
 
         sourceFiles.push({
           name: file.name,
           path: storagePath,
-          size: uploadFile.size,
+          size: file.size,
           duration: durationSeconds,
           format: fileFormat,
         });
