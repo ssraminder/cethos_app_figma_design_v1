@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import * as tus from "tus-js-client";
 import {
   Search,
   Filter,
@@ -94,6 +95,49 @@ const LANG_SCRIPT_LABELS: Record<string, string> = {
 
 const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "avi", "mkv", "webm", "wmv", "flv", "m4v"]);
 const COMPRESS_THRESHOLD_BYTES = 25 * 1024 * 1024; // 25 MB
+// Files >50 MB go through Supabase Storage's TUS resumable endpoint.
+// The standard POST endpoint silently 400s on sequential large-file uploads
+// in the same session — caught when two 132 MB MP4s were queued and the
+// second one consistently failed at 400 with no body.
+const TUS_THRESHOLD_BYTES = 50 * 1024 * 1024;
+const TUS_CHUNK_SIZE = 6 * 1024 * 1024; // 6 MB — Supabase recommendation
+
+async function uploadResumable(
+  file: File | Blob,
+  bucket: string,
+  path: string,
+  contentType: string,
+  onProgress?: (uploaded: number, total: number) => void,
+): Promise<void> {
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error("Supabase URL/key not configured");
+  }
+  return new Promise<void>((resolve, reject) => {
+    const upload = new tus.Upload(file, {
+      endpoint: `${SUPABASE_URL}/storage/v1/upload/resumable`,
+      retryDelays: [0, 3000, 5000, 10000, 20000],
+      headers: {
+        authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "x-upsert": "false",
+      },
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      chunkSize: TUS_CHUNK_SIZE,
+      metadata: {
+        bucketName: bucket,
+        objectName: path,
+        contentType: contentType || "application/octet-stream",
+        cacheControl: "3600",
+      },
+      onError: (err) => reject(err),
+      onProgress: (uploaded, total) => onProgress?.(uploaded, total),
+      onSuccess: () => resolve(),
+    });
+    upload.start();
+  });
+}
 
 function isVideoFile(f: File): boolean {
   const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
@@ -341,13 +385,35 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
 
         const fileFormat = file.name.split(".").pop()?.toLowerCase() ?? "bin";
         const storagePath = `${jobId}/source/raw_${i}.${fileFormat}`;
-        const buf = await file.arrayBuffer();
         const contentType = (file.type || "application/octet-stream").split(";")[0];
 
-        const { error: upErr } = await supabase.storage
-          .from("transcription-uploads")
-          .upload(storagePath, buf, { contentType, upsert: false });
-        if (upErr) throw new Error(`Upload failed for ${file.name}: ${upErr.message}`);
+        // Standard POST endpoint for small files (fast); TUS resumable for
+        // anything bigger so sequential large uploads don't trip the silent
+        // 400 from the standard endpoint.
+        if (file.size > TUS_THRESHOLD_BYTES) {
+          try {
+            await uploadResumable(
+              file,
+              "transcription-uploads",
+              storagePath,
+              contentType,
+              (uploaded, total) => {
+                const pct = total > 0 ? Math.round((uploaded / total) * 100) : 0;
+                setProgress(
+                  `Uploading file ${i + 1} of ${files.length}: ${file.name} (${pct}%)`,
+                );
+              },
+            );
+          } catch (err: any) {
+            throw new Error(`Upload failed for ${file.name}: ${err?.message || err}`);
+          }
+        } else {
+          const buf = await file.arrayBuffer();
+          const { error: upErr } = await supabase.storage
+            .from("transcription-uploads")
+            .upload(storagePath, buf, { contentType, upsert: false });
+          if (upErr) throw new Error(`Upload failed for ${file.name}: ${upErr.message}`);
+        }
 
         // Best-effort duration probe. For audio files AudioContext works
         // directly; for video files the <video> element reads container
@@ -357,8 +423,13 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
           if (isVideoFile(file)) {
             durationSeconds = await probeVideoDuration(file);
           } else {
+            // Re-read the file buffer here — the upload branch above may
+            // not have loaded it into memory (TUS streams from the File
+            // directly), and this also keeps memory pressure lower for
+            // large files that hit the catch fallback instead.
+            const audioBuf = await file.arrayBuffer();
             const audioCtx = new AudioContext();
-            const audioBuffer = await audioCtx.decodeAudioData(buf.slice(0));
+            const audioBuffer = await audioCtx.decodeAudioData(audioBuf);
             durationSeconds = Math.ceil(audioBuffer.duration);
             audioCtx.close();
           }
