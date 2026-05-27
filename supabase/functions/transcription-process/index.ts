@@ -101,9 +101,36 @@ serve(async (req: Request) => {
     // ── Call STT provider (per file, then merge) ────────────────────────
     // Resolve the per-language fallback chain once per job (provider may be overridden
     // per language) — the chain is walked per file so each chunk gets a fresh try.
+    // The chain also filters out providers whose per-request duration cap is exceeded
+    // by the longest single file in this job — we don't yet split audio server-side,
+    // so OpenAI/Google get dropped for hour-long inputs in favor of URL-ingest providers.
     const initialProvider = (job.provider as string | null) ?? "deepgram";
     const sourceLangCode = await resolveSourceLangCode(admin, job);
-    const providerChain = await resolveProviderChain(admin, sourceLangCode, initialProvider);
+    const longestFileDurationSec = sourceFiles.reduce(
+      (acc, sf) => Math.max(acc, sf.duration ?? 0),
+      0,
+    );
+    const { chain: providerChain, demoted } = await resolveProviderChain(
+      admin,
+      sourceLangCode,
+      initialProvider,
+      longestFileDurationSec,
+    );
+
+    if (demoted.length > 0) {
+      await auditLog(admin, jobId, "providers_demoted_by_duration", "system", null, {
+        longest_file_seconds: longestFileDurationSec,
+        demoted,
+        remaining_chain: providerChain,
+      });
+    }
+
+    if (providerChain.length === 0) {
+      const longestMin = Math.round(longestFileDurationSec / 60);
+      const msg = `No STT provider in this job's fallback chain supports a ${longestMin} min file. Split the file before upload, or pick a URL-ingest provider (Deepgram, AssemblyAI) manually.`;
+      await markFailed(admin, jobId, msg);
+      return jsonResponse({ success: false, error: msg }, 400);
+    }
 
     let provider = providerChain[0];
     const allTranscripts: TranscriptResult[] = [];
@@ -447,6 +474,27 @@ serve(async (req: Request) => {
 
 // ── Per-language provider fallback chain ────────────────────────────────────
 
+// Per-provider hard upper bounds (seconds). Files longer than this get demoted
+// out of the provider's slot in the fallback chain by resolveProviderChain.
+// True audio-splitting (slice file into N chunks, run STT per chunk, stitch)
+// requires ffmpeg / Web Audio API which a Deno edge function can't do — that
+// lands in a Phase 2 worker. For Phase 1 we route around the problem instead:
+// long files go to URL-ingest providers (Deepgram, AssemblyAI) that can stream
+// arbitrarily long audio natively.
+const PROVIDER_DURATION_CAPS_SECONDS: Record<string, number> = {
+  openai: 25 * 60,              // gpt-4o-transcribe: 25 min hard limit
+  google: 60,                   // v2 sync recognize: 60 s inline (batch async = Phase 2)
+  elevenlabs: 4 * 60 * 60,      // scribe-v2: ~4 h soft cap
+  deepgram: 10 * 60 * 60,       // nova-3 prerecorded via URL: comfortably 10 h+
+  assemblyai: 10 * 60 * 60,     // universal-2 async: 10 h+
+};
+
+function providerSupportsDuration(provider: string, durationSec: number): boolean {
+  const cap = PROVIDER_DURATION_CAPS_SECONDS[provider];
+  // Unknown providers: allow (don't filter on missing data)
+  return cap === undefined || durationSec <= cap;
+}
+
 // Per-language fallback chains — picked by the source language code (ISO 639-1).
 // The "default" chain is used when the language is auto-detect or unmapped.
 // Indic / RTL languages favor ElevenLabs (best accuracy in our prior testing per
@@ -504,7 +552,8 @@ async function resolveProviderChain(
   admin: ReturnType<typeof getServiceClient>,
   langCode: string | null,
   customerPickedPrimary: string,
-): Promise<string[]> {
+  durationSec: number = 0,
+): Promise<{ chain: string[]; demoted: Array<{ provider: string; cap_seconds: number }> }> {
   // app_settings.transcription_fallback_chain_by_language is an optional JSON
   // override. Shape: { "en": ["deepgram","elevenlabs"], "default": [...] }
   let overrideMap: Record<string, string[]> = {};
@@ -537,7 +586,21 @@ async function resolveProviderChain(
       seen.add(p);
     }
   }
-  return merged;
+
+  // Filter out providers whose per-request duration cap the input would exceed.
+  // We still record what got dropped so the audit log can explain "why didn't
+  // we try OpenAI on this 3-hour file?".
+  const demoted: Array<{ provider: string; cap_seconds: number }> = [];
+  const chain: string[] = [];
+  for (const p of merged) {
+    if (durationSec > 0 && !providerSupportsDuration(p, durationSec)) {
+      demoted.push({ provider: p, cap_seconds: PROVIDER_DURATION_CAPS_SECONDS[p] ?? 0 });
+      continue;
+    }
+    chain.push(p);
+  }
+
+  return { chain, demoted };
 }
 
 async function callProvider(
