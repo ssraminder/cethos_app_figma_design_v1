@@ -145,6 +145,30 @@ const SPEAKER_COLORS = [
   { text: "text-cyan-700", bg: "bg-cyan-50", badge: "bg-cyan-100 text-cyan-800" },
 ];
 
+const LANGUAGE_NAMES: Record<string, string> = {
+  pan: "Punjabi", pa: "Punjabi",
+  hin: "Hindi", hi: "Hindi",
+  eng: "English", en: "English",
+  fra: "French", fr: "French",
+  spa: "Spanish", es: "Spanish",
+  deu: "German", de: "German",
+  por: "Portuguese", pt: "Portuguese",
+  ita: "Italian", it: "Italian",
+  ara: "Arabic", ar: "Arabic",
+  zho: "Chinese", zh: "Chinese",
+  jpn: "Japanese", ja: "Japanese",
+  kor: "Korean", ko: "Korean",
+  urd: "Urdu", ur: "Urdu",
+  tur: "Turkish", tr: "Turkish",
+  rus: "Russian", ru: "Russian",
+};
+
+function resolveLanguageName(raw: string | null): string {
+  if (!raw) return "Detecting...";
+  const lower = raw.toLowerCase();
+  return LANGUAGE_NAMES[lower] ?? raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 // ── Utilities ───────────────────────────────────────────────────────────────
 
 function formatBytes(bytes: number): string {
@@ -281,7 +305,7 @@ export default function TranscriptionJobDetail() {
         {/* Info cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <InfoCard icon={Clock} label="Duration" value={formatDuration(job.file_duration_seconds)} sub={`${formatBytes(job.file_size_bytes)} · ${job.file_format.toUpperCase()}`} />
-          <InfoCard icon={Globe} label="Language" value={job.detected_language ? job.detected_language.charAt(0).toUpperCase() + job.detected_language.slice(1) : "Detecting..."} sub={job.language_confidence ? `Confidence: ${(job.language_confidence * 100).toFixed(0)}%` : undefined} />
+          <InfoCard icon={Globe} label="Language" value={resolveLanguageName(job.detected_language)} sub={job.language_confidence ? `Confidence: ${(job.language_confidence * 100).toFixed(0)}%` : undefined} />
           <InfoCard icon={DollarSign} label="Charged" value={job.amount_charged > 0 ? `$${job.amount_charged.toFixed(2)} ${job.currency}` : "Free"} sub={`Tier: ${job.pricing_tier} · Payment: ${job.payment_status}`} />
           <InfoCard icon={Shield} label="Provider" value={job.provider ?? "—"} sub={`STT: $${(job.provider_cost ?? 0).toFixed(4)} · Total AI: $${(job.ai_total_cost ?? 0).toFixed(4)}`} />
         </div>
