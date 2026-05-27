@@ -134,8 +134,21 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "ANTHROPIC_API_KEY not configured" }, 503);
     }
 
-    // Resolve source language
+    // Resolve source language — map ISO 639-3 codes to names + scripts
+    const LANG_META: Record<string, { name: string; script?: string }> = {
+      pan: { name: "Punjabi", script: "Gurmukhi (ਪੰਜਾਬੀ)" },
+      pa:  { name: "Punjabi", script: "Gurmukhi (ਪੰਜਾਬੀ)" },
+      hin: { name: "Hindi", script: "Devanagari" },
+      hi:  { name: "Hindi", script: "Devanagari" },
+      eng: { name: "English" }, en: { name: "English" },
+      fra: { name: "French" }, fr: { name: "French" },
+      spa: { name: "Spanish" }, es: { name: "Spanish" },
+      ara: { name: "Arabic", script: "Arabic" }, ar: { name: "Arabic", script: "Arabic" },
+      urd: { name: "Urdu", script: "Nastaliq" }, ur: { name: "Urdu", script: "Nastaliq" },
+      zho: { name: "Chinese", script: "Simplified Chinese" }, zh: { name: "Chinese", script: "Simplified Chinese" },
+    };
     let langContext = "";
+    let scriptInstruction = "";
     if (job.source_language_id) {
       const { data: lang } = await admin
         .from("languages")
@@ -144,10 +157,22 @@ serve(async (req: Request) => {
         .maybeSingle();
       if (lang) {
         langContext = `Language: ${lang.name}${lang.native_name ? ` (${lang.native_name})` : ""} [${lang.code}]`;
+        const meta = LANG_META[lang.code];
+        if (meta?.script) {
+          scriptInstruction = `SCRIPT: This transcript MUST be in ${meta.script} script. If the transcription provider used the wrong script (e.g., Devanagari instead of Gurmukhi for Punjabi), transliterate the text to the correct ${meta.script} script.`;
+        }
       }
     }
     if (!langContext && job.detected_language) {
-      langContext = `Detected language: ${job.detected_language}`;
+      const meta = LANG_META[job.detected_language.toLowerCase()];
+      if (meta) {
+        langContext = `Language: ${meta.name}`;
+        if (meta.script) {
+          scriptInstruction = `SCRIPT: This transcript MUST be in ${meta.script} script. If the transcription provider used the wrong script (e.g., Devanagari instead of Gurmukhi for Punjabi), transliterate the text to the correct ${meta.script} script.`;
+        }
+      } else {
+        langContext = `Detected language: ${job.detected_language}`;
+      }
     }
 
     // Build cross-file context: names, terms, speakers from all files
@@ -190,7 +215,7 @@ Rules for transcript:
 - Remove or clean up repeated filler words (um, uh, etc.) only if excessive
 - Do NOT change the meaning, tone, or content
 - Do NOT translate — keep each segment in its original language
-- LANGUAGE CHECK: if the transcript is in a different language than expected above (e.g., Hindi instead of Punjabi), note it as [Language: actual_language] on the first line before segment [1]
+${scriptInstruction ? `- ${scriptInstruction}` : "- LANGUAGE CHECK: if the transcript is in a different language than expected above (e.g., Hindi instead of Punjabi), note it as [Language: actual_language] on the first line before segment [1]"}
 
 Rules for translation:
 - Each segment's translation MUST accurately correspond to ONLY that segment's source text
@@ -227,7 +252,7 @@ Rules for transcript:
 - Remove or clean up repeated filler words (um, uh, etc.) only if excessive
 - Do NOT change the meaning, tone, or content
 - Do NOT translate — keep the transcript in its original language
-- LANGUAGE CHECK: verify the transcript is actually in the expected language above. If it is in a different language (e.g., Hindi instead of Punjabi), note the actual language at the very top of the corrected transcript as a single comment line: [Language: Hindi] — then proofread in the actual language, not the expected one
+${scriptInstruction ? `- ${scriptInstruction}` : "- LANGUAGE CHECK: verify the transcript is actually in the expected language above. If it is in a different language (e.g., Hindi instead of Punjabi), note the actual language at the very top of the corrected transcript as a single comment line: [Language: Hindi] — then proofread in the actual language, not the expected one"}
 
 Rules for translation:
 - Fix grammar, spelling, and punctuation errors
@@ -256,6 +281,7 @@ ${contextBlock ? `=== CONTEXT FROM OTHER FILES (use for consistent names, terms,
 - Do NOT change the meaning, tone, or content of what was said
 - Do NOT add explanations, notes, or commentary
 - Do NOT translate — keep the transcript in its original language
+${scriptInstruction ? `- ${scriptInstruction}` : ""}
 - Output ONLY the corrected transcript text, nothing else
 
 Transcript:
