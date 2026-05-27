@@ -24,6 +24,8 @@ import {
   GitCompare,
   Zap,
   Star,
+  ChevronRight,
+  FileAudio,
 } from "lucide-react";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 
@@ -63,6 +65,14 @@ interface Job {
   source_language_id: string | null;
   translation_target_language_id: string | null;
   ai_total_cost: number | null;
+  source_files: Array<{
+    name: string;
+    path: string;
+    size: number;
+    duration: number;
+    format: string;
+    transcript_text?: string;
+  }> | null;
 }
 
 interface Version {
@@ -233,6 +243,11 @@ export default function TranscriptionJobDetail() {
           <InfoCard icon={DollarSign} label="Charged" value={job.amount_charged > 0 ? `$${job.amount_charged.toFixed(2)} ${job.currency}` : "Free"} sub={`Tier: ${job.pricing_tier} · Payment: ${job.payment_status}`} />
           <InfoCard icon={Shield} label="Provider" value={job.provider ?? "—"} sub={`STT: $${(job.provider_cost ?? 0).toFixed(4)} · Total AI: $${(job.ai_total_cost ?? 0).toFixed(4)}`} />
         </div>
+
+        {/* Source files accordion (multi-file jobs) */}
+        {job.source_files && job.source_files.length > 1 && (
+          <SourceFilesAccordion job={job} />
+        )}
 
         {/* Quality + meta row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -991,6 +1006,94 @@ function VersionsPanel({ job, versions, onActivated }: { job: Job; versions: Ver
             <pre className="mt-3 p-3 bg-gray-50 rounded text-xs text-gray-700 max-h-[300px] overflow-y-auto whitespace-pre-wrap font-sans">
               {v.transcript_text.slice(0, 2000)}{v.transcript_text.length > 2000 ? "\n\n[...truncated...]" : ""}
             </pre>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Source files accordion ─────────────────────────────────────────────────
+
+function SourceFilesAccordion({ job }: { job: Job }) {
+  const files = job.source_files!;
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [fileLinks, setFileLinks] = useState<Record<number, Array<{ label: string; url: string }>>>({});
+  const [loadingIdx, setLoadingIdx] = useState<number | null>(null);
+
+  const toggle = async (idx: number) => {
+    if (expanded === idx) { setExpanded(null); return; }
+    setExpanded(idx);
+
+    if (fileLinks[idx]) return;
+    setLoadingIdx(idx);
+
+    const links: Array<{ label: string; url: string }> = [];
+
+    // Source file download
+    const { data: srcUrl } = await supabase.storage
+      .from("transcription-uploads")
+      .createSignedUrl(files[idx].path, 3600);
+    if (srcUrl?.signedUrl) {
+      links.push({ label: `Source (${files[idx].format.toUpperCase()})`, url: srcUrl.signedUrl });
+    }
+
+    // Per-file output downloads
+    for (const fmt of (job.delivery_formats ?? [])) {
+      const { data: outUrl } = await supabase.storage
+        .from("transcription-uploads")
+        .createSignedUrl(`${job.id}/output/file-${idx + 1}.${fmt}`, 3600);
+      if (outUrl?.signedUrl) {
+        links.push({ label: fmt.toUpperCase(), url: outUrl.signedUrl });
+      }
+    }
+
+    setFileLinks((prev) => ({ ...prev, [idx]: links }));
+    setLoadingIdx(null);
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+        <FileAudio className="w-4 h-4 text-gray-400" />
+        <span className="text-sm font-medium text-gray-700">Source Files ({files.length})</span>
+      </div>
+      {files.map((sf, i) => (
+        <div key={i} className={`border-b border-gray-100 last:border-b-0 ${expanded === i ? "bg-gray-50" : ""}`}>
+          <button
+            onClick={() => toggle(i)}
+            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition"
+          >
+            <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${expanded === i ? "rotate-90" : ""}`} />
+            <span className="flex-1 text-sm font-medium text-gray-800 truncate">{sf.name}</span>
+            <span className="text-xs text-gray-500">{formatDuration(sf.duration)}</span>
+            <span className="text-xs text-gray-400">{formatBytes(sf.size)}</span>
+          </button>
+          {expanded === i && (
+            <div className="px-4 pb-3 pl-11">
+              {loadingIdx === i ? (
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {(fileLinks[i] ?? []).map((link) => (
+                    <a
+                      key={link.label}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-teal-600 text-white rounded hover:bg-teal-700 transition"
+                    >
+                      <Download className="w-3 h-3" /> {link.label}
+                    </a>
+                  ))}
+                  {(fileLinks[i] ?? []).length === 0 && (
+                    <span className="text-xs text-gray-400">No downloads available yet</span>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       ))}

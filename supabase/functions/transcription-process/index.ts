@@ -157,6 +157,12 @@ serve(async (req: Request) => {
           offsetTimestamps(fileTranscript.json, timeOffsetMs);
         }
 
+        // Save per-file transcript into source_files entry for per-file output
+        if (sourceFiles.length > 1) {
+          sourceFiles[fi].transcript_text = fileTranscript.text;
+          sourceFiles[fi].transcript_json = fileTranscript.json;
+        }
+
         allTranscripts.push(fileTranscript);
         timeOffsetMs += sf.duration * 1000;
       }
@@ -164,6 +170,14 @@ serve(async (req: Request) => {
       console.error(`STT (${provider}) failed for ${jobId}:`, e);
       await markFailed(admin, jobId, `Transcription failed: ${e instanceof Error ? e.message : String(e)}`);
       return jsonResponse({ success: false, error: "Transcription failed" }, 500);
+    }
+
+    // Persist per-file transcripts in source_files JSONB
+    if (sourceFiles.length > 1) {
+      await admin
+        .from("transcription_jobs")
+        .update({ source_files: sourceFiles })
+        .eq("id", jobId);
     }
 
     // Merge transcripts from all files

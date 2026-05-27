@@ -133,6 +133,70 @@ serve(async (req: Request) => {
       uploadedFiles.push({ format: fmt, path: storagePath });
     }
 
+    // ── Per-file outputs (multi-file jobs) ───────────────────────────────
+    const sourceFiles = job.source_files as Array<{
+      name: string; path: string; size: number; duration: number; format: string;
+      transcript_text?: string; transcript_json?: Record<string, unknown>;
+    }> | null;
+
+    if (sourceFiles && sourceFiles.length > 1) {
+      for (let fi = 0; fi < sourceFiles.length; fi++) {
+        const sf = sourceFiles[fi];
+        if (!sf.transcript_text?.trim()) continue;
+
+        const fileJob = {
+          ...job,
+          file_name: sf.name,
+          file_duration_seconds: sf.duration,
+          file_size_bytes: sf.size,
+          transcript_text: sf.transcript_text,
+          transcript_json: sf.transcript_json ?? null,
+          word_count: sf.transcript_text.split(/\s+/).filter(Boolean).length,
+          translated_text: null,
+        };
+
+        const fileMeta: OutputMetadata = {
+          fileName: sf.name,
+          duration: formatDuration(sf.duration),
+          language: sourceLangName,
+          wordCount: fileJob.word_count,
+          qualityScore: job.ai_quality_score as string | null,
+          date: metadata.date,
+        };
+
+        for (const fmt of formats) {
+          let blob: Blob;
+          if (fmt === "txt") {
+            blob = new Blob([buildTxtOutput(fileJob, fileMeta, null)], { type: "text/plain" });
+          } else if (fmt === "docx") {
+            const zipData = buildDocxZip(fileJob, fileMeta, null);
+            blob = new Blob([zipData], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+          } else if (fmt === "pdf") {
+            blob = new Blob([buildPdfOutput(fileJob, fileMeta, null)], { type: "text/plain" });
+          } else if (fmt === "srt") {
+            blob = new Blob([buildSrtOutput(fileJob)], { type: "text/plain" });
+          } else if (fmt === "vtt") {
+            blob = new Blob([buildVttOutput(fileJob)], { type: "text/vtt" });
+          } else if (fmt === "json") {
+            blob = new Blob([buildJsonOutput(fileJob, fileMeta, null)], { type: "application/json" });
+          } else {
+            continue;
+          }
+
+          const storagePath = `${jobId}/output/file-${fi + 1}.${fmt}`;
+          const { error: upErr } = await admin.storage
+            .from("transcription-uploads")
+            .upload(storagePath, blob, { contentType: blob.type, upsert: true });
+
+          if (upErr) {
+            console.error(`Upload file-${fi + 1}.${fmt} failed:`, upErr.message);
+            continue;
+          }
+          uploadedFiles.push({ format: `file-${fi + 1}.${fmt}`, path: storagePath });
+        }
+      }
+    }
+
     // ── Generate signed URLs ─────────────────────────────────────────────
 
     const expirySeconds = (job.pricing_tier === "free" && job.amount_charged === 0)
