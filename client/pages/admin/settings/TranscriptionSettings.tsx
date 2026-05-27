@@ -40,9 +40,9 @@ const LABELS: Record<string, { label: string; hint: string; type: "toggle" | "nu
 };
 
 const PROVIDER_OPTIONS = [
-  { value: "deepgram", label: "Deepgram Nova-3 (fast, cheap, 30+ langs)" },
-  { value: "elevenlabs", label: "ElevenLabs Scribe v2 (best Indic/RTL, 90+ langs)" },
-  { value: "google", label: "Google STT v2 / Chirp 2 (widest catalog)" },
+  { value: "google", label: "Google STT v2 / Chirp 2 (100+ langs incl. Punjabi/Persian)" },
+  { value: "elevenlabs", label: "ElevenLabs Scribe v2 (strong Indic/RTL, 90+ langs)" },
+  { value: "deepgram", label: "Deepgram Nova-3 (36 langs only — no Punjabi/Persian)" },
   { value: "assemblyai", label: "AssemblyAI (50+ languages)" },
   { value: "openai", label: "OpenAI gpt-4o-transcribe (99+ languages)" },
 ];

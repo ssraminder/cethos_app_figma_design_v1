@@ -104,7 +104,7 @@ serve(async (req: Request) => {
     // The chain also filters out providers whose per-request duration cap is exceeded
     // by the longest single file in this job — we don't yet split audio server-side,
     // so OpenAI/Google get dropped for hour-long inputs in favor of URL-ingest providers.
-    const initialProvider = (job.provider as string | null) ?? "deepgram";
+    const initialProvider = (job.provider as string | null) ?? "google";
     const sourceLangCode = await resolveSourceLangCode(admin, job);
     const longestFileDurationSec = sourceFiles.reduce(
       (acc, sf) => Math.max(acc, sf.duration ?? 0),
@@ -496,44 +496,99 @@ function providerSupportsDuration(provider: string, durationSec: number): boolea
 }
 
 // Per-language fallback chains — picked by the source language code (ISO 639-1).
-// The "default" chain is used when the language is auto-detect or unmapped.
-// Indic / RTL languages favor ElevenLabs (best accuracy in our prior testing per
-// memory feature_transcript_segment_ids_v2). CJK favors ElevenLabs too. Latin /
-// Cyrillic / Greek languages default to Deepgram (best price/quality). Rare
-// languages (Pashto, Khmer, Tagalog) fall through to Google.
+//
+// Default primary is GOOGLE because it has the widest language catalog (100+),
+// covering Cethos's heavy workload (Punjabi, Persian, Pashto, Dari, Urdu, Bengali,
+// Tamil, Kurdish, etc.) — most of which Deepgram Nova-3 does NOT support. Deepgram
+// only appears in chains for languages it officially supports per Deepgram docs
+// (see DEEPGRAM_NOVA3_SUPPORTED below). ElevenLabs is the universal backup.
+//
+// Tradeoff: Google STT v2 is ~5× the per-minute cost of Deepgram, but quality plus
+// language coverage is worth it for a translation agency's mix. Admins can override
+// the chain per-language via app_settings.transcription_fallback_chain_by_language
+// without redeploying.
 const DEFAULT_FALLBACK_CHAINS: Record<string, string[]> = {
-  // English + Western European → Deepgram primary, ElevenLabs backup
-  en: ["deepgram", "elevenlabs"],
-  fr: ["deepgram", "elevenlabs"],
-  es: ["deepgram", "elevenlabs"],
-  de: ["deepgram", "elevenlabs"],
-  it: ["deepgram", "elevenlabs"],
-  pt: ["deepgram", "elevenlabs"],
-  nl: ["deepgram", "elevenlabs"],
-  // Cyrillic / Greek
-  ru: ["deepgram", "elevenlabs"],
-  uk: ["deepgram", "elevenlabs"],
-  el: ["deepgram", "elevenlabs"],
-  // Indic / RTL → ElevenLabs primary (better script support)
-  pa: ["elevenlabs", "google"],
-  hi: ["elevenlabs", "google"],
-  ur: ["elevenlabs", "google"],
-  bn: ["elevenlabs", "google"],
-  ta: ["elevenlabs", "google"],
-  te: ["elevenlabs", "google"],
-  ar: ["elevenlabs", "google"],
-  fa: ["elevenlabs", "google"],
-  he: ["elevenlabs", "deepgram"],
-  // CJK
-  zh: ["elevenlabs", "deepgram"],
-  ja: ["elevenlabs", "deepgram"],
-  ko: ["elevenlabs", "deepgram"],
-  // Rare languages — Google has the widest catalog
-  ps: ["google", "elevenlabs"],
-  km: ["google", "elevenlabs"],
-  tl: ["google", "elevenlabs"],
-  default: ["deepgram", "elevenlabs"],
+  // English + Western European — Deepgram fronts (strong on these), Google backs
+  en: ["deepgram", "elevenlabs", "google"],
+  fr: ["deepgram", "elevenlabs", "google"],
+  es: ["deepgram", "elevenlabs", "google"],
+  de: ["deepgram", "elevenlabs", "google"],
+  it: ["deepgram", "elevenlabs", "google"],
+  pt: ["deepgram", "elevenlabs", "google"],
+  nl: ["deepgram", "elevenlabs", "google"],
+  pl: ["deepgram", "elevenlabs", "google"],
+  cs: ["deepgram", "elevenlabs", "google"],
+  da: ["deepgram", "elevenlabs", "google"],
+  sv: ["deepgram", "elevenlabs", "google"],
+  no: ["deepgram", "elevenlabs", "google"],
+  fi: ["elevenlabs", "google"],
+  // Cyrillic + Greek — Deepgram supports
+  ru: ["deepgram", "elevenlabs", "google"],
+  uk: ["deepgram", "elevenlabs", "google"],
+  el: ["deepgram", "elevenlabs", "google"],
+  bg: ["deepgram", "elevenlabs", "google"],
+  // Indic / RTL — Deepgram supports Hindi + Arabic, ElevenLabs typically better
+  hi: ["elevenlabs", "deepgram", "google"],
+  ar: ["elevenlabs", "deepgram", "google"],
+  // Deepgram does NOT support these — skip it entirely
+  pa: ["google", "elevenlabs"],          // Punjabi
+  ur: ["google", "elevenlabs"],          // Urdu
+  fa: ["google", "elevenlabs"],          // Persian / Farsi
+  ps: ["google", "elevenlabs"],          // Pashto
+  prs: ["google", "elevenlabs"],         // Dari
+  bn: ["google", "elevenlabs"],          // Bengali
+  ta: ["google", "elevenlabs"],          // Tamil
+  te: ["google", "elevenlabs"],          // Telugu
+  ml: ["google", "elevenlabs"],          // Malayalam
+  kn: ["google", "elevenlabs"],          // Kannada
+  mr: ["google", "elevenlabs"],          // Marathi
+  ne: ["google", "elevenlabs"],          // Nepali
+  gu: ["google", "elevenlabs"],          // Gujarati
+  si: ["google", "elevenlabs"],          // Sinhala
+  ku: ["google", "elevenlabs"],          // Kurdish
+  ckb: ["google", "elevenlabs"],         // Central Kurdish (Sorani)
+  kmr: ["google", "elevenlabs"],         // Northern Kurdish (Kurmanji)
+  am: ["google", "elevenlabs"],          // Amharic
+  ti: ["google", "elevenlabs"],          // Tigrinya
+  so: ["google", "elevenlabs"],          // Somali
+  sw: ["google", "elevenlabs"],          // Swahili
+  he: ["google", "elevenlabs"],          // Hebrew (Deepgram support is patchy)
+  // CJK — Google + ElevenLabs both strong
+  zh: ["google", "elevenlabs", "deepgram"],
+  ja: ["deepgram", "elevenlabs", "google"],
+  ko: ["deepgram", "elevenlabs", "google"],
+  // Southeast Asian — Deepgram supports Thai/Vietnamese/Indonesian/Tagalog
+  th: ["deepgram", "elevenlabs", "google"],
+  vi: ["deepgram", "elevenlabs", "google"],
+  id: ["deepgram", "elevenlabs", "google"],
+  tl: ["deepgram", "google", "elevenlabs"],
+  ms: ["deepgram", "google", "elevenlabs"],
+  // Rare / niche — Google + ElevenLabs only
+  km: ["google", "elevenlabs"],          // Khmer
+  lo: ["google", "elevenlabs"],          // Lao
+  my: ["google", "elevenlabs"],          // Burmese
+  ka: ["google", "elevenlabs"],          // Georgian
+  hy: ["google", "elevenlabs"],          // Armenian
+  // Auto-detect / unmapped — Google has the widest catalog so it leads
+  default: ["google", "elevenlabs"],
 };
+
+// Languages Deepgram Nova-3 officially supports (per Deepgram docs, May 2026).
+// Defensive filter applied even when the configured chain mentions deepgram —
+// avoids burning a request on a language we know will return empty/error.
+const DEEPGRAM_NOVA3_SUPPORTED = new Set([
+  "bg", "ca", "zh", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el",
+  "hi", "hu", "id", "it", "ja", "ko", "lv", "lt", "ms", "no", "pl", "pt",
+  "ro", "ru", "sk", "es", "sv", "th", "tr", "uk", "vi", "ar", "he", "tl",
+]);
+
+function providerSupportsLanguage(provider: string, langCode: string | null): boolean {
+  if (!langCode) return true;  // unknown lang — let the provider try (auto-detect)
+  if (provider === "deepgram") return DEEPGRAM_NOVA3_SUPPORTED.has(langCode);
+  // ElevenLabs (99+), Google (100+), AssemblyAI (50+), OpenAI (99+) — broad coverage;
+  // trust the provider to error if a specific language isn't supported.
+  return true;
+}
 
 async function resolveSourceLangCode(
   admin: ReturnType<typeof getServiceClient>,
@@ -587,14 +642,25 @@ async function resolveProviderChain(
     }
   }
 
-  // Filter out providers whose per-request duration cap the input would exceed.
-  // We still record what got dropped so the audit log can explain "why didn't
-  // we try OpenAI on this 3-hour file?".
-  const demoted: Array<{ provider: string; cap_seconds: number }> = [];
+  // Filter providers: (a) duration cap, (b) language support. Demoted providers
+  // are recorded with the reason so the audit log can explain "why didn't we
+  // try OpenAI on this 3-hour file?" or "why was Deepgram skipped for Punjabi?".
+  const demoted: Array<{ provider: string; reason: string; cap_seconds?: number }> = [];
   const chain: string[] = [];
   for (const p of merged) {
     if (durationSec > 0 && !providerSupportsDuration(p, durationSec)) {
-      demoted.push({ provider: p, cap_seconds: PROVIDER_DURATION_CAPS_SECONDS[p] ?? 0 });
+      demoted.push({
+        provider: p,
+        reason: "duration_exceeds_provider_cap",
+        cap_seconds: PROVIDER_DURATION_CAPS_SECONDS[p] ?? 0,
+      });
+      continue;
+    }
+    if (!providerSupportsLanguage(p, langCode)) {
+      demoted.push({
+        provider: p,
+        reason: `language_not_supported (${langCode})`,
+      });
       continue;
     }
     chain.push(p);
