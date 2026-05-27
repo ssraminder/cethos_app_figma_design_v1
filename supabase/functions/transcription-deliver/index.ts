@@ -440,6 +440,70 @@ function fmtTimestamp(ms: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+// ── Layout preferences (customer-pickable; PR #3b) ───────────────────────────
+//
+// resolveLayoutPreferences() reads the new transcription_jobs columns and
+// produces the effective rendering choices for buildTxtOutput / buildPdfOutput
+// / buildDocxZip. The `auto` layout resolves to `table` when either timestamps
+// or speaker IDs are on, else `paragraph`. Defaults preserve existing behavior.
+interface LayoutPrefs {
+  includeTimestamps: boolean;
+  includeSpeakers: boolean;
+  layout: "paragraph" | "table";
+}
+
+function resolveLayoutPreferences(job: Record<string, unknown>): LayoutPrefs {
+  // Defaults match the migration: both flags TRUE, layout 'auto'.
+  const includeTimestamps = job.include_timestamps !== false;
+  const includeSpeakers = job.include_speaker_ids !== false;
+  const raw = (job.delivery_layout as string | undefined) ?? "auto";
+  let layout: "paragraph" | "table";
+  if (raw === "paragraph") {
+    // Honor the customer's pick, BUT if timestamps or speakers are on the only
+    // sensible rendering is a table. Force table to keep output readable.
+    layout = (includeTimestamps || includeSpeakers) ? "table" : "paragraph";
+  } else if (raw === "table") {
+    layout = "table";
+  } else {
+    // 'auto' — resolve based on flags
+    layout = (includeTimestamps || includeSpeakers) ? "table" : "paragraph";
+  }
+  return { includeTimestamps, includeSpeakers, layout };
+}
+
+// When layout is 'paragraph', merge consecutive same-speaker segments into a
+// single block so the output reads as continuous prose rather than choppy
+// per-segment fragments. If includeSpeakers is also off, collapse everything
+// into a single paragraph.
+function mergeForParagraphLayout(
+  segments: SpeakerSegment[],
+  includeSpeakers: boolean,
+): SpeakerSegment[] {
+  if (segments.length === 0) return segments;
+  if (!includeSpeakers) {
+    // Single combined block — no speaker breaks
+    const combined: SpeakerSegment = {
+      speaker: "",
+      startMs: segments[0].startMs,
+      endMs: segments[segments.length - 1].endMs,
+      text: segments.map((s) => s.text.trim()).filter(Boolean).join(" "),
+    };
+    return [combined];
+  }
+  // Merge runs of the same speaker
+  const merged: SpeakerSegment[] = [];
+  for (const seg of segments) {
+    const last = merged[merged.length - 1];
+    if (last && last.speaker === seg.speaker) {
+      last.endMs = seg.endMs;
+      last.text = `${last.text.trim()} ${seg.text.trim()}`.trim();
+    } else {
+      merged.push({ ...seg });
+    }
+  }
+  return merged;
+}
+
 function buildTxtOutput(
   job: Record<string, unknown>,
   meta: OutputMetadata,
@@ -462,10 +526,18 @@ function buildTxtOutput(
     "",
   ];
 
-  const segments = extractSpeakerSegments(job);
+  const prefs = resolveLayoutPreferences(job);
+  let segments = extractSpeakerSegments(job);
+  if (segments && prefs.layout === "paragraph") {
+    segments = mergeForParagraphLayout(segments, prefs.includeSpeakers);
+  }
   if (segments) {
     for (const seg of segments) {
-      lines.push(`${seg.speaker} [${fmtTimestamp(seg.startMs)}]`);
+      // Header line: speaker + timestamp, with each part conditional
+      const headerParts: string[] = [];
+      if (prefs.includeSpeakers && seg.speaker) headerParts.push(seg.speaker);
+      if (prefs.includeTimestamps) headerParts.push(`[${fmtTimestamp(seg.startMs)}]`);
+      if (headerParts.length > 0) lines.push(headerParts.join(" "));
       lines.push(seg.text);
       lines.push("");
     }
@@ -501,7 +573,11 @@ function buildPdfOutput(
   targetLangName: string | null,
 ): string {
   const hasTranslation = !!(targetLangName && job.translated_text);
-  const segments = extractSpeakerSegments(job);
+  const prefs = resolveLayoutPreferences(job);
+  let segments = extractSpeakerSegments(job);
+  if (segments && prefs.layout === "paragraph") {
+    segments = mergeForParagraphLayout(segments, prefs.includeSpeakers);
+  }
 
   const lines: string[] = [
     "TRANSCRIPTION REPORT",
@@ -513,34 +589,61 @@ function buildPdfOutput(
     "",
   ];
 
-  // Build tabular output
-  const sep = "-".repeat(100);
-  if (hasTranslation) {
-    lines.push(padRow("SPEAKER", "TIMESTAMP", "TRANSCRIPTION", `TRANSLATION (${targetLangName})`));
-  } else {
-    lines.push(padRow("SPEAKER", "TIMESTAMP", "TRANSCRIPTION", null));
-  }
-  lines.push(sep);
-
   const translatedParas = hasTranslation
     ? splitTranslationBySegments(job.translated_text as string, segments?.length ?? 1)
     : [];
 
-  if (segments && segments.length > 0) {
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      const trans = hasTranslation ? (translatedParas[i] ?? "") : null;
-      lines.push(padRow(seg.speaker, fmtTimestamp(seg.startMs), seg.text, trans));
-      lines.push(sep);
+  if (prefs.layout === "paragraph") {
+    // Flowing-prose layout — no table, no per-segment timestamps
+    if (segments && segments.length > 0) {
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (prefs.includeSpeakers && seg.speaker) lines.push(`${seg.speaker}:`);
+        lines.push(seg.text);
+        if (hasTranslation && translatedParas[i]) {
+          lines.push(`  ${targetLangName}: ${translatedParas[i]}`);
+        }
+        lines.push("");
+      }
+    } else {
+      lines.push(job.transcript_text as string);
+      if (hasTranslation) {
+        lines.push("");
+        lines.push(`${targetLangName}: ${job.translated_text}`);
+      }
     }
   } else {
-    lines.push(padRow(
-      "—",
-      "00:00:00",
-      job.transcript_text as string,
-      hasTranslation ? (job.translated_text as string) : null,
-    ));
+    // Table layout — columns conditionally included
+    const sep = "-".repeat(100);
+    const headerCols: string[] = [];
+    if (prefs.includeSpeakers) headerCols.push("SPEAKER");
+    if (prefs.includeTimestamps) headerCols.push("TIMESTAMP");
+    headerCols.push("TRANSCRIPTION");
+    if (hasTranslation) headerCols.push(`TRANSLATION (${targetLangName})`);
+    lines.push(padRowDynamic(headerCols, prefs, hasTranslation));
     lines.push(sep);
+
+    if (segments && segments.length > 0) {
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const trans = hasTranslation ? (translatedParas[i] ?? "") : null;
+        const rowCols: string[] = [];
+        if (prefs.includeSpeakers) rowCols.push(seg.speaker);
+        if (prefs.includeTimestamps) rowCols.push(fmtTimestamp(seg.startMs));
+        rowCols.push(seg.text);
+        if (hasTranslation) rowCols.push(trans ?? "");
+        lines.push(padRowDynamic(rowCols, prefs, hasTranslation));
+        lines.push(sep);
+      }
+    } else {
+      const rowCols: string[] = [];
+      if (prefs.includeSpeakers) rowCols.push("—");
+      if (prefs.includeTimestamps) rowCols.push("00:00:00");
+      rowCols.push(job.transcript_text as string);
+      if (hasTranslation) rowCols.push(job.translated_text as string);
+      lines.push(padRowDynamic(rowCols, prefs, hasTranslation));
+      lines.push(sep);
+    }
   }
 
   if (hasTranslation) {
@@ -552,6 +655,30 @@ function buildPdfOutput(
   lines.push("Generated by Cethos Solutions Inc. — cethos.com");
 
   return lines.join("\n");
+}
+
+// Pads a variable-column row for the text-PDF renderer. Column widths are
+// derived from the count of visible columns + whether translation is present.
+function padRowDynamic(cols: string[], prefs: LayoutPrefs, hasTranslation: boolean): string {
+  const speakerWidth = prefs.includeSpeakers ? 14 : 0;
+  const timeWidth = prefs.includeTimestamps ? 10 : 0;
+  const fixed = speakerWidth + timeWidth + (prefs.includeSpeakers ? 3 : 0) + (prefs.includeTimestamps ? 3 : 0);
+  const remaining = 100 - fixed;
+  const transcriptWidth = hasTranslation ? Math.floor(remaining / 2) - 3 : remaining;
+  const translationWidth = hasTranslation ? Math.floor(remaining / 2) : 0;
+  const out: string[] = [];
+  let i = 0;
+  if (prefs.includeSpeakers) {
+    out.push((cols[i++] ?? "").substring(0, speakerWidth).padEnd(speakerWidth));
+  }
+  if (prefs.includeTimestamps) {
+    out.push((cols[i++] ?? "").padEnd(timeWidth));
+  }
+  out.push((cols[i++] ?? "").substring(0, transcriptWidth).padEnd(transcriptWidth));
+  if (hasTranslation) {
+    out.push((cols[i++] ?? "").substring(0, translationWidth));
+  }
+  return out.join(" | ");
 }
 
 function padRow(
@@ -648,32 +775,61 @@ function buildDocxZip(
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   const hasTranslation = !!(targetLangName && job.translated_text);
-  const segments = extractSpeakerSegments(job);
+  const prefs = resolveLayoutPreferences(job);
+  let segments = extractSpeakerSegments(job);
+  if (segments && prefs.layout === "paragraph") {
+    segments = mergeForParagraphLayout(segments, prefs.includeSpeakers);
+  }
 
   // Split translated_text into paragraphs to try aligning with segments
   const translatedParas = hasTranslation
     ? splitTranslationBySegments(job.translated_text as string, segments?.length ?? 1)
     : [];
 
-  // Build table rows from segments or fallback to plain text
-  let tableRows: string;
-  if (segments && segments.length > 0) {
+  // Paragraph layout: render as Word paragraphs (no table) and return early.
+  // The downstream documentXml template still expects `tableRows` to exist
+  // (used inside the <w:tbl> block) — when layout=paragraph we want to emit
+  // plain paragraphs instead. Build a separate `paragraphBlocks` string and
+  // a flag the template switches on.
+  let paragraphBlocks = "";
+  let tableRows = "";
+  if (prefs.layout === "paragraph") {
+    if (segments && segments.length > 0) {
+      paragraphBlocks = segments
+        .map((seg, i) => {
+          const speakerHeader = prefs.includeSpeakers && seg.speaker
+            ? `<w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="22"/></w:rPr><w:t>${escXml(seg.speaker)}:</w:t></w:r></w:p>`
+            : "";
+          const body = `<w:p><w:r><w:rPr><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${escXml(seg.text)}</w:t></w:r></w:p>`;
+          const trans = hasTranslation && translatedParas[i]
+            ? `<w:p><w:r><w:rPr><w:i/><w:sz w:val="20"/><w:color w:val="6B7280"/></w:rPr><w:t xml:space="preserve">${escXml(targetLangName!)}: ${escXml(translatedParas[i])}</w:t></w:r></w:p>`
+            : "";
+          return speakerHeader + body + trans;
+        })
+        .join("");
+    } else {
+      paragraphBlocks = `<w:p><w:r><w:rPr><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${escXml(job.transcript_text as string)}</w:t></w:r></w:p>`;
+      if (hasTranslation) {
+        paragraphBlocks += `<w:p><w:r><w:rPr><w:i/><w:sz w:val="20"/><w:color w:val="6B7280"/></w:rPr><w:t xml:space="preserve">${escXml(targetLangName!)}: ${escXml(job.translated_text as string)}</w:t></w:r></w:p>`;
+      }
+    }
+  } else if (segments && segments.length > 0) {
+    // Table layout — emit one row per segment, with columns conditional on prefs.
     tableRows = segments
       .map((seg, i) => {
         const transText = hasTranslation ? (translatedParas[i] ?? "") : null;
         return tableRow(
-          escXml(seg.speaker),
-          fmtTimestamp(seg.startMs),
+          prefs.includeSpeakers ? escXml(seg.speaker) : "",
+          prefs.includeTimestamps ? fmtTimestamp(seg.startMs) : "",
           escXml(seg.text),
           transText !== null ? escXml(transText) : null,
         );
       })
       .join("");
   } else {
-    // No segments — single row with full transcript
     tableRows = tableRow(
-      "—",
-      "00:00:00",
+      prefs.includeSpeakers ? "—" : "",
+      prefs.includeTimestamps ? "00:00:00" : "",
       escXml(job.transcript_text as string),
       hasTranslation ? escXml(job.translated_text as string) : null,
     );
@@ -713,7 +869,7 @@ function buildDocxZip(
   <w:p><w:r><w:t>File: ${escXml(meta.fileName)} | Duration: ${escXml(meta.duration)} | Language: ${escXml(meta.language)}</w:t></w:r></w:p>
   <w:p><w:r><w:t>Words: ${meta.wordCount ?? "N/A"} | Quality: ${meta.qualityScore ?? "N/A"} | Date: ${meta.date}</w:t></w:r></w:p>
   <w:p/>
-  <w:tbl>
+  ${prefs.layout === "paragraph" ? paragraphBlocks : `<w:tbl>
     <w:tblPr>
       <w:tblStyle w:val="TableGrid"/>
       <w:tblW w:w="0" w:type="auto"/>
@@ -730,7 +886,7 @@ function buildDocxZip(
     <w:tblGrid>${gridCols}</w:tblGrid>
     ${headerRow}
     ${tableRows}
-  </w:tbl>
+  </w:tbl>`}
   <w:p/>
   ${translationDisclaimer}
   <w:p><w:r><w:rPr><w:sz w:val="18"/><w:color w:val="999999"/></w:rPr><w:t>Generated by Cethos Solutions Inc. — cethos.com</w:t></w:r></w:p>
