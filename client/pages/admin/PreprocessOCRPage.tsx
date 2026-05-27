@@ -1222,6 +1222,9 @@ export default function PreprocessOCRPage() {
             files: uploadedFiles,
             notes: `Preprocessed batch. Original files: ${allFilesToProcess.map(f => `${f.name} (${f.pageCount} pages)`).join(', ')}`,
             quoteId: mode === 'existing' && selectedQuote ? selectedQuote.id : null,
+            // Standalone "Preprocess OCR" page: staff is explicitly creating a
+            // new batch even if one already exists for the quote.
+            force: true,
           }),
         }
       );

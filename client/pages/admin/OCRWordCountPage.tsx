@@ -668,6 +668,9 @@ export default function OCRWordCountPage() {
           body: JSON.stringify({
             files: uploadedFiles,
             notes: null,
+            // Standalone "OCR Word Count" page: staff is explicitly creating
+            // a new batch — bypass the per-quote idempotency check.
+            force: true,
           }),
         }
       );
