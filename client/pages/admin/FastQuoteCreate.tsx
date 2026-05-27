@@ -230,6 +230,7 @@ export default function FastQuoteCreate() {
   );
   const [discountValue, setDiscountValue] = useState("");
   const [discountReason, setDiscountReason] = useState("");
+  const [applyVolumeDiscount, setApplyVolumeDiscount] = useState(true);
   const [surchargeEnabled, setSurchargeEnabled] = useState(false);
   const [surchargeType, setSurchargeType] = useState<"percentage" | "fixed">(
     "percentage",
@@ -772,6 +773,7 @@ export default function FastQuoteCreate() {
           entryPoint,
           manualQuoteNotes: internalNotes.trim() || null,
           isManualQuote: true,
+          applyVolumeDiscount,
         },
         documents: documents.map((doc, i) => {
           const pricing = documentPricing[i];
@@ -1696,6 +1698,24 @@ export default function FastQuoteCreate() {
               />
               <p className="mt-1 text-xs text-gray-500">
                 Leave blank to default from turnaround option.
+              </p>
+            </div>
+
+            {/* Auto volume discount */}
+            <div className="mb-4 border-t border-gray-100 pt-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={applyVolumeDiscount}
+                  onChange={(e) => setApplyVolumeDiscount(e.target.checked)}
+                  className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Apply auto volume discount
+                </span>
+              </label>
+              <p className="mt-1 pl-6 text-xs text-gray-500">
+                When on, the standard volume discount (10% over $1,000, 15% over $2,000) is applied automatically. Turn off for manual quotes that shouldn't get it.
               </p>
             </div>
 

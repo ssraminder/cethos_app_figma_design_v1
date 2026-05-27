@@ -225,6 +225,7 @@ serve(async (req: Request) => {
         currency: order.currency || custRec.currency || "CAD",
         tax_rate_id: order.taxRateId || custRec.default_tax_rate_id || null,
         client_pm_id: order.clientPmId || null,
+        auto_discount_suppressed: order.applyVolumeDiscount === false,
       })
       .select("id, quote_number")
       .single();
