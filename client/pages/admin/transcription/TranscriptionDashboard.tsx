@@ -240,6 +240,8 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
   const [email, setEmail] = useState("");
   const [provider, setProvider] = useState("google");
   const [sourceLanguageId, setSourceLanguageId] = useState("");
+  const [additionalLanguageIds, setAdditionalLanguageIds] = useState<string[]>([]);
+  const [customInstructions, setCustomInstructions] = useState("");
   const [formats, setFormats] = useState<Set<string>>(new Set(["txt", "docx"]));
   const [translationEnabled, setTranslationEnabled] = useState(false);
   const [targetLanguageId, setTargetLanguageId] = useState("");
@@ -278,6 +280,8 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
     setEmail("");
     setProvider("google");
     setSourceLanguageId("");
+    setAdditionalLanguageIds([]);
+    setCustomInstructions("");
     setFormats(new Set(["txt", "docx"]));
     setTranslationEnabled(false);
     setTargetLanguageId("");
@@ -363,6 +367,8 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
           payment_status: "none",
           delivery_formats: Array.from(formats),
           source_language_id: sourceLanguageId || null,
+          additional_language_ids: additionalLanguageIds.length > 0 ? additionalLanguageIds : null,
+          custom_instructions: customInstructions.trim() || null,
           translation_requested: translationEnabled,
           translation_target_language_id: translationEnabled && targetLanguageId ? targetLanguageId : null,
           translation_type: translationEnabled ? "ai_instant" : null,
@@ -491,6 +497,81 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
               </p>
             ) : null;
           })()}
+
+          {/* Additional languages (bilingual / code-switched audio) */}
+          {sourceLanguageId && (
+            <div className="py-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-sm font-medium text-gray-900">Additional languages</p>
+                <span className="text-xs text-gray-400">code-switching</span>
+              </div>
+              <p className="text-xs text-gray-500 mb-2">
+                For bilingual audio (e.g. English + Kurdish). Google STT v2 (Chirp 2) is the only provider that supports this.
+              </p>
+              {additionalLanguageIds.map((id, idx) => {
+                const lang = sourceLanguages.find((l) => l.id === id);
+                return (
+                  <div key={id} className="flex items-center gap-2 py-1">
+                    <select
+                      value={id}
+                      onChange={(e) => {
+                        const newId = e.target.value;
+                        setAdditionalLanguageIds((prev) =>
+                          newId ? prev.map((p, i) => (i === idx ? newId : p)) : prev.filter((_, i) => i !== idx),
+                        );
+                      }}
+                      className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      <option value="">— remove —</option>
+                      {sourceLanguages
+                        .filter((l) => l.id !== sourceLanguageId && !additionalLanguageIds.includes(l.id) || l.id === id)
+                        .map((lang) => (
+                          <option key={lang.id} value={lang.id}>
+                            {lang.name}{lang.native_name && lang.native_name !== lang.name ? ` (${lang.native_name})` : ""}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setAdditionalLanguageIds((prev) => prev.filter((_, i) => i !== idx))}
+                      className="p-1 text-gray-400 hover:text-red-500 rounded"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => {
+                  const firstAvailable = sourceLanguages.find(
+                    (l) => l.id !== sourceLanguageId && !additionalLanguageIds.includes(l.id),
+                  );
+                  if (firstAvailable) setAdditionalLanguageIds((prev) => [...prev, firstAvailable.id]);
+                }}
+                className="text-xs text-teal-600 hover:text-teal-700 font-medium mt-1"
+              >
+                + Add another language
+              </button>
+            </div>
+          )}
+
+          <div className="border-t border-gray-100" />
+
+          {/* Custom instructions for AI cleanup */}
+          <div className="py-3">
+            <p className="text-sm font-medium text-gray-900 mb-1.5">Custom instructions for AI cleanup</p>
+            <p className="text-xs text-gray-500 mb-2">
+              Free-form guidance for the Claude proofread step. Examples: "Treat unrecognized text as Badini Kurdish; preserve original script." "Speaker 1 is the judge; preserve legal terms verbatim."
+            </p>
+            <textarea
+              value={customInstructions}
+              onChange={(e) => setCustomInstructions(e.target.value)}
+              placeholder="(optional)"
+              rows={3}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+            />
+          </div>
 
           <div className="border-t border-gray-100" />
 

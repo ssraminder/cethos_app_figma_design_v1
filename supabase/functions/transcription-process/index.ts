@@ -1006,6 +1006,25 @@ async function transcribeDeepgram(
   };
 }
 
+// Map Cethos-internal language codes to the nearest Google STT v2 BCP-47 code.
+// For variants Google doesn't officially support (Badini, Kurmanji, etc.) we
+// fall back to the closest documented variant so the request succeeds; quality
+// on those variants is best-effort.
+function mapToGoogleBCP47(code: string): string {
+  const lower = code.toLowerCase();
+  // Kurdish variants — Google only documents Sorani via the Chirp model;
+  // route all Kurdish dialects to ckb-IQ so the multilingual model attempts
+  // recognition. Audit log records the original code separately.
+  if (lower === "kmr-badini" || lower === "kmr" || lower === "ku" || lower === "ckb") {
+    return "ckb-IQ";
+  }
+  // Persian variants (Dari, Iranian Persian, Pashto) — Persian core code is fa.
+  if (lower === "prs") return "fa-AF";
+  // Indic short codes — leave as-is; Google accepts en, hi, pa, etc. and resolves.
+  // Already-BCP-47 codes (en-US, fr-FR) — pass through.
+  return code;
+}
+
 // ── Google Speech-to-Text v2 ─────────────────────────────────────────────────
 // Phase 1: synchronous recognize endpoint, API-key auth, audio ≤ 60s per request
 // (long-audio chunking lands in PR #2). Beyond 60s, the per-language fallback
@@ -1021,20 +1040,40 @@ async function transcribeGoogle(
   const accessToken = await getGoogleAccessToken();
   const projectId = getGoogleProjectId();
 
-  // Determine language code: Google v2 wants BCP-47 (e.g. en-US, fr-FR, es-ES).
-  // We pass the language code from `languages` table and rely on Google's
-  // tolerance for short codes; if the customer left it on auto, we pass `auto`.
+  // Determine language codes. Google v2 / Chirp 2 supports multi-language
+  // recognition ("code-switching") by passing multiple BCP-47 codes — we use
+  // this for bilingual audio. The primary source_language_id is always first;
+  // additional_language_ids (when set) are appended. If neither is set we
+  // pass "auto" and let Chirp 2 detect.
+  //
+  // Code mapping: some entries in `languages` use Cethos-internal codes that
+  // aren't in Google's catalog (e.g. kmr-badini for Badini Kurdish). We map
+  // those to the closest documented Google STT v2 code via mapToGoogleBCP47
+  // so the request doesn't 400 — quality on the unsupported variant is best-
+  // effort and may come back as the closest mapped language.
   let languageCodes: string[] = ["auto"];
-  if (job.source_language_id) {
+  const allLangIds: string[] = [
+    ...(job.source_language_id ? [job.source_language_id as string] : []),
+    ...((job.additional_language_ids as string[] | null) ?? []),
+  ];
+  if (allLangIds.length > 0) {
     const admin = getServiceClient();
-    const { data: lang } = await admin
+    const { data: langs } = await admin
       .from("languages")
-      .select("code")
-      .eq("id", job.source_language_id)
-      .maybeSingle();
-    if (lang?.code) {
-      languageCodes = [lang.code];
+      .select("id, code")
+      .in("id", allLangIds);
+    // Preserve the order: primary first, then additionals in the order
+    // declared on the job. langs[] from PostgREST may be unordered.
+    const codeById = new Map<string, string>();
+    for (const l of langs ?? []) {
+      if (l.code) codeById.set(l.id as string, mapToGoogleBCP47(l.code as string));
     }
+    const ordered: string[] = [];
+    for (const id of allLangIds) {
+      const code = codeById.get(id);
+      if (code && !ordered.includes(code)) ordered.push(code);
+    }
+    if (ordered.length > 0) languageCodes = ordered;
   }
 
   // Convert audio to base64 for inline content (v2 sync supports up to ~1 minute / 10 MB).
