@@ -2798,7 +2798,54 @@ export default function AdminQuoteDetail() {
     }
   };
 
-  // Send Quote Link - sends email with quote review page link
+  // Create Quote Link — generate the customer-facing review URL without
+  // emailing it. Populates the Quote Review Link field so the admin can
+  // preview/copy before deciding to send.
+  const handleCreateQuoteLink = async () => {
+    if (!currentStaff?.staffId || !id || !quote) return;
+
+    setIsSendingLink(true);
+
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/send-quote-link-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            quoteId: id,
+            staffId: currentStaff.staffId,
+            mode: "create",
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success || !result.token) {
+        throw new Error(result.error || "Failed to create quote link");
+      }
+
+      setQuoteReviewToken(result.token);
+      setQuoteReviewTokenExpiry(result.expiresAt);
+      toast.success("Quote link created — preview it below, then click Send.");
+    } catch (error) {
+      console.error("Failed to create quote link:", error);
+      toast.error("Failed to create quote link: " + (error as Error).message);
+    } finally {
+      setIsSendingLink(false);
+    }
+  };
+
+  // Send Quote Link — emails the already-created link to the customer.
+  // If no link exists yet, the edge function will create one transparently
+  // (so this still works without first clicking Create).
   const handleSendQuoteLink = async () => {
     if (!currentStaff?.staffId || !id || !quote) return;
 
@@ -2814,7 +2861,6 @@ export default function AdminQuoteDetail() {
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      // Call send-quote-link-email Edge Function
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/send-quote-link-email`,
         {
@@ -2826,6 +2872,7 @@ export default function AdminQuoteDetail() {
           body: JSON.stringify({
             quoteId: id,
             staffId: currentStaff.staffId,
+            mode: "send",
           }),
         },
       );
@@ -2836,7 +2883,11 @@ export default function AdminQuoteDetail() {
         throw new Error(result.error || "Failed to send quote link");
       }
 
-      // Update quote status to awaiting_payment
+      if (result.token) {
+        setQuoteReviewToken(result.token);
+        setQuoteReviewTokenExpiry(result.expiresAt);
+      }
+
       const { error: quoteError } = await supabase
         .from("quotes")
         .update({
@@ -2866,8 +2917,10 @@ export default function AdminQuoteDetail() {
     }
   };
 
-  // Send Payment Link - creates Stripe checkout and sends direct payment link
-  const handleSendPaymentLink = async () => {
+  // Create Payment Link — generate the Stripe payment URL and store it on
+  // the quote without emailing. Populates the Payment Link field so the
+  // admin can preview/copy before sending.
+  const handleCreatePaymentLink = async () => {
     if (!currentStaff?.staffId || !id || !quote) return;
 
     const customerEmail = quote.customer?.email;
@@ -2882,7 +2935,6 @@ export default function AdminQuoteDetail() {
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      // 1. Create Stripe payment link
       const paymentResponse = await fetch(
         `${SUPABASE_URL}/functions/v1/create-payment-link`,
         {
@@ -2907,7 +2959,73 @@ export default function AdminQuoteDetail() {
         throw new Error(paymentResult.error || "Failed to create payment link");
       }
 
-      // 2. Send payment email with Stripe URL
+      const { error: quoteError } = await supabase
+        .from("quotes")
+        .update({
+          payment_link: paymentResult.url,
+        })
+        .eq("id", id);
+
+      if (quoteError) throw quoteError;
+
+      setQuote((prev) => prev ? { ...prev, payment_link: paymentResult.url } : null);
+      toast.success("Payment link created — preview it below, then click Send.");
+    } catch (error) {
+      console.error("Failed to create payment link:", error);
+      toast.error("Failed to create payment link: " + (error as Error).message);
+    } finally {
+      setIsSendingLink(false);
+    }
+  };
+
+  // Send Payment Link — emails the already-created Stripe URL to the
+  // customer. If no link exists yet, creates one first so the button still
+  // works without pre-clicking Create.
+  const handleSendPaymentLink = async () => {
+    if (!currentStaff?.staffId || !id || !quote) return;
+
+    const customerEmail = quote.customer?.email;
+    if (!customerEmail) {
+      alert("Customer email is required");
+      return;
+    }
+
+    setIsSendingLink(true);
+
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      let paymentUrl = quote.payment_link;
+
+      if (!paymentUrl) {
+        const paymentResponse = await fetch(
+          `${SUPABASE_URL}/functions/v1/create-payment-link`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              quote_id: id,
+              amount: quote.total,
+              customer_email: customerEmail,
+              customer_name: quote.customer?.full_name || "",
+              quote_number: quote.quote_number,
+            }),
+          },
+        );
+
+        const paymentResult = await paymentResponse.json();
+
+        if (!paymentResponse.ok || !paymentResult.url) {
+          throw new Error(paymentResult.error || "Failed to create payment link");
+        }
+
+        paymentUrl = paymentResult.url;
+      }
+
       const emailResponse = await fetch(
         `${SUPABASE_URL}/functions/v1/send-payment-email`,
         {
@@ -2918,11 +3036,12 @@ export default function AdminQuoteDetail() {
           },
           body: JSON.stringify({
             quoteId: id,
+            staffId: currentStaff.staffId,
             customerEmail: customerEmail,
             customerName: quote.customer?.full_name || "",
             quoteNumber: quote.quote_number,
             total: quote.total,
-            paymentUrl: paymentResult.url,
+            paymentUrl,
           }),
         },
       );
@@ -2931,15 +3050,13 @@ export default function AdminQuoteDetail() {
 
       if (!emailResponse.ok || !emailResult.success) {
         console.warn("Email send warning:", emailResult);
-        // Continue anyway - payment link was created
       }
 
-      // 3. Update quote status and store payment link
       const { error: quoteError } = await supabase
         .from("quotes")
         .update({
           status: "awaiting_payment",
-          payment_link: paymentResult.url,
+          payment_link: paymentUrl,
           payment_link_sent_at: new Date().toISOString(),
         })
         .eq("id", id);
@@ -3422,26 +3539,49 @@ export default function AdminQuoteDetail() {
             </Link>
           )}
 
-          {/* Send Quote Link & Send Payment Link - hidden when paid or converted */}
+          {/* Quote link + payment link: Create first to preview, then Send.
+              Both stages hidden when paid or converted. */}
           {!isConvertedToOrder && (
             <>
-              <button
-                onClick={() => setShowSendQuoteLinkConfirmModal(true)}
-                disabled={isSendingLink}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                {isSendingLink ? "Sending..." : "Send Quote Link"}
-              </button>
+              {!quoteReviewToken ? (
+                <button
+                  onClick={handleCreateQuoteLink}
+                  disabled={isSendingLink}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  {isSendingLink ? "Creating..." : "Create Quote Link"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowSendQuoteLinkConfirmModal(true)}
+                  disabled={isSendingLink}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  {isSendingLink ? "Sending..." : "Send Quote Link"}
+                </button>
+              )}
 
-              <button
-                onClick={() => setShowSendPaymentLinkConfirmModal(true)}
-                disabled={isSendingLink}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                {isSendingLink ? "Sending..." : "Send Payment Link"}
-              </button>
+              {!quote.payment_link ? (
+                <button
+                  onClick={handleCreatePaymentLink}
+                  disabled={isSendingLink}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 transition-colors disabled:opacity-50"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  {isSendingLink ? "Creating..." : "Create Payment Link"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowSendPaymentLinkConfirmModal(true)}
+                  disabled={isSendingLink}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  {isSendingLink ? "Sending..." : "Send Payment Link"}
+                </button>
+              )}
             </>
           )}
 
@@ -3717,7 +3857,7 @@ export default function AdminQuoteDetail() {
               ) : (
                 <div className="bg-gray-50 border border-gray-200 rounded px-3 py-2">
                   <p className="text-xs text-gray-400 italic">
-                    No link sent yet — use "Send Quote Link" to generate one
+                    No link yet — use "Create Quote Link" above to generate one, then "Send" when ready.
                   </p>
                 </div>
               )}
@@ -3760,7 +3900,7 @@ export default function AdminQuoteDetail() {
               ) : (
                 <div className="bg-gray-50 border border-gray-200 rounded px-3 py-2">
                   <p className="text-xs text-gray-400 italic">
-                    No payment link yet
+                    No payment link yet — use "Create Payment Link" above to generate one, then "Send" when ready.
                   </p>
                 </div>
               )}
