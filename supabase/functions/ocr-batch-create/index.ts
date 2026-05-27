@@ -117,7 +117,9 @@ serve(async (req) => {
   }
 
   // -----------------------------------------------------------------
-  // Identify the caller (best-effort — function runs with verify_jwt=false)
+  // Identify the caller (best-effort — function runs with verify_jwt=false).
+  // `created_by` FKs to staff_users(id), NOT auth.users(id), so it stays
+  // null unless we can resolve a staff_users row.
   // -----------------------------------------------------------------
   let staffName: string | null = null;
   let staffEmail: string | null = null;
@@ -131,16 +133,17 @@ serve(async (req) => {
         const { data: { user } } = await supabaseAdmin.auth.getUser(token);
         if (user?.email) {
           staffEmail = user.email;
-          staffName = user.email; // matches historical behavior
-          createdBy = user.id ?? null;
+          staffName = user.email; // historical default when no staff_users row matches
 
-          // If a staff_users row exists, prefer the human-readable name.
           const { data: staff } = await supabaseAdmin
             .from("staff_users")
-            .select("full_name")
+            .select("id, full_name")
             .eq("auth_user_id", user.id)
             .maybeSingle();
-          if (staff?.full_name) staffName = staff.full_name;
+          if (staff?.id) {
+            createdBy = staff.id;
+            if (staff.full_name) staffName = staff.full_name;
+          }
         }
       } catch (err) {
         console.warn("[ocr-batch-create] Could not resolve caller identity:", err);
