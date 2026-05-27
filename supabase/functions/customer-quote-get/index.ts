@@ -44,6 +44,7 @@ const ANALYSIS_SELECT = `
   id, quote_file_id, manual_filename, detected_language, language_name,
   detected_document_type, document_type_other, assessed_complexity,
   word_count, page_count, billable_pages, base_rate, line_total,
+  calculation_unit, unit_quantity,
   certification_price, processing_status, ocr_confidence, language_confidence,
   document_type_confidence, complexity_confidence,
   certification_types(name)
