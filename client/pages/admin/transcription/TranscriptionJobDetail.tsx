@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import {
   Shield,
   User,
   Loader2,
+  Copy,
 } from "lucide-react";
 
 interface Job {
@@ -235,7 +236,7 @@ export default function TranscriptionJobDetail() {
         </div>
 
         {/* Downloads */}
-        {job.status === "completed" && (job.delivery_formats ?? []).length > 0 && (
+        {(job.delivery_formats ?? []).length > 0 && job.transcript_text && (
           <DownloadSection jobId={job.id} formats={job.delivery_formats} />
         )}
 
@@ -261,9 +262,7 @@ export default function TranscriptionJobDetail() {
             {tab === "transcript" && (
               <div>
                 {job.transcript_text ? (
-                  <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans max-h-[600px] overflow-y-auto">
-                    {job.transcript_text}
-                  </pre>
+                  <SpeakerTranscript job={job} />
                 ) : (
                   <p className="text-gray-400 text-center py-8">
                     {job.status === "processing" ? "Transcription in progress..." : "No transcript available"}
@@ -311,6 +310,163 @@ export default function TranscriptionJobDetail() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+// ── Speaker-formatted transcript view ──────────────────────────────────────
+
+interface SpeakerSeg {
+  speaker: string;
+  startMs: number;
+  text: string;
+}
+
+const SPEAKER_COLORS = [
+  { text: "text-blue-700", bg: "bg-blue-50", badge: "bg-blue-100 text-blue-800" },
+  { text: "text-emerald-700", bg: "bg-emerald-50", badge: "bg-emerald-100 text-emerald-800" },
+  { text: "text-purple-700", bg: "bg-purple-50", badge: "bg-purple-100 text-purple-800" },
+  { text: "text-orange-700", bg: "bg-orange-50", badge: "bg-orange-100 text-orange-800" },
+  { text: "text-pink-700", bg: "bg-pink-50", badge: "bg-pink-100 text-pink-800" },
+  { text: "text-cyan-700", bg: "bg-cyan-50", badge: "bg-cyan-100 text-cyan-800" },
+];
+
+function fmtTs(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function SpeakerTranscript({ job }: { job: Job }) {
+  const segments = useMemo<SpeakerSeg[] | null>(() => {
+    const json = job.transcript_json;
+    if (!json) return null;
+
+    // AssemblyAI: utterances grouped by speaker
+    const utterances = json.utterances as
+      | Array<{ text: string; start: number; end: number; speaker: string }>
+      | undefined;
+    if (utterances?.length && utterances[0]?.speaker != null) {
+      return utterances.map((u) => ({
+        speaker: `Speaker ${u.speaker}`,
+        startMs: u.start,
+        text: u.text,
+      }));
+    }
+
+    // ElevenLabs: words with speaker_id
+    const words = json.words as
+      | Array<{ text: string; start: number; end: number; speaker_id?: string; type?: string }>
+      | undefined;
+    if (words?.length && words.some((w) => w.speaker_id != null)) {
+      const segs: SpeakerSeg[] = [];
+      let cur: SpeakerSeg | null = null;
+      for (const w of words) {
+        if (w.type === "spacing") continue;
+        const spk = (w.speaker_id ?? "unknown").replace("speaker_", "Speaker ");
+        if (!cur || cur.speaker !== spk) {
+          if (cur) segs.push(cur);
+          cur = { speaker: spk, startMs: w.start, text: w.text };
+        } else {
+          cur.text += " " + w.text;
+        }
+      }
+      if (cur) segs.push(cur);
+      return segs.length > 0 ? segs : null;
+    }
+
+    // OpenAI: segments with timestamps (no speaker)
+    const oaiSegments = json.segments as
+      | Array<{ text: string; start: number; end: number }>
+      | undefined;
+    if (oaiSegments?.length) {
+      return oaiSegments.map((s) => ({
+        speaker: "",
+        startMs: s.start,
+        text: s.text,
+      }));
+    }
+
+    return null;
+  }, [job.transcript_json]);
+
+  const speakerColorMap = useMemo(() => {
+    const map = new Map<string, (typeof SPEAKER_COLORS)[0]>();
+    if (!segments) return map;
+    let idx = 0;
+    for (const seg of segments) {
+      if (seg.speaker && !map.has(seg.speaker)) {
+        map.set(seg.speaker, SPEAKER_COLORS[idx % SPEAKER_COLORS.length]);
+        idx++;
+      }
+    }
+    return map;
+  }, [segments]);
+
+  const hasSpeakers = segments?.some((s) => s.speaker) ?? false;
+
+  const copyAll = () => {
+    if (!segments) {
+      navigator.clipboard.writeText(job.transcript_text ?? "");
+    } else {
+      const text = segments
+        .map((s) => `${s.speaker ? s.speaker + " " : ""}[${fmtTs(s.startMs)}]\n${s.text}`)
+        .join("\n\n");
+      navigator.clipboard.writeText(text);
+    }
+    toast.success("Copied to clipboard");
+  };
+
+  // Fallback: no structured data
+  if (!segments) {
+    return (
+      <div>
+        <div className="flex justify-end mb-2">
+          <button onClick={copyAll} className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded">
+            <Copy className="w-3.5 h-3.5" /> Copy
+          </button>
+        </div>
+        <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans max-h-[600px] overflow-y-auto">
+          {job.transcript_text}
+        </pre>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        {hasSpeakers && (
+          <div className="flex items-center gap-2">
+            {Array.from(speakerColorMap.entries()).map(([name, color]) => (
+              <span key={name} className={`text-xs font-medium px-2 py-0.5 rounded-full ${color.badge}`}>
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
+        <button onClick={copyAll} className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded ml-auto">
+          <Copy className="w-3.5 h-3.5" /> Copy
+        </button>
+      </div>
+      <div className="max-h-[600px] overflow-y-auto space-y-4">
+        {segments.map((seg, i) => {
+          const color = speakerColorMap.get(seg.speaker);
+          return (
+            <div key={i} className={`rounded-lg p-3 ${color?.bg ?? "bg-gray-50"}`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                {seg.speaker && (
+                  <span className={`text-sm font-semibold ${color?.text ?? "text-gray-700"}`}>{seg.speaker}</span>
+                )}
+                <span className="text-xs text-gray-400 font-mono">{fmtTs(seg.startMs)}</span>
+              </div>
+              <p className="text-sm text-gray-800 leading-relaxed">{seg.text}</p>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

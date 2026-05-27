@@ -55,7 +55,7 @@ serve(async (req: Request) => {
     // Resolve target language name
     const { data: targetLang } = await admin
       .from("languages")
-      .select("name, iso_639_1")
+      .select("name, code")
       .eq("id", job.translation_target_language_id)
       .maybeSingle();
 

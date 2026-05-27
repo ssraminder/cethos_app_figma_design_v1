@@ -229,17 +229,18 @@ async function transcribeAssemblyAi(
   const transcriptBody: Record<string, unknown> = {
     audio_url: audioUrl,
     language_detection: true,
+    speaker_labels: true,
   };
 
   if (job.source_language_id) {
     const admin = getServiceClient();
     const { data: lang } = await admin
       .from("languages")
-      .select("iso_639_1")
+      .select("code")
       .eq("id", job.source_language_id)
       .maybeSingle();
-    if (lang?.iso_639_1) {
-      transcriptBody.language_code = lang.iso_639_1;
+    if (lang?.code) {
+      transcriptBody.language_code = lang.code;
       transcriptBody.language_detection = false;
     }
   }
@@ -315,19 +316,20 @@ async function transcribeOpenAi(
   const form = new FormData();
   form.append("file", new File([audioBlob], `audio.${ext}`, { type: audioBlob.type || "audio/mpeg" }));
   form.append("model", "gpt-4o-transcribe");
-  form.append("response_format", "json");
-  // Request logprobs to get detected language info
+  form.append("response_format", "verbose_json");
+  form.append("timestamp_granularities[]", "word");
+  form.append("timestamp_granularities[]", "segment");
   form.append("include[]", "logprobs");
 
   if (job.source_language_id) {
     const admin = getServiceClient();
     const { data: lang } = await admin
       .from("languages")
-      .select("iso_639_1")
+      .select("code")
       .eq("id", job.source_language_id)
       .maybeSingle();
-    if (lang?.iso_639_1) {
-      form.append("language", lang.iso_639_1);
+    if (lang?.code) {
+      form.append("language", lang.code);
     }
   }
 
@@ -344,9 +346,22 @@ async function transcribeOpenAi(
 
   const result = await resp.json();
 
+  const normalizedWords = (result.words ?? []).map((w: Record<string, unknown>) => ({
+    text: w.word as string,
+    start: Math.round((w.start as number) * 1000),
+    end: Math.round((w.end as number) * 1000),
+  }));
+  const normalizedSegments = (result.segments ?? []).map((s: Record<string, unknown>) => ({
+    text: (s.text as string)?.trim(),
+    start: Math.round((s.start as number) * 1000),
+    end: Math.round((s.end as number) * 1000),
+  }));
+
   return {
     text: result.text ?? "",
     json: {
+      ...(normalizedWords.length > 0 ? { words: normalizedWords } : {}),
+      ...(normalizedSegments.length > 0 ? { segments: normalizedSegments } : {}),
       logprobs: result.logprobs,
     },
     providerJobId: null,
@@ -366,16 +381,17 @@ async function transcribeElevenLabs(
   const form = new FormData();
   form.append("file", new File([audioBlob], `audio.${ext}`, { type: audioBlob.type || "audio/mpeg" }));
   form.append("model_id", "scribe_v2");
+  form.append("diarize", "true");
 
   if (job.source_language_id) {
     const admin = getServiceClient();
     const { data: lang } = await admin
       .from("languages")
-      .select("iso_639_1")
+      .select("code")
       .eq("id", job.source_language_id)
       .maybeSingle();
-    if (lang?.iso_639_1) {
-      form.append("language_code", lang.iso_639_1);
+    if (lang?.code) {
+      form.append("language_code", lang.code);
     }
   }
 

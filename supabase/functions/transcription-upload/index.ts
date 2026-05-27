@@ -207,7 +207,7 @@ serve(async (req: Request) => {
       const { data: langRow } = await admin
         .from("languages")
         .select("id")
-        .or(`code.eq.${sourceLang},iso_639_1.eq.${sourceLang}`)
+        .or(`code.eq.${sourceLang},code.eq.${sourceLang}`)
         .limit(1)
         .maybeSingle();
       sourceLanguageId = langRow?.id ?? null;
@@ -218,7 +218,7 @@ serve(async (req: Request) => {
       const { data: langRow } = await admin
         .from("languages")
         .select("id")
-        .or(`code.eq.${translationTarget},iso_639_1.eq.${translationTarget}`)
+        .or(`code.eq.${translationTarget},code.eq.${translationTarget}`)
         .limit(1)
         .maybeSingle();
       translationTargetLanguageId = langRow?.id ?? null;

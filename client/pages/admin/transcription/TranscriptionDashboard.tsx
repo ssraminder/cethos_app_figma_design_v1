@@ -207,7 +207,7 @@ async function extractCompressedAudio(
 
 function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClose: () => void; onUploaded: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
 
@@ -235,8 +235,21 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
     });
   };
 
+  const addFiles = (newFiles: FileList | null) => {
+    if (!newFiles) return;
+    setFiles((prev) => {
+      const existing = new Set(prev.map((f) => `${f.name}:${f.size}`));
+      const deduped = Array.from(newFiles).filter((f) => !existing.has(`${f.name}:${f.size}`));
+      return [...prev, ...deduped];
+    });
+  };
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const resetForm = () => {
-    setFile(null);
+    setFiles([]);
     setEmail("");
     setProvider("openai");
     setSourceLanguageId("");
@@ -247,196 +260,198 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
     setHumanReviewTier("standard");
   };
 
+  const processOneFile = async (file: File): Promise<string> => {
+    const jobId = crypto.randomUUID();
+    let uploadFile = file;
+    let durationSeconds = 60;
+    let fileFormat = file.name.split(".").pop()?.toLowerCase() ?? "mp3";
+
+    if (needsCompression(file)) {
+      setProgress(isVideoFile(file) ? `Extracting audio: ${file.name}` : `Compressing: ${file.name}`);
+      const result = await extractCompressedAudio(file, setProgress);
+      uploadFile = result.audio;
+      durationSeconds = result.duration;
+      fileFormat = result.format;
+    }
+
+    const storagePath = `${jobId}/source/audio.${fileFormat}`;
+    setProgress(`Uploading: ${file.name}`);
+    const buf = await uploadFile.arrayBuffer();
+    const contentType = (uploadFile.type || "application/octet-stream").split(";")[0];
+    const { error: upErr } = await supabase.storage
+      .from("transcription-uploads")
+      .upload(storagePath, buf, {
+        contentType,
+        upsert: false,
+      });
+
+    if (upErr) throw new Error(`Upload failed for ${file.name}: ${upErr.message}`);
+
+    if (!needsCompression(file)) {
+      try {
+        const audioCtx = new AudioContext();
+        const audioBuffer = await audioCtx.decodeAudioData(buf.slice(0));
+        durationSeconds = Math.ceil(audioBuffer.duration);
+        audioCtx.close();
+      } catch {
+        durationSeconds = Math.max(1, Math.ceil(uploadFile.size / 16000));
+      }
+    }
+
+    const customerEmail = email.trim() || "internal@cethos.com";
+    const { error: jobErr } = await supabase
+      .from("transcription_jobs")
+      .insert({
+        id: jobId,
+        customer_email: customerEmail,
+        file_path: storagePath,
+        file_name: file.name,
+        file_duration_seconds: durationSeconds,
+        file_size_bytes: uploadFile.size,
+        file_format: fileFormat,
+        status: "processing",
+        provider,
+        pricing_tier: "free",
+        amount_charged: 0,
+        payment_status: "none",
+        delivery_formats: Array.from(formats),
+        source_language_id: sourceLanguageId || null,
+        translation_requested: translationEnabled,
+        translation_target_language_id: translationEnabled && targetLanguageId ? targetLanguageId : null,
+        translation_type: translationEnabled ? "ai_instant" : null,
+        human_review_requested: humanReviewEnabled,
+        human_review_tier: humanReviewEnabled ? humanReviewTier : null,
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+
+    if (jobErr) throw new Error(`Job failed for ${file.name}: ${jobErr.message}`);
+
+    supabase.functions.invoke("transcription-process", {
+      body: { job_id: jobId },
+    }).catch((e) => console.error("Process trigger error:", e));
+
+    return jobId;
+  };
+
   const handleUpload = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     if (formats.size === 0) { toast.error("Select at least one output format"); return; }
     if (translationEnabled && !targetLanguageId) { toast.error("Select a target language for translation"); return; }
 
     setUploading(true);
-    setProgress("Uploading...");
+    const total = files.length;
+    let succeeded = 0;
+    const errors: string[] = [];
 
-    try {
-      const jobId = crypto.randomUUID();
-      let uploadFile = file;
-      let durationSeconds = 60;
-      let fileFormat = file.name.split(".").pop()?.toLowerCase() ?? "mp3";
-
-      if (needsCompression(file)) {
-        setProgress(isVideoFile(file) ? "Extracting audio from video..." : "Compressing audio...");
-        try {
-          const result = await extractCompressedAudio(file, setProgress);
-          uploadFile = result.audio;
-          durationSeconds = result.duration;
-          fileFormat = result.format;
-        } catch (e) {
-          console.error("Audio compression failed:", e);
-          throw new Error("Failed to compress audio — try converting to MP3 first");
-        }
+    for (let i = 0; i < files.length; i++) {
+      setProgress(`Processing file ${i + 1} of ${total}: ${files[i].name}`);
+      try {
+        await processOneFile(files[i]);
+        succeeded++;
+      } catch (e: any) {
+        console.error(`File ${i + 1} failed:`, e);
+        errors.push(e.message ?? `File ${i + 1} failed`);
       }
-
-      const storagePath = `${jobId}/source/audio.${fileFormat}`;
-      setProgress("Uploading audio file...");
-      const buf = await uploadFile.arrayBuffer();
-      const { error: upErr } = await supabase.storage
-        .from("transcription-uploads")
-        .upload(storagePath, buf, {
-          contentType: uploadFile.type || "application/octet-stream",
-          upsert: false,
-        });
-
-      if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
-
-      if (!needsCompression(file)) {
-        try {
-          const audioCtx = new AudioContext();
-          const audioBuffer = await audioCtx.decodeAudioData(buf.slice(0));
-          durationSeconds = Math.ceil(audioBuffer.duration);
-          audioCtx.close();
-        } catch {
-          durationSeconds = Math.max(1, Math.ceil(uploadFile.size / 16000));
-        }
-      }
-
-      setProgress("Creating job...");
-      const customerEmail = email.trim() || "internal@cethos.com";
-
-      const { error: jobErr } = await supabase
-        .from("transcription_jobs")
-        .insert({
-          id: jobId,
-          customer_email: customerEmail,
-          file_path: storagePath,
-          file_name: file.name,
-          file_duration_seconds: durationSeconds,
-          file_size_bytes: uploadFile.size,
-          file_format: fileFormat,
-          status: "processing",
-          provider,
-          pricing_tier: "free",
-          amount_charged: 0,
-          payment_status: "none",
-          delivery_formats: Array.from(formats),
-          source_language_id: sourceLanguageId || null,
-          translation_requested: translationEnabled,
-          translation_target_language_id: translationEnabled && targetLanguageId ? targetLanguageId : null,
-          translation_type: translationEnabled ? "ai_instant" : null,
-          human_review_requested: humanReviewEnabled,
-          human_review_tier: humanReviewEnabled ? humanReviewTier : null,
-          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        });
-
-      if (jobErr) throw new Error(`Job insert failed: ${jobErr.message}`);
-
-      setProgress("Triggering transcription...");
-      supabase.functions.invoke("transcription-process", {
-        body: { job_id: jobId },
-      }).catch((e) => console.error("Process trigger error:", e));
-
-      toast.success("Transcription job created — processing started", {
-        description: `Job ID: ${jobId.slice(0, 8)}... · Provider: ${provider}`,
-      });
-      resetForm();
-      onClose();
-      setTimeout(onUploaded, 2000);
-    } catch (e: any) {
-      toast.error(e.message ?? "Upload failed");
-    } finally {
-      setUploading(false);
-      setProgress("");
     }
+
+    if (succeeded > 0) {
+      toast.success(`${succeeded} transcription job${succeeded > 1 ? "s" : ""} created`, {
+        description: errors.length > 0 ? `${errors.length} file${errors.length > 1 ? "s" : ""} failed` : `Provider: ${provider}`,
+      });
+    }
+    if (errors.length > 0 && succeeded === 0) {
+      toast.error("All uploads failed", { description: errors[0] });
+    }
+
+    resetForm();
+    onClose();
+    setUploading(false);
+    setProgress("");
+    setTimeout(onUploaded, 2000);
   };
 
   if (!open) return null;
 
+  const Toggle = ({ checked, onChange, label, desc }: { checked: boolean; onChange: (v: boolean) => void; label: string; desc?: string }) => (
+    <div className="flex items-center justify-between py-3">
+      <div>
+        <p className="text-sm font-medium text-gray-900">{label}</p>
+        {desc && <p className="text-xs text-gray-500 mt-0.5">{desc}</p>}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked ? "bg-gray-900" : "bg-gray-200"}`}
+      >
+        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? "translate-x-6" : "translate-x-1"}`} />
+      </button>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-xl mx-4 max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-          <h2 className="text-lg font-semibold text-gray-900">Staff Transcription Tool</h2>
-          <button onClick={() => { resetForm(); onClose(); }} className="p-1 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        <div className="flex items-center justify-between px-6 py-4 flex-shrink-0">
+          <h2 className="text-lg font-semibold text-gray-900">Transcribe files</h2>
+          <button onClick={() => { resetForm(); onClose(); }} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"><X className="w-5 h-5" /></button>
         </div>
 
         {/* Scrollable body */}
-        <div className="overflow-y-auto px-6 py-4 space-y-5 flex-1">
+        <div className="overflow-y-auto px-6 pb-4 space-y-1 flex-1">
           {/* File Upload */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Audio / Video File</label>
-            <div
-              className={`border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition ${
-                file ? "border-teal-400 bg-teal-50" : "border-gray-200 hover:border-gray-400"
-              }`}
-              onClick={() => fileRef.current?.click()}
-            >
-              <input
-                ref={fileRef}
-                type="file"
-                accept="audio/*,video/*,.mp3,.wav,.m4a,.mp4,.mov,.webm,.ogg,.flac,.aac"
-                className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-              {file ? (
-                <div>
-                  <p className="text-sm font-medium text-teal-700">{file.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">{(file.size / (1024 * 1024)).toFixed(1)} MB</p>
-                </div>
-              ) : (
-                <div>
-                  <Upload className="w-7 h-7 mx-auto text-gray-300 mb-1.5" />
-                  <p className="text-sm text-gray-500">Click to select audio/video file</p>
-                  <p className="text-xs text-gray-400 mt-0.5">MP3, WAV, M4A, MP4, MOV, WEBM, OGG, FLAC</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Recipient Email */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Recipient Email</label>
+          <div
+            className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition mb-2 ${
+              files.length > 0 ? "border-teal-400 bg-teal-50" : "border-gray-200 hover:border-gray-300"
+            }`}
+            onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); addFiles(e.dataTransfer.files); }}
+          >
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Leave blank for internal use (no email sent)"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              ref={fileRef}
+              type="file"
+              multiple
+              accept="audio/*,video/*,.mp3,.wav,.m4a,.mp4,.mov,.webm,.ogg,.flac,.aac"
+              className="hidden"
+              onChange={(e) => { addFiles(e.target.files); if (fileRef.current) fileRef.current.value = ""; }}
             />
-            <p className="text-xs text-gray-400 mt-1">If provided, customer receives a branded delivery email with download links.</p>
+            <Upload className="w-6 h-6 mx-auto text-gray-300 mb-2" />
+            <p className="text-sm text-gray-600">Click or drag files here</p>
+            <p className="text-xs text-gray-400 mt-0.5">Audio & video · Multiple files OK · Up to 500MB each</p>
           </div>
 
-          {/* Provider */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">STT Provider</label>
-            <div className="space-y-1.5">
-              {PROVIDER_OPTIONS.map((opt) => (
-                <label key={opt.value} className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition ${
-                  provider === opt.value ? "border-teal-400 bg-teal-50" : "border-gray-200 hover:border-gray-300"
-                }`}>
-                  <input
-                    type="radio"
-                    name="provider"
-                    value={opt.value}
-                    checked={provider === opt.value}
-                    onChange={() => setProvider(opt.value)}
-                    className="accent-teal-600"
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{opt.label}</p>
-                    <p className="text-xs text-gray-500">{opt.desc}</p>
+          {files.length > 0 && (
+            <div className="mb-4 space-y-1">
+              {files.map((f, i) => (
+                <div key={`${f.name}-${f.size}`} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-gray-800 truncate">{f.name}</p>
+                    <p className="text-xs text-gray-400">{(f.size / (1024 * 1024)).toFixed(1)} MB</p>
                   </div>
-                </label>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeFile(i); }}
+                    className="ml-2 p-1 text-gray-400 hover:text-red-500 rounded"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               ))}
+              <p className="text-xs text-gray-400 text-center pt-1">
+                {files.length} file{files.length > 1 ? "s" : ""} · {(files.reduce((a, f) => a + f.size, 0) / (1024 * 1024)).toFixed(1)} MB total
+              </p>
             </div>
-          </div>
+          )}
 
-          {/* Source Language */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Source Language</label>
+          {/* Primary Language */}
+          <div className="flex items-center justify-between py-3">
+            <p className="text-sm font-medium text-gray-900">Primary language</p>
             <select
               value={sourceLanguageId}
               onChange={(e) => setSourceLanguageId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 max-w-[160px]"
             >
-              <option value="">Auto-detect</option>
+              <option value="">Detect</option>
               {sourceLanguages.map((lang) => (
                 <option key={lang.id} value={lang.id}>
                   {lang.name}{lang.native_name && lang.native_name !== lang.name ? ` (${lang.native_name})` : ""}
@@ -445,118 +460,125 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
             </select>
           </div>
 
-          {/* Output Formats */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Output Formats</label>
-            <div className="flex flex-wrap gap-2">
-              {FORMAT_OPTIONS.map((fmt) => (
-                <label key={fmt.key} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition ${
-                  formats.has(fmt.key) ? "border-teal-400 bg-teal-50 text-teal-800 font-medium" : "border-gray-200 text-gray-600 hover:border-gray-300"
-                }`}>
-                  <input
-                    type="checkbox"
-                    checked={formats.has(fmt.key)}
-                    onChange={() => toggleFormat(fmt.key)}
-                    className="accent-teal-600"
-                  />
-                  {fmt.label}
-                </label>
+          <div className="border-t border-gray-100" />
+
+          {/* Provider */}
+          <div className="flex items-center justify-between py-3">
+            <p className="text-sm font-medium text-gray-900">Provider</p>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 max-w-[200px]"
+            >
+              {PROVIDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
-            </div>
-            <p className="text-xs text-gray-400 mt-1">SRT/VTT use word-level timestamps when available. At least one required.</p>
+            </select>
           </div>
 
-          {/* Add-ons */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Add-ons</label>
-            <div className="space-y-3">
-              {/* AI Translation */}
-              <div className={`rounded-lg border p-3 transition ${translationEnabled ? "border-purple-300 bg-purple-50" : "border-gray-200"}`}>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={translationEnabled}
-                    onChange={(e) => setTranslationEnabled(e.target.checked)}
-                    className="accent-purple-600"
-                  />
-                  <span className="text-sm font-medium text-gray-900">AI Translation</span>
-                  <span className="text-xs text-gray-500">(Claude Sonnet, instant)</span>
-                </label>
-                {translationEnabled && (
-                  <div className="mt-2 ml-6">
-                    <select
-                      value={targetLanguageId}
-                      onChange={(e) => setTargetLanguageId(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
-                    >
-                      <option value="">Select target language...</option>
-                      {targetLanguages.map((lang) => (
-                        <option key={lang.id} value={lang.id}>
-                          {lang.name}{lang.native_name && lang.native_name !== lang.name ? ` (${lang.native_name})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
+          <div className="border-t border-gray-100" />
 
-              {/* Human Review */}
-              <div className={`rounded-lg border p-3 transition ${humanReviewEnabled ? "border-amber-300 bg-amber-50" : "border-gray-200"}`}>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={humanReviewEnabled}
-                    onChange={(e) => setHumanReviewEnabled(e.target.checked)}
-                    className="accent-amber-600"
-                  />
-                  <span className="text-sm font-medium text-gray-900">Request Human Review</span>
-                </label>
-                {humanReviewEnabled && (
-                  <div className="mt-2 ml-6 flex gap-3">
-                    {[
-                      { value: "standard", label: "Standard", desc: "24–48h" },
-                      { value: "rush", label: "Rush", desc: "4–8h" },
-                    ].map((opt) => (
-                      <label key={opt.value} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition ${
-                        humanReviewTier === opt.value ? "border-amber-400 bg-amber-100 font-medium" : "border-gray-200"
-                      }`}>
-                        <input
-                          type="radio"
-                          name="review-tier"
-                          value={opt.value}
-                          checked={humanReviewTier === opt.value}
-                          onChange={() => setHumanReviewTier(opt.value)}
-                          className="accent-amber-600"
-                        />
-                        {opt.label} <span className="text-xs text-gray-500">({opt.desc})</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
+          {/* Toggle options */}
+          <Toggle
+            checked={translationEnabled}
+            onChange={setTranslationEnabled}
+            label="AI Translation"
+            desc="Claude Sonnet, instant"
+          />
+          {translationEnabled && (
+            <div className="pb-3">
+              <select
+                value={targetLanguageId}
+                onChange={(e) => setTargetLanguageId(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">Select target language...</option>
+                {targetLanguages.map((lang) => (
+                  <option key={lang.id} value={lang.id}>
+                    {lang.name}{lang.native_name && lang.native_name !== lang.name ? ` (${lang.native_name})` : ""}
+                  </option>
+                ))}
+              </select>
             </div>
+          )}
+
+          <div className="border-t border-gray-100" />
+
+          <Toggle
+            checked={humanReviewEnabled}
+            onChange={setHumanReviewEnabled}
+            label="Human review"
+          />
+          {humanReviewEnabled && (
+            <div className="pb-3 flex gap-2">
+              {[
+                { value: "standard", label: "Standard (24–48h)" },
+                { value: "rush", label: "Rush (4–8h)" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setHumanReviewTier(opt.value)}
+                  className={`px-3 py-1.5 text-xs rounded-lg border transition ${
+                    humanReviewTier === opt.value ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="border-t border-gray-100" />
+
+          {/* Output Formats */}
+          <div className="py-3">
+            <p className="text-sm font-medium text-gray-900 mb-2">Output formats</p>
+            <div className="flex flex-wrap gap-1.5">
+              {FORMAT_OPTIONS.map((fmt) => (
+                <button
+                  key={fmt.key}
+                  onClick={() => toggleFormat(fmt.key)}
+                  className={`px-3 py-1.5 text-xs rounded-lg border transition ${
+                    formats.has(fmt.key) ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                  }`}
+                >
+                  {fmt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100" />
+
+          {/* Recipient Email */}
+          <div className="py-3">
+            <p className="text-sm font-medium text-gray-900 mb-1.5">Recipient email</p>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Leave blank for internal use"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
+        <div className="px-6 py-4 flex-shrink-0">
           {progress ? (
-            <div className="flex items-center gap-2 text-sm text-teal-700">
+            <div className="flex items-center justify-center gap-2 text-sm text-teal-700 mb-3">
               <Loader2 className="w-4 h-4 animate-spin" />
               {progress}
             </div>
-          ) : <div />}
-          <div className="flex gap-2">
-            <button onClick={() => { resetForm(); onClose(); }} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-            <button
-              onClick={handleUpload}
-              disabled={!file || uploading}
-              className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2"
-            >
-              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              Upload & Process
-            </button>
-          </div>
+          ) : null}
+          <button
+            onClick={handleUpload}
+            disabled={files.length === 0 || uploading}
+            className="w-full py-2.5 text-sm bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium"
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {files.length > 1 ? `Upload ${files.length} files` : "Upload file"}
+          </button>
         </div>
       </div>
     </div>

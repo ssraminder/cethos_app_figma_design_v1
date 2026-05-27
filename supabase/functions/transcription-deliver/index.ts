@@ -96,34 +96,27 @@ serve(async (req: Request) => {
     };
 
     for (const fmt of formats) {
-      let content: string;
-      let contentType: string;
+      let blob: Blob;
 
       if (fmt === "txt") {
-        content = buildTxtOutput(job, metadata, targetLangName);
-        contentType = "text/plain";
+        blob = new Blob([buildTxtOutput(job, metadata, targetLangName)], { type: "text/plain" });
       } else if (fmt === "docx") {
-        content = buildDocxXml(job, metadata, targetLangName);
-        contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        const zipData = buildDocxZip(job, metadata, targetLangName);
+        blob = new Blob([zipData], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
       } else if (fmt === "pdf") {
-        // PDF: plain text for now (true PDF generation requires a library)
-        content = buildTxtOutput(job, metadata, targetLangName);
-        contentType = "text/plain";
+        blob = new Blob([buildTxtOutput(job, metadata, targetLangName)], { type: "text/plain" });
       } else if (fmt === "srt") {
-        content = buildSrtOutput(job);
-        contentType = "text/plain";
+        blob = new Blob([buildSrtOutput(job)], { type: "text/plain" });
       } else if (fmt === "vtt") {
-        content = buildVttOutput(job);
-        contentType = "text/vtt";
+        blob = new Blob([buildVttOutput(job)], { type: "text/vtt" });
       } else if (fmt === "json") {
-        content = buildJsonOutput(job, metadata, targetLangName);
-        contentType = "application/json";
+        blob = new Blob([buildJsonOutput(job, metadata, targetLangName)], { type: "application/json" });
       } else {
         continue;
       }
 
       const storagePath = `${jobId}/output/transcript.${fmt}`;
-      const blob = new Blob([content], { type: contentType });
+      const contentType = blob.type;
 
       const { error: upErr } = await admin.storage
         .from("transcription-uploads")
@@ -275,6 +268,80 @@ interface OutputMetadata {
   date: string;
 }
 
+// ── Speaker diarization helpers ─────────────────────────────────────────────
+
+interface SpeakerSegment {
+  speaker: string;
+  startMs: number;
+  endMs: number;
+  text: string;
+}
+
+function extractSpeakerSegments(
+  job: Record<string, unknown>,
+): SpeakerSegment[] | null {
+  const json = job.transcript_json as Record<string, unknown> | null;
+  if (!json) return null;
+
+  // AssemblyAI: utterances already grouped by speaker
+  const utterances = json.utterances as
+    | Array<{ text: string; start: number; end: number; speaker: string }>
+    | undefined;
+  if (utterances?.length && utterances[0]?.speaker != null) {
+    return utterances.map((u) => ({
+      speaker: `Speaker ${u.speaker}`,
+      startMs: u.start,
+      endMs: u.end,
+      text: u.text,
+    }));
+  }
+
+  // ElevenLabs: words with speaker_id — group consecutive words by speaker
+  const words = json.words as
+    | Array<{
+        text: string;
+        start: number;
+        end: number;
+        speaker_id?: string;
+        type?: string;
+      }>
+    | undefined;
+  if (words?.length && words.some((w) => w.speaker_id != null)) {
+    const segments: SpeakerSegment[] = [];
+    let current: SpeakerSegment | null = null;
+
+    for (const word of words) {
+      if (word.type === "spacing") continue;
+      const spkRaw = word.speaker_id ?? "unknown";
+      const speaker = spkRaw.replace("speaker_", "Speaker ");
+      if (!current || current.speaker !== speaker) {
+        if (current) segments.push(current);
+        current = {
+          speaker,
+          startMs: word.start,
+          endMs: word.end,
+          text: word.text,
+        };
+      } else {
+        current.endMs = word.end;
+        current.text += " " + word.text;
+      }
+    }
+    if (current) segments.push(current);
+    return segments.length > 0 ? segments : null;
+  }
+
+  return null;
+}
+
+function fmtTimestamp(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 function buildTxtOutput(
   job: Record<string, unknown>,
   meta: OutputMetadata,
@@ -295,12 +362,21 @@ function buildTxtOutput(
     "TRANSCRIPT",
     "-".repeat(50),
     "",
-    job.transcript_text as string,
   ];
+
+  const segments = extractSpeakerSegments(job);
+  if (segments) {
+    for (const seg of segments) {
+      lines.push(`${seg.speaker} [${fmtTimestamp(seg.startMs)}]`);
+      lines.push(seg.text);
+      lines.push("");
+    }
+  } else {
+    lines.push(job.transcript_text as string);
+  }
 
   if (targetLangName && job.translated_text) {
     lines.push(
-      "",
       "",
       `TRANSLATION (${targetLangName})`,
       "-".repeat(50),
@@ -321,37 +397,70 @@ function buildTxtOutput(
   return lines.join("\n");
 }
 
-function buildDocxXml(
+// ── Minimal ZIP + OOXML DOCX builder ────────────────────────────────────────
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function buildDocxZip(
   job: Record<string, unknown>,
   meta: OutputMetadata,
   targetLangName: string | null,
-): string {
-  // Minimal Word-compatible XML (flat OPC / single-file approach)
+): Uint8Array {
   const escXml = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  const transcriptParas = (job.transcript_text as string)
-    .split("\n")
-    .map((line) => `<w:p><w:r><w:t xml:space="preserve">${escXml(line)}</w:t></w:r></w:p>`)
-    .join("\n");
+  const segments = extractSpeakerSegments(job);
+  let transcriptParas: string;
+  if (segments) {
+    transcriptParas = segments
+      .map(
+        (seg) =>
+          `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="0F766E"/></w:rPr><w:t>${escXml(seg.speaker)} [${fmtTimestamp(seg.startMs)}]</w:t></w:r></w:p>` +
+          `<w:p><w:r><w:t xml:space="preserve">${escXml(seg.text)}</w:t></w:r></w:p>` +
+          `<w:p/>`,
+      )
+      .join("");
+  } else {
+    transcriptParas = (job.transcript_text as string)
+      .split("\n")
+      .map((line) => `<w:p><w:r><w:t xml:space="preserve">${escXml(line)}</w:t></w:r></w:p>`)
+      .join("");
+  }
 
   let translationSection = "";
   if (targetLangName && job.translated_text) {
     const translatedParas = (job.translated_text as string)
       .split("\n")
       .map((line) => `<w:p><w:r><w:t xml:space="preserve">${escXml(line)}</w:t></w:r></w:p>`)
-      .join("\n");
+      .join("");
 
-    translationSection = `
-      <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Translation (${escXml(targetLangName)})</w:t></w:r></w:p>
-      ${translatedParas}
-      <w:p><w:r><w:rPr><w:i/><w:sz w:val="20"/></w:rPr><w:t>AI-translated. For certified or human-reviewed translation, visit cethos.com/services/translation</w:t></w:r></w:p>
-    `;
+    translationSection =
+      `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Translation (${escXml(targetLangName)})</w:t></w:r></w:p>` +
+      translatedParas +
+      `<w:p><w:r><w:rPr><w:i/><w:sz w:val="20"/></w:rPr><w:t>AI-translated. For certified or human-reviewed translation, visit cethos.com/services/translation</w:t></w:r></w:p>`;
   }
 
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<?mso-application progid="Word.Document"?>
-<w:wordDocument xmlns:w="http://schemas.microsoft.com/office/word/2003/wordml">
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+ xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
+ xmlns:v="urn:schemas-microsoft-com:vml"
+ xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+ xmlns:w10="urn:schemas-microsoft-com:office:word"
+ xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml"
+ mc:Ignorable="w14 wp14">
 <w:body>
   <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Transcription Report</w:t></w:r></w:p>
   <w:p><w:r><w:t>File: ${escXml(meta.fileName)} | Duration: ${escXml(meta.duration)} | Language: ${escXml(meta.language)}</w:t></w:r></w:p>
@@ -362,8 +471,141 @@ function buildDocxXml(
   ${translationSection}
   <w:p/>
   <w:p><w:r><w:rPr><w:sz w:val="18"/><w:color w:val="999999"/></w:rPr><w:t>Generated by Cethos Solutions Inc. — cethos.com</w:t></w:r></w:p>
+  <w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>
 </w:body>
-</w:wordDocument>`;
+</w:document>`;
+
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:rPr><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading1">
+    <w:name w:val="heading 1"/>
+    <w:basedOn w:val="Normal"/>
+    <w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr>
+    <w:rPr><w:b/><w:sz w:val="32"/><w:szCs w:val="32"/><w:color w:val="0F766E"/></w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading2">
+    <w:name w:val="heading 2"/>
+    <w:basedOn w:val="Normal"/>
+    <w:pPr><w:spacing w:before="200" w:after="80"/></w:pPr>
+    <w:rPr><w:b/><w:sz w:val="26"/><w:szCs w:val="26"/><w:color w:val="374151"/></w:rPr>
+  </w:style>
+</w:styles>`;
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+</Types>`;
+
+  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`;
+
+  const documentRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+
+  const files: Array<{ name: string; data: Uint8Array }> = [
+    { name: "[Content_Types].xml", data: new TextEncoder().encode(contentTypesXml) },
+    { name: "_rels/.rels", data: new TextEncoder().encode(relsXml) },
+    { name: "word/document.xml", data: new TextEncoder().encode(documentXml) },
+    { name: "word/styles.xml", data: new TextEncoder().encode(stylesXml) },
+    { name: "word/_rels/document.xml.rels", data: new TextEncoder().encode(documentRelsXml) },
+  ];
+
+  return buildZip(files);
+}
+
+function buildZip(files: Array<{ name: string; data: Uint8Array }>): Uint8Array {
+  const encoder = new TextEncoder();
+  const localHeaders: Uint8Array[] = [];
+  const centralHeaders: Uint8Array[] = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name);
+    const crc = crc32(file.data);
+    const size = file.data.length;
+
+    // Local file header (30 bytes + name + data)
+    const local = new Uint8Array(30 + nameBytes.length + size);
+    const lv = new DataView(local.buffer);
+    lv.setUint32(0, 0x04034b50, true);   // signature
+    lv.setUint16(4, 20, true);            // version needed
+    lv.setUint16(6, 0, true);             // flags
+    lv.setUint16(8, 0, true);             // compression (store)
+    lv.setUint16(10, 0, true);            // mod time
+    lv.setUint16(12, 0, true);            // mod date
+    lv.setUint32(14, crc, true);          // crc32
+    lv.setUint32(18, size, true);         // compressed size
+    lv.setUint32(22, size, true);         // uncompressed size
+    lv.setUint16(26, nameBytes.length, true); // name length
+    lv.setUint16(28, 0, true);            // extra length
+    local.set(nameBytes, 30);
+    local.set(file.data, 30 + nameBytes.length);
+    localHeaders.push(local);
+
+    // Central directory header (46 bytes + name)
+    const central = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(central.buffer);
+    cv.setUint32(0, 0x02014b50, true);    // signature
+    cv.setUint16(4, 20, true);            // version made by
+    cv.setUint16(6, 20, true);            // version needed
+    cv.setUint16(8, 0, true);             // flags
+    cv.setUint16(10, 0, true);            // compression
+    cv.setUint16(12, 0, true);            // mod time
+    cv.setUint16(14, 0, true);            // mod date
+    cv.setUint32(16, crc, true);          // crc32
+    cv.setUint32(20, size, true);         // compressed size
+    cv.setUint32(24, size, true);         // uncompressed size
+    cv.setUint16(28, nameBytes.length, true); // name length
+    cv.setUint16(30, 0, true);            // extra length
+    cv.setUint16(32, 0, true);            // comment length
+    cv.setUint16(34, 0, true);            // disk start
+    cv.setUint16(36, 0, true);            // internal attrs
+    cv.setUint32(38, 0, true);            // external attrs
+    cv.setUint32(42, offset, true);       // local header offset
+    central.set(nameBytes, 46);
+    centralHeaders.push(central);
+
+    offset += local.length;
+  }
+
+  // End of central directory (22 bytes)
+  const centralDirSize = centralHeaders.reduce((a, h) => a + h.length, 0);
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);       // signature
+  ev.setUint16(4, 0, true);                // disk number
+  ev.setUint16(6, 0, true);                // central dir disk
+  ev.setUint16(8, files.length, true);     // entries on disk
+  ev.setUint16(10, files.length, true);    // total entries
+  ev.setUint32(12, centralDirSize, true);  // central dir size
+  ev.setUint32(16, offset, true);          // central dir offset
+  ev.setUint16(20, 0, true);              // comment length
+
+  const totalSize = offset + centralDirSize + 22;
+  const result = new Uint8Array(totalSize);
+  let pos = 0;
+  for (const lh of localHeaders) {
+    result.set(lh, pos);
+    pos += lh.length;
+  }
+  for (const ch of centralHeaders) {
+    result.set(ch, pos);
+    pos += ch.length;
+  }
+  result.set(eocd, pos);
+
+  return result;
 }
 
 // ── Subtitle helpers ────────────────────────────────────────────────────────
@@ -380,10 +622,12 @@ function buildSubtitleBlocks(job: Record<string, unknown>): SubtitleBlock[] {
     text: string;
     start: number;
     end: number;
+    speaker_id?: string;
   }>;
 
   if (words.length > 0) {
     const blocks: SubtitleBlock[] = [];
+    let currentSpeaker = words[0].speaker_id ?? null;
     let current: SubtitleBlock = {
       start: words[0].start,
       end: words[0].end,
@@ -393,14 +637,22 @@ function buildSubtitleBlocks(job: Record<string, unknown>): SubtitleBlock[] {
     for (let i = 1; i < words.length; i++) {
       const word = words[i];
       const blockDurationSec = (word.end - current.start) / 1000;
+      const speakerChanged = word.speaker_id != null && word.speaker_id !== currentSpeaker;
 
-      if (blockDurationSec >= 5) {
+      if (blockDurationSec >= 5 || speakerChanged) {
+        if (currentSpeaker) {
+          current.text = `${currentSpeaker.replace("speaker_", "Speaker ")}: ${current.text}`;
+        }
         blocks.push(current);
+        currentSpeaker = word.speaker_id ?? currentSpeaker;
         current = { start: word.start, end: word.end, text: word.text };
       } else {
         current.end = word.end;
         current.text += " " + word.text;
       }
+    }
+    if (currentSpeaker) {
+      current.text = `${currentSpeaker.replace("speaker_", "Speaker ")}: ${current.text}`;
     }
     blocks.push(current);
     return blocks;
@@ -470,7 +722,8 @@ function buildJsonOutput(
     transcript: {
       text: job.transcript_text,
       ...(json?.words ? { words: json.words } : {}),
-      ...(json?.utterances ? { segments: json.utterances } : {}),
+      ...(json?.utterances ? { utterances: json.utterances } : {}),
+      ...(extractSpeakerSegments(job) ? { speakers: extractSpeakerSegments(job) } : {}),
     },
   };
 
