@@ -178,6 +178,7 @@ serve(async (req: Request) => {
         manual_quote_notes: quote.manualQuoteNotes || null,
         processing_status: "quote_ready",
         promised_delivery_date: quote.promisedDeliveryDate || null,
+        promised_delivery_date_rush: quote.promisedDeliveryDateRush || null,
         internal_project_id: internalProjectId,
         auto_discount_suppressed: quote.applyVolumeDiscount === false,
       })

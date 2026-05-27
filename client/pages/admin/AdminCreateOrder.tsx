@@ -218,6 +218,7 @@ export default function AdminCreateOrder() {
   const [selectedTaxRateId, setSelectedTaxRateId] = useState<string>("");
   const [specialInstructions, setSpecialInstructions] = useState<string>("");
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState<string>("");
+  const [promisedDeliveryDateRush, setPromisedDeliveryDateRush] = useState<string>("");
   const [currency, setCurrency] = useState<string>("CAD");
   const [branchId, setBranchId] = useState<number | null>(null);
   const [branchInheritedFromCustomer, setBranchInheritedFromCustomer] = useState(false);
@@ -1126,6 +1127,9 @@ export default function AdminCreateOrder() {
             promisedDeliveryDate: promisedDeliveryDate
               ? promisedDeliveryDate.slice(0, 10)
               : null,
+            promisedDeliveryDateRush: promisedDeliveryDateRush
+              ? promisedDeliveryDateRush.slice(0, 10)
+              : null,
             promisedDeliveryAt: promisedDeliveryDate
               ? new Date(promisedDeliveryDate).toISOString()
               : null,
@@ -1171,6 +1175,7 @@ export default function AdminCreateOrder() {
           targetLanguageId,
           specialInstructions: specialInstructions.trim() || null,
           promisedDeliveryDate: promisedDeliveryDate || null,
+          promisedDeliveryDateRush: promisedDeliveryDateRush || null,
           isRush: totals.rush > 0,
           notes: specialInstructions.trim() || null,
           taxRateId: selectedTaxRateId || null,
@@ -1692,7 +1697,7 @@ export default function AdminCreateOrder() {
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
-                  Promised delivery{" "}
+                  Standard delivery{" "}
                   <span className="font-normal text-gray-400">
                     ({Intl.DateTimeFormat().resolvedOptions().timeZone})
                   </span>
@@ -1718,6 +1723,23 @@ export default function AdminCreateOrder() {
                   </p>
                 )}
               </div>
+              {mode === "quote" && (
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Rush delivery
+                  </label>
+                  <input
+                    type="date"
+                    value={promisedDeliveryDateRush}
+                    onChange={(e) => setPromisedDeliveryDateRush(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Shown when the customer toggles to rush. Leave blank to fall back to the computed default.
+                  </p>
+                </div>
+              )}
               <div className="md:col-span-3">
                 <label className="block text-xs text-gray-600 mb-1">
                   Workflow template
