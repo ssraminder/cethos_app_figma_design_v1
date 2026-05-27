@@ -288,19 +288,40 @@ Transcript:
 ${transcriptText}`;
     }
 
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: modelInfo.id,
-        max_tokens: 16384,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
+    // Scale max_tokens to input: output ≈ input size + translation. Cap at 8192.
+    const estimatedTokens = Math.ceil((transcriptText.length + translatedText.length) / 3);
+    const maxTokens = Math.min(8192, Math.max(2048, estimatedTokens * 2));
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 130_000);
+
+    let resp: Response;
+    try {
+      resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelInfo.id,
+          max_tokens: maxTokens,
+          messages: [{ role: "user", content: prompt }],
+        }),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      clearTimeout(timeout);
+      const isTimeout = e instanceof DOMException && e.name === "AbortError";
+      console.error("Proofread API", isTimeout ? "timed out at 130s" : "fetch error:", e);
+      await auditLog(admin, jobId, "proofread_failed", "staff", null, {
+        model: modelKey,
+        reason: isTimeout ? "timeout_130s" : "fetch_error",
+      });
+      return jsonResponse({ success: false, error: isTimeout ? "Proofread timed out — try a faster model (haiku)" : "Proofread request failed" }, 504);
+    }
+    clearTimeout(timeout);
 
     if (!resp.ok) {
       const errText = await resp.text();
