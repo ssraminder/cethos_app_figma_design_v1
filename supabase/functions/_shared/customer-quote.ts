@@ -85,6 +85,10 @@ export const ALLOWED_STATUS_TRANSITIONS: Record<string, Set<string>> = {
   pending_payment: new Set(["pending_payment", "in_review"]),
   checkout_started: new Set(["pending_payment", "in_review", "lead"]),
   revision_needed: new Set(["processing"]),
+  // Manual quotes from create-fast-quote / admin-create-order land in
+  // quote_ready. Without this entry, any customer payment attempt 403s
+  // because pending_payment is not a reachable transition.
+  quote_ready: new Set(["pending_payment", "in_review", "checkout_started"]),
 };
 
 export function sanitizeQuotePatch(
