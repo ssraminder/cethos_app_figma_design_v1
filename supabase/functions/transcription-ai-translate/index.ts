@@ -30,7 +30,7 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await admin
       .from("transcription_jobs")
-      .select("id, transcript_text, translation_target_language_id, detected_language")
+      .select("id, transcript_text, translation_target_language_id, detected_language, ai_total_cost")
       .eq("id", jobId)
       .is("deleted_at", null)
       .maybeSingle();
@@ -69,6 +69,7 @@ serve(async (req: Request) => {
     // Split long transcripts into chunks for reliable translation
     const chunks = splitIntoChunks(job.transcript_text, MAX_CHUNK_CHARS);
     const translatedChunks: string[] = [];
+    let totalCost = 0;
 
     for (const chunk of chunks) {
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -79,7 +80,7 @@ serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 4096,
           messages: [
             {
@@ -114,13 +115,20 @@ ${chunk}`,
       const result = await resp.json();
       const translated = result.content?.[0]?.text ?? "";
       translatedChunks.push(translated);
+      // Sonnet pricing: $3/1M input, $15/1M output
+      const inTok = result.usage?.input_tokens ?? 0;
+      const outTok = result.usage?.output_tokens ?? 0;
+      totalCost += (inTok * 3 + outTok * 15) / 1_000_000;
     }
 
     const fullTranslation = translatedChunks.join("\n\n");
 
+    // Accumulate cost
+    const newTotalCost = ((job.ai_total_cost as number) ?? 0) + totalCost;
+
     const { error: updateErr } = await admin
       .from("transcription_jobs")
-      .update({ translated_text: fullTranslation })
+      .update({ translated_text: fullTranslation, ai_total_cost: newTotalCost })
       .eq("id", jobId);
 
     if (updateErr) {
@@ -132,6 +140,7 @@ ${chunk}`,
       target_language: targetLangName,
       chunks: chunks.length,
       translated_length: fullTranslation.length,
+      cost: totalCost.toFixed(6),
     });
 
     return jsonResponse({
@@ -139,6 +148,7 @@ ${chunk}`,
       job_id: jobId,
       target_language: targetLangName,
       translated_length: fullTranslation.length,
+      cost: Number(totalCost.toFixed(6)),
     });
   } catch (e) {
     console.error("transcription-ai-translate error:", e);

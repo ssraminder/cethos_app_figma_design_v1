@@ -107,30 +107,42 @@ D = Poor quality, significant errors or incoherence`,
 
     const result = await resp.json();
     const rawText = result.content?.[0]?.text ?? "";
+    const inputTokens = result.usage?.input_tokens ?? 0;
+    const outputTokens = result.usage?.output_tokens ?? 0;
+    // Haiku pricing: $0.25/1M input, $1.25/1M output
+    const cost = (inputTokens * 0.25 + outputTokens * 1.25) / 1_000_000;
 
     let score = "B";
     let notes = rawText;
 
     try {
-      const parsed = JSON.parse(rawText);
+      const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+      const parsed = JSON.parse(cleaned);
       if (parsed.score && ["A", "B", "C", "D"].includes(parsed.score)) {
         score = parsed.score;
         notes = parsed.notes ?? "";
       }
     } catch {
-      // If Claude didn't return valid JSON, default to B and store raw response
       score = "B";
       notes = `(non-JSON response) ${rawText.slice(0, 500)}`;
     }
 
+    // Accumulate cost
+    const { data: costRow } = await admin
+      .from("transcription_jobs")
+      .select("ai_total_cost")
+      .eq("id", jobId)
+      .maybeSingle();
+    const newTotalCost = ((costRow?.ai_total_cost as number) ?? 0) + cost;
+
     await admin
       .from("transcription_jobs")
-      .update({ ai_quality_score: score, ai_quality_notes: notes })
+      .update({ ai_quality_score: score, ai_quality_notes: notes, ai_total_cost: newTotalCost })
       .eq("id", jobId);
 
-    await auditLog(admin, jobId, "quality_checked", "system", null, { score, notes });
+    await auditLog(admin, jobId, "quality_checked", "system", null, { score, notes, cost: cost.toFixed(6) });
 
-    return jsonResponse({ success: true, score, notes });
+    return jsonResponse({ success: true, score, notes, cost: Number(cost.toFixed(6)) });
   } catch (e) {
     console.error("transcription-ai-check error:", e);
     return jsonResponse({ success: false, error: "Internal error" }, 500);

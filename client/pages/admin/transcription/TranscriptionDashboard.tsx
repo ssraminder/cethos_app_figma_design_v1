@@ -67,6 +67,29 @@ const PROVIDER_OPTIONS = [
   { value: "elevenlabs", label: "ElevenLabs Scribe v2", desc: "90+ languages" },
 ];
 
+const LANG_SCRIPT_LABELS: Record<string, string> = {
+  pa: "Gurmukhi (ਪੰਜਾਬੀ)",
+  hi: "Devanagari (हिन्दी)",
+  mr: "Devanagari (मराठी)",
+  ne: "Devanagari (नेपाली)",
+  bn: "Bengali (বাংলা)",
+  ta: "Tamil (தமிழ்)",
+  te: "Telugu (తెలుగు)",
+  kn: "Kannada (ಕನ್ನಡ)",
+  ml: "Malayalam (മലയാളം)",
+  ur: "Arabic/Nastaliq (اردو)",
+  ar: "Arabic (العربية)",
+  fa: "Persian (فارسی)",
+  th: "Thai (ไทย)",
+  ka: "Georgian (ქართული)",
+  ru: "Cyrillic (Русский)",
+  uk: "Cyrillic (Українська)",
+  el: "Greek (Ελληνικά)",
+  ko: "Hangul (한국어)",
+  ja: "Japanese (日本語)",
+  zh: "CJK (中文)",
+};
+
 const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "avi", "mkv", "webm", "wmv", "flv", "m4v"]);
 const COMPRESS_THRESHOLD_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -260,114 +283,112 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
     setHumanReviewTier("standard");
   };
 
-  const processOneFile = async (file: File): Promise<string> => {
-    const jobId = crypto.randomUUID();
-    let uploadFile = file;
-    let durationSeconds = 60;
-    let fileFormat = file.name.split(".").pop()?.toLowerCase() ?? "mp3";
-
-    if (needsCompression(file)) {
-      setProgress(isVideoFile(file) ? `Extracting audio: ${file.name}` : `Compressing: ${file.name}`);
-      const result = await extractCompressedAudio(file, setProgress);
-      uploadFile = result.audio;
-      durationSeconds = result.duration;
-      fileFormat = result.format;
-    }
-
-    const storagePath = `${jobId}/source/audio.${fileFormat}`;
-    setProgress(`Uploading: ${file.name}`);
-    const buf = await uploadFile.arrayBuffer();
-    const contentType = (uploadFile.type || "application/octet-stream").split(";")[0];
-    const { error: upErr } = await supabase.storage
-      .from("transcription-uploads")
-      .upload(storagePath, buf, {
-        contentType,
-        upsert: false,
-      });
-
-    if (upErr) throw new Error(`Upload failed for ${file.name}: ${upErr.message}`);
-
-    if (!needsCompression(file)) {
-      try {
-        const audioCtx = new AudioContext();
-        const audioBuffer = await audioCtx.decodeAudioData(buf.slice(0));
-        durationSeconds = Math.ceil(audioBuffer.duration);
-        audioCtx.close();
-      } catch {
-        durationSeconds = Math.max(1, Math.ceil(uploadFile.size / 16000));
-      }
-    }
-
-    const customerEmail = email.trim() || "internal@cethos.com";
-    const { error: jobErr } = await supabase
-      .from("transcription_jobs")
-      .insert({
-        id: jobId,
-        customer_email: customerEmail,
-        file_path: storagePath,
-        file_name: file.name,
-        file_duration_seconds: durationSeconds,
-        file_size_bytes: uploadFile.size,
-        file_format: fileFormat,
-        status: "processing",
-        provider,
-        pricing_tier: "free",
-        amount_charged: 0,
-        payment_status: "none",
-        delivery_formats: Array.from(formats),
-        source_language_id: sourceLanguageId || null,
-        translation_requested: translationEnabled,
-        translation_target_language_id: translationEnabled && targetLanguageId ? targetLanguageId : null,
-        translation_type: translationEnabled ? "ai_instant" : null,
-        human_review_requested: humanReviewEnabled,
-        human_review_tier: humanReviewEnabled ? humanReviewTier : null,
-        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      });
-
-    if (jobErr) throw new Error(`Job failed for ${file.name}: ${jobErr.message}`);
-
-    supabase.functions.invoke("transcription-process", {
-      body: { job_id: jobId },
-    }).catch((e) => console.error("Process trigger error:", e));
-
-    return jobId;
-  };
-
   const handleUpload = async () => {
     if (files.length === 0) return;
     if (formats.size === 0) { toast.error("Select at least one output format"); return; }
     if (translationEnabled && !targetLanguageId) { toast.error("Select a target language for translation"); return; }
 
     setUploading(true);
-    const total = files.length;
-    let succeeded = 0;
-    const errors: string[] = [];
+    const jobId = crypto.randomUUID();
+    const sourceFiles: Array<{ name: string; path: string; size: number; duration: number; format: string }> = [];
 
-    for (let i = 0; i < files.length; i++) {
-      setProgress(`Processing file ${i + 1} of ${total}: ${files[i].name}`);
-      try {
-        await processOneFile(files[i]);
-        succeeded++;
-      } catch (e: any) {
-        console.error(`File ${i + 1} failed:`, e);
-        errors.push(e.message ?? `File ${i + 1} failed`);
+    try {
+      // Upload each file to storage under the same job ID
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setProgress(`Uploading file ${i + 1} of ${files.length}: ${file.name}`);
+
+        let uploadFile = file;
+        let durationSeconds = 60;
+        let fileFormat = file.name.split(".").pop()?.toLowerCase() ?? "mp3";
+
+        if (needsCompression(file)) {
+          setProgress(isVideoFile(file) ? `Extracting audio: ${file.name}` : `Compressing: ${file.name}`);
+          const result = await extractCompressedAudio(file, setProgress);
+          uploadFile = result.audio;
+          durationSeconds = result.duration;
+          fileFormat = result.format;
+        }
+
+        const storagePath = `${jobId}/source/audio_${i}.${fileFormat}`;
+        const buf = await uploadFile.arrayBuffer();
+        const contentType = (uploadFile.type || "application/octet-stream").split(";")[0];
+
+        const { error: upErr } = await supabase.storage
+          .from("transcription-uploads")
+          .upload(storagePath, buf, { contentType, upsert: false });
+        if (upErr) throw new Error(`Upload failed for ${file.name}: ${upErr.message}`);
+
+        if (!needsCompression(file)) {
+          try {
+            const audioCtx = new AudioContext();
+            const audioBuffer = await audioCtx.decodeAudioData(buf.slice(0));
+            durationSeconds = Math.ceil(audioBuffer.duration);
+            audioCtx.close();
+          } catch {
+            durationSeconds = Math.max(1, Math.ceil(uploadFile.size / 16000));
+          }
+        }
+
+        sourceFiles.push({
+          name: file.name,
+          path: storagePath,
+          size: uploadFile.size,
+          duration: durationSeconds,
+          format: fileFormat,
+        });
       }
-    }
 
-    if (succeeded > 0) {
-      toast.success(`${succeeded} transcription job${succeeded > 1 ? "s" : ""} created`, {
-        description: errors.length > 0 ? `${errors.length} file${errors.length > 1 ? "s" : ""} failed` : `Provider: ${provider}`,
+      setProgress("Creating job...");
+      const customerEmail = email.trim() || "internal@cethos.com";
+      const totalDuration = sourceFiles.reduce((sum, f) => sum + f.duration, 0);
+      const totalSize = sourceFiles.reduce((sum, f) => sum + f.size, 0);
+
+      const { error: jobErr } = await supabase
+        .from("transcription_jobs")
+        .insert({
+          id: jobId,
+          customer_email: customerEmail,
+          file_path: sourceFiles[0].path,
+          file_name: sourceFiles.map((f) => f.name).join(", "),
+          file_duration_seconds: totalDuration,
+          file_size_bytes: totalSize,
+          file_format: sourceFiles[0].format,
+          status: "processing",
+          provider,
+          pricing_tier: "free",
+          amount_charged: 0,
+          payment_status: "none",
+          delivery_formats: Array.from(formats),
+          source_language_id: sourceLanguageId || null,
+          translation_requested: translationEnabled,
+          translation_target_language_id: translationEnabled && targetLanguageId ? targetLanguageId : null,
+          translation_type: translationEnabled ? "ai_instant" : null,
+          human_review_requested: humanReviewEnabled,
+          human_review_tier: humanReviewEnabled ? humanReviewTier : null,
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          source_files: sourceFiles.length > 1 ? sourceFiles : null,
+        });
+
+      if (jobErr) throw new Error(`Job insert failed: ${jobErr.message}`);
+
+      setProgress("Starting transcription...");
+      supabase.functions.invoke("transcription-process", {
+        body: { job_id: jobId },
+      }).catch((e) => console.error("Process trigger error:", e));
+
+      toast.success("Transcription job created — processing started", {
+        description: `${sourceFiles.length} file${sourceFiles.length > 1 ? "s" : ""} · Provider: ${provider}`,
       });
+      resetForm();
+      onClose();
+      setTimeout(onUploaded, 2000);
+    } catch (e: any) {
+      toast.error(e.message ?? "Upload failed");
+    } finally {
+      setUploading(false);
+      setProgress("");
     }
-    if (errors.length > 0 && succeeded === 0) {
-      toast.error("All uploads failed", { description: errors[0] });
-    }
-
-    resetForm();
-    onClose();
-    setUploading(false);
-    setProgress("");
-    setTimeout(onUploaded, 2000);
   };
 
   if (!open) return null;
@@ -459,6 +480,15 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
               ))}
             </select>
           </div>
+          {sourceLanguageId && (() => {
+            const lang = sourceLanguages.find((l) => l.id === sourceLanguageId);
+            const scriptHint = lang ? LANG_SCRIPT_LABELS[lang.code] : null;
+            return scriptHint ? (
+              <p className="text-xs text-teal-600 -mt-1 pb-2 pl-1">
+                Output script: <strong>{scriptHint}</strong> — auto-enforced after transcription
+              </p>
+            ) : null;
+          })()}
 
           <div className="border-t border-gray-100" />
 

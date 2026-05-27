@@ -64,62 +64,101 @@ serve(async (req: Request) => {
       provider: job.provider,
     });
 
-    // ── Call STT provider ────────────────────────────────────────────────
-    // AssemblyAI uses a signed URL (no download needed).
-    // OpenAI / ElevenLabs need blob download (100 MB memory guard).
-    // On any OpenAI/AssemblyAI failure → auto-fallback to ElevenLabs.
+    // ── Determine files to process ─────────────────────────────────────
+    // Multi-file jobs have source_files JSONB array; single-file jobs use file_path.
 
+    interface SourceFile {
+      name: string;
+      path: string;
+      size: number;
+      duration: number;
+      format: string;
+    }
+
+    const sourceFiles: SourceFile[] = (job.source_files as SourceFile[] | null)?.length
+      ? (job.source_files as SourceFile[])
+      : [{
+          name: job.file_name as string,
+          path: job.file_path as string,
+          size: (job.file_size_bytes as number) ?? 0,
+          duration: (job.file_duration_seconds as number) ?? 0,
+          format: (job.file_format as string) ?? "mp3",
+        }];
+
+    // ── Call STT provider (per file, then merge) ────────────────────────
     const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 
-    let transcript: TranscriptResult;
     let provider = job.provider ?? "openai";
-    const fileSize = (job.file_size_bytes as number) ?? 0;
+    const allTranscripts: TranscriptResult[] = [];
+    let timeOffsetMs = 0;
 
     try {
-      if (provider === "assemblyai") {
-        const { data: signedUrlData, error: urlErr } = await admin.storage
-          .from("transcription-uploads")
-          .createSignedUrl(job.file_path as string, 3600);
-        if (urlErr || !signedUrlData?.signedUrl) {
-          throw new Error("Failed to create signed URL for audio file");
-        }
-        transcript = await transcribeAssemblyAi(signedUrlData.signedUrl, job);
-      } else {
-        if (fileSize > MAX_DOWNLOAD_BYTES) {
-          await markFailed(admin, jobId, `File too large (${(fileSize / 1024 / 1024).toFixed(0)} MB). Extract audio from video before uploading.`);
-          return jsonResponse({ success: false, error: "File too large — extract audio first" }, 400);
+      for (let fi = 0; fi < sourceFiles.length; fi++) {
+        const sf = sourceFiles[fi];
+        if (sourceFiles.length > 1) {
+          await auditLog(admin, jobId, "processing_file", "system", null, {
+            file_index: fi,
+            file_name: sf.name,
+            total_files: sourceFiles.length,
+          });
         }
 
-        const { data: fileData, error: dlErr } = await admin.storage
-          .from("transcription-uploads")
-          .download(job.file_path);
-        if (dlErr || !fileData) {
-          console.error("Storage download failed:", dlErr);
-          throw new Error("Failed to download audio file");
+        let fileTranscript: TranscriptResult;
+
+        if (provider === "assemblyai") {
+          const { data: signedUrlData, error: urlErr } = await admin.storage
+            .from("transcription-uploads")
+            .createSignedUrl(sf.path, 3600);
+          if (urlErr || !signedUrlData?.signedUrl) {
+            throw new Error(`Failed to create signed URL for ${sf.name}`);
+          }
+          fileTranscript = await transcribeAssemblyAi(signedUrlData.signedUrl, job);
+        } else {
+          if (sf.size > MAX_DOWNLOAD_BYTES) {
+            await markFailed(admin, jobId, `File too large: ${sf.name} (${(sf.size / 1024 / 1024).toFixed(0)} MB). Extract audio first.`);
+            return jsonResponse({ success: false, error: "File too large" }, 400);
+          }
+
+          const { data: fileData, error: dlErr } = await admin.storage
+            .from("transcription-uploads")
+            .download(sf.path);
+          if (dlErr || !fileData) {
+            throw new Error(`Failed to download ${sf.name}`);
+          }
+
+          const fileJob = { ...job, file_format: sf.format };
+
+          try {
+            if (provider === "openai") {
+              fileTranscript = await transcribeOpenAi(fileData, fileJob);
+            } else {
+              fileTranscript = await transcribeElevenLabs(fileData, fileJob);
+            }
+          } catch (primaryErr) {
+            if (provider !== "elevenlabs") {
+              console.log(`${provider} failed on file ${fi}, falling back to ElevenLabs:`, primaryErr);
+              const origProvider = provider;
+              provider = "elevenlabs";
+              await admin.from("transcription_jobs").update({ provider }).eq("id", jobId);
+              await auditLog(admin, jobId, "provider_fallback", "system", null, {
+                original: origProvider,
+                fallback: "elevenlabs",
+                reason: primaryErr instanceof Error ? primaryErr.message : String(primaryErr),
+              });
+              fileTranscript = await transcribeElevenLabs(fileData, fileJob);
+            } else {
+              throw primaryErr;
+            }
+          }
         }
 
-        try {
-          if (provider === "openai") {
-            transcript = await transcribeOpenAi(fileData, job);
-          } else {
-            transcript = await transcribeElevenLabs(fileData, job);
-          }
-        } catch (primaryErr) {
-          if (provider !== "elevenlabs") {
-            console.log(`${provider} failed, falling back to ElevenLabs:`, primaryErr);
-            const origProvider = provider;
-            provider = "elevenlabs";
-            await admin.from("transcription_jobs").update({ provider }).eq("id", jobId);
-            await auditLog(admin, jobId, "provider_fallback", "system", null, {
-              original: origProvider,
-              fallback: "elevenlabs",
-              reason: primaryErr instanceof Error ? primaryErr.message : String(primaryErr),
-            });
-            transcript = await transcribeElevenLabs(fileData, job);
-          } else {
-            throw primaryErr;
-          }
+        // Offset timestamps for multi-file jobs so they form a continuous timeline
+        if (sourceFiles.length > 1 && timeOffsetMs > 0 && fileTranscript.json) {
+          offsetTimestamps(fileTranscript.json, timeOffsetMs);
         }
+
+        allTranscripts.push(fileTranscript);
+        timeOffsetMs += sf.duration * 1000;
       }
     } catch (e) {
       console.error(`STT (${provider}) failed for ${jobId}:`, e);
@@ -127,9 +166,37 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Transcription failed" }, 500);
     }
 
+    // Merge transcripts from all files
+    const transcript = mergeTranscripts(allTranscripts);
+
     // ── Store transcript ─────────────────────────────────────────────────
 
     const wordCount = transcript.text.split(/\s+/).filter(Boolean).length;
+
+    // Estimate STT provider cost based on duration
+    const totalDurationMin = sourceFiles.reduce((acc, sf) => acc + (sf.duration / 60), 0);
+    const STT_RATES: Record<string, number> = { assemblyai: 0.0025, openai: 0.006, elevenlabs: 0.007 };
+    const sttCost = totalDurationMin * (STT_RATES[provider] ?? 0.006);
+
+    // Check if this is a reprocess (job already had a transcript)
+    const isReprocess = !!job.transcript_text?.trim();
+
+    // Save version record
+    await admin.from("transcription_versions").insert({
+      job_id: jobId,
+      version_type: isReprocess ? "reprocess" : "original",
+      provider,
+      model: provider === "openai" ? "gpt-4o-transcribe" : provider === "assemblyai" ? "universal-2" : "scribe-v2",
+      transcript_text: transcript.text,
+      transcript_json: transcript.json,
+      word_count: wordCount,
+      cost: sttCost,
+      is_active: true,
+    });
+
+    // Accumulate cost
+    const prevCost = (job.ai_total_cost as number) ?? 0;
+    const newTotalCost = prevCost + sttCost;
 
     const { error: updateErr } = await admin
       .from("transcription_jobs")
@@ -140,7 +207,8 @@ serve(async (req: Request) => {
         language_confidence: transcript.languageConfidence ?? null,
         word_count: wordCount,
         provider_job_id: transcript.providerJobId ?? null,
-        provider_cost: transcript.providerCost ?? null,
+        provider_cost: sttCost,
+        ai_total_cost: newTotalCost,
       })
       .eq("id", jobId);
 
@@ -154,7 +222,90 @@ serve(async (req: Request) => {
       provider,
       word_count: wordCount,
       detected_language: transcript.detectedLanguage,
+      stt_cost: sttCost.toFixed(6),
     });
+
+    // ── Script enforcement ─────────────────────────────────────────────
+    // If a source language is set, check that the transcript is in the correct
+    // script. STT providers sometimes output in the wrong script (e.g. Punjabi
+    // in Devanagari instead of Gurmukhi). If wrong, use Claude to convert.
+
+    if (job.source_language_id && transcript.text.trim()) {
+      const { data: srcLang } = await admin
+        .from("languages")
+        .select("code, name, native_name")
+        .eq("id", job.source_language_id)
+        .maybeSingle();
+
+      if (srcLang?.code) {
+        const expected = LANG_EXPECTED_SCRIPT[srcLang.code];
+        if (expected) {
+          const dominant = detectDominantScript(transcript.text);
+          if (dominant && dominant !== expected.script) {
+            console.log(`Script mismatch: expected ${expected.script}, got ${dominant}. Converting...`);
+            await auditLog(admin, jobId, "script_mismatch_detected", "system", null, {
+              expected: expected.script,
+              detected: dominant,
+              language: srcLang.name,
+            });
+
+            const converted = await convertScript(
+              transcript.text,
+              srcLang.name,
+              srcLang.native_name ?? srcLang.name,
+              expected.label,
+            );
+
+            if (converted.text) {
+              let totalConvCost = converted.cost;
+
+              // Also convert word-level texts in transcript_json so DOCX/SRT builders use correct script
+              let convertedJson = transcript.json;
+              if (transcript.json) {
+                const jsonConverted = await convertJsonWordTexts(
+                  transcript.json as Record<string, unknown>,
+                  srcLang.name,
+                  srcLang.native_name ?? srcLang.name,
+                  expected.label,
+                );
+                if (jsonConverted.json) {
+                  convertedJson = jsonConverted.json;
+                  totalConvCost += jsonConverted.cost;
+                }
+              }
+
+              // Update the stored transcript with corrected script
+              await admin
+                .from("transcription_jobs")
+                .update({
+                  transcript_text: converted.text,
+                  transcript_json: convertedJson,
+                  ai_total_cost: newTotalCost + totalConvCost,
+                })
+                .eq("id", jobId);
+
+              // Also update the version record
+              await admin
+                .from("transcription_versions")
+                .update({
+                  transcript_text: converted.text,
+                  transcript_json: convertedJson,
+                })
+                .eq("job_id", jobId)
+                .eq("is_active", true)
+                .order("created_at", { ascending: false })
+                .limit(1);
+
+              await auditLog(admin, jobId, "script_converted", "system", null, {
+                from_script: dominant,
+                to_script: expected.script,
+                cost: totalConvCost.toFixed(6),
+              });
+            }
+          }
+        }
+      }
+    }
 
     // ── Chain: AI quality check ──────────────────────────────────────────
 
@@ -171,27 +322,34 @@ serve(async (req: Request) => {
       body: JSON.stringify({ job_id: jobId }),
     }).catch((e) => console.error("Failed to trigger AI check:", e));
 
-    // ── Chain: AI translation (if requested) ─────────────────────────────
+    // ── Chain: AI translation (if requested) — blocking ────────────────
 
     if (job.translation_requested && job.translation_target_language_id) {
-      fetch(`${supabaseUrl}/functions/v1/transcription-ai-translate`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ job_id: jobId }),
-      }).catch((e) => console.error("Failed to trigger AI translate:", e));
+      try {
+        const translateResp = await fetch(`${supabaseUrl}/functions/v1/transcription-ai-translate`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ job_id: jobId }),
+        });
+        const translateResult = await translateResp.json();
+        if (!translateResult.success) {
+          console.error("Translation failed:", translateResult.error);
+          await auditLog(admin, jobId, "translation_skipped", "system", null, {
+            reason: translateResult.error,
+          });
+        }
+      } catch (e) {
+        console.error("Translation error:", e);
+      }
     }
 
-    // ── Chain: delivery ──────────────────────────────────────────────────
-    // Delivery waits a moment so translation can finish (if requested).
-    // The deliver function checks if translation is done before sending.
+    // ── Chain: delivery (translation is done or skipped) ────────────────
 
-    setTimeout(() => {
-      fetch(`${supabaseUrl}/functions/v1/transcription-deliver`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ job_id: jobId }),
-      }).catch((e) => console.error("Failed to trigger delivery:", e));
-    }, job.translation_requested ? 30_000 : 5_000);
+    fetch(`${supabaseUrl}/functions/v1/transcription-deliver`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ job_id: jobId }),
+    }).catch((e) => console.error("Failed to trigger delivery:", e));
 
     return jsonResponse({
       success: true,
@@ -316,20 +474,17 @@ async function transcribeOpenAi(
   const form = new FormData();
   form.append("file", new File([audioBlob], `audio.${ext}`, { type: audioBlob.type || "audio/mpeg" }));
   form.append("model", "gpt-4o-transcribe");
-  form.append("response_format", "verbose_json");
-  form.append("timestamp_granularities[]", "word");
-  form.append("timestamp_granularities[]", "segment");
-  form.append("include[]", "logprobs");
+  form.append("response_format", "json");
 
   if (job.source_language_id) {
     const admin = getServiceClient();
     const { data: lang } = await admin
       .from("languages")
-      .select("code")
+      .select("code, name, native_name")
       .eq("id", job.source_language_id)
       .maybeSingle();
-    if (lang?.code) {
-      form.append("language", lang.code);
+    if (lang?.name) {
+      form.append("prompt", `This audio is in ${lang.name}${lang.native_name ? ` (${lang.native_name})` : ""}. Transcribe using the native script for ${lang.name}.`);
     }
   }
 
@@ -346,24 +501,20 @@ async function transcribeOpenAi(
 
   const result = await resp.json();
 
-  const normalizedWords = (result.words ?? []).map((w: Record<string, unknown>) => ({
-    text: w.word as string,
-    start: Math.round((w.start as number) * 1000),
-    end: Math.round((w.end as number) * 1000),
-  }));
-  const normalizedSegments = (result.segments ?? []).map((s: Record<string, unknown>) => ({
-    text: (s.text as string)?.trim(),
-    start: Math.round((s.start as number) * 1000),
-    end: Math.round((s.end as number) * 1000),
-  }));
+  // gpt-4o-transcribe with "json" returns { text, logprobs? }
+  // No word/segment timestamps — build a single segment from duration if available
+  const durationSec = (job.file_duration_seconds as number) ?? 0;
 
   return {
     text: result.text ?? "",
     json: {
-      ...(normalizedWords.length > 0 ? { words: normalizedWords } : {}),
-      ...(normalizedSegments.length > 0 ? { segments: normalizedSegments } : {}),
-      logprobs: result.logprobs,
+      segments: [{
+        text: (result.text ?? "").trim(),
+        start: 0,
+        end: Math.round(durationSec * 1000),
+      }],
     },
+    detectedLanguage: result.language,
     providerJobId: null,
   };
 }
@@ -418,6 +569,305 @@ async function transcribeElevenLabs(
     detectedLanguage: result.language_code,
     languageConfidence: result.language_probability,
   };
+}
+
+// ── Multi-file helpers ──────────────────────────────────────────────────────
+
+function offsetTimestamps(json: Record<string, unknown>, offsetMs: number) {
+  const words = json.words as Array<Record<string, unknown>> | undefined;
+  if (words) {
+    for (const w of words) {
+      if (typeof w.start === "number") w.start = w.start + offsetMs;
+      if (typeof w.end === "number") w.end = w.end + offsetMs;
+    }
+  }
+  const segments = json.segments as Array<Record<string, unknown>> | undefined;
+  if (segments) {
+    for (const s of segments) {
+      if (typeof s.start === "number") s.start = s.start + offsetMs;
+      if (typeof s.end === "number") s.end = s.end + offsetMs;
+    }
+  }
+  const utterances = json.utterances as Array<Record<string, unknown>> | undefined;
+  if (utterances) {
+    for (const u of utterances) {
+      if (typeof u.start === "number") u.start = u.start + offsetMs;
+      if (typeof u.end === "number") u.end = u.end + offsetMs;
+    }
+  }
+}
+
+function mergeTranscripts(results: TranscriptResult[]): TranscriptResult {
+  if (results.length === 1) return results[0];
+
+  const texts: string[] = [];
+  const allWords: unknown[] = [];
+  const allSegments: unknown[] = [];
+  const allUtterances: unknown[] = [];
+  let detectedLanguage: string | undefined;
+  let languageConfidence: number | undefined;
+
+  for (const r of results) {
+    texts.push(r.text);
+    if (!detectedLanguage && r.detectedLanguage) {
+      detectedLanguage = r.detectedLanguage;
+      languageConfidence = r.languageConfidence;
+    }
+    if (r.json) {
+      const w = r.json.words as unknown[] | undefined;
+      if (w) allWords.push(...w);
+      const s = r.json.segments as unknown[] | undefined;
+      if (s) allSegments.push(...s);
+      const u = r.json.utterances as unknown[] | undefined;
+      if (u) allUtterances.push(...u);
+    }
+  }
+
+  return {
+    text: texts.join("\n\n"),
+    json: {
+      ...(allWords.length > 0 ? { words: allWords } : {}),
+      ...(allSegments.length > 0 ? { segments: allSegments } : {}),
+      ...(allUtterances.length > 0 ? { utterances: allUtterances } : {}),
+    },
+    detectedLanguage,
+    languageConfidence,
+  };
+}
+
+// ── Script enforcement helpers ──────────────────────────────────────────────
+
+interface ScriptInfo {
+  script: string;
+  label: string;
+  range: [number, number];
+}
+
+const SCRIPT_RANGES: Record<string, [number, number]> = {
+  gurmukhi:   [0x0A00, 0x0A7F],
+  devanagari: [0x0900, 0x097F],
+  arabic:     [0x0600, 0x06FF],
+  bengali:    [0x0980, 0x09FF],
+  tamil:      [0x0B80, 0x0BFF],
+  telugu:     [0x0C00, 0x0C7F],
+  kannada:    [0x0C80, 0x0CFF],
+  malayalam:  [0x0D00, 0x0D7F],
+  thai:       [0x0E00, 0x0E7F],
+  georgian:   [0x10A0, 0x10FF],
+  cyrillic:   [0x0400, 0x04FF],
+  greek:      [0x0370, 0x03FF],
+  hangul:     [0xAC00, 0xD7AF],
+  hiragana:   [0x3040, 0x309F],
+  katakana:   [0x30A0, 0x30FF],
+  cjk:        [0x4E00, 0x9FFF],
+};
+
+const LANG_EXPECTED_SCRIPT: Record<string, ScriptInfo> = {
+  pa: { script: "gurmukhi",   label: "Gurmukhi (ਪੰਜਾਬੀ)",   range: SCRIPT_RANGES.gurmukhi },
+  hi: { script: "devanagari", label: "Devanagari (हिन्दी)",    range: SCRIPT_RANGES.devanagari },
+  mr: { script: "devanagari", label: "Devanagari (मराठी)",     range: SCRIPT_RANGES.devanagari },
+  ne: { script: "devanagari", label: "Devanagari (नेपाली)",    range: SCRIPT_RANGES.devanagari },
+  bn: { script: "bengali",    label: "Bengali (বাংলা)",       range: SCRIPT_RANGES.bengali },
+  ta: { script: "tamil",      label: "Tamil (தமிழ்)",         range: SCRIPT_RANGES.tamil },
+  te: { script: "telugu",     label: "Telugu (తెలుగు)",       range: SCRIPT_RANGES.telugu },
+  kn: { script: "kannada",    label: "Kannada (ಕನ್ನಡ)",       range: SCRIPT_RANGES.kannada },
+  ml: { script: "malayalam",  label: "Malayalam (മലയാളം)",   range: SCRIPT_RANGES.malayalam },
+  ur: { script: "arabic",     label: "Arabic/Nastaliq (اردو)", range: SCRIPT_RANGES.arabic },
+  ar: { script: "arabic",     label: "Arabic (العربية)",       range: SCRIPT_RANGES.arabic },
+  fa: { script: "arabic",     label: "Arabic/Persian (فارسی)", range: SCRIPT_RANGES.arabic },
+  th: { script: "thai",       label: "Thai (ไทย)",            range: SCRIPT_RANGES.thai },
+  ka: { script: "georgian",   label: "Georgian (ქართული)",    range: SCRIPT_RANGES.georgian },
+  ru: { script: "cyrillic",   label: "Cyrillic (Русский)",     range: SCRIPT_RANGES.cyrillic },
+  uk: { script: "cyrillic",   label: "Cyrillic (Українська)",  range: SCRIPT_RANGES.cyrillic },
+  el: { script: "greek",      label: "Greek (Ελληνικά)",       range: SCRIPT_RANGES.greek },
+  ko: { script: "hangul",     label: "Hangul (한국어)",         range: SCRIPT_RANGES.hangul },
+  ja: { script: "hiragana",   label: "Japanese (日本語)",       range: SCRIPT_RANGES.hiragana },
+  zh: { script: "cjk",        label: "CJK (中文)",             range: SCRIPT_RANGES.cjk },
+};
+
+function detectDominantScript(text: string): string | null {
+  const counts: Record<string, number> = {};
+  let totalScripted = 0;
+
+  for (const char of text) {
+    const cp = char.codePointAt(0)!;
+    // Skip Latin (A-Z, a-z, extended), digits, punctuation, whitespace
+    if (cp <= 0x024F || (cp >= 0x2000 && cp <= 0x206F)) continue;
+
+    for (const [name, [lo, hi]] of Object.entries(SCRIPT_RANGES)) {
+      if (cp >= lo && cp <= hi) {
+        counts[name] = (counts[name] ?? 0) + 1;
+        totalScripted++;
+        break;
+      }
+    }
+  }
+
+  if (totalScripted < 5) return null; // too few non-Latin chars to judge
+
+  let best = "";
+  let bestCount = 0;
+  for (const [name, count] of Object.entries(counts)) {
+    if (count > bestCount) { best = name; bestCount = count; }
+  }
+
+  return bestCount > totalScripted * 0.5 ? best : null;
+}
+
+async function convertScript(
+  text: string,
+  langName: string,
+  nativeName: string,
+  targetScriptLabel: string,
+): Promise<{ text: string; cost: number }> {
+  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!anthropicKey) return { text: "", cost: 0 };
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        messages: [
+          {
+            role: "user",
+            content: `Convert this transcript to the correct script for ${langName} (${nativeName}).
+The output must be in ${targetScriptLabel} script.
+
+Rules:
+- Transliterate all text to the ${targetScriptLabel} script
+- Keep common English words as-is (hello, okay, brother, thank you, sorry, please, etc.)
+- Keep speaker labels exactly as they are (e.g., "Speaker 1:")
+- Keep timestamps exactly as they are
+- Do NOT translate — this is the same language, just convert the script
+- Do NOT add any notes or explanations
+- Output ONLY the converted transcript
+
+Transcript:
+${text}`,
+          },
+        ],
+      }),
+    });
+
+    if (!resp.ok) {
+      console.error("Script conversion failed:", resp.status);
+      return { text: "", cost: 0 };
+    }
+
+    const result = await resp.json();
+    const converted = result.content?.[0]?.text ?? "";
+    const inTok = result.usage?.input_tokens ?? 0;
+    const outTok = result.usage?.output_tokens ?? 0;
+    // Sonnet pricing
+    const cost = (inTok * 3 + outTok * 15) / 1_000_000;
+    return { text: converted, cost };
+  } catch (e) {
+    console.error("Script conversion error:", e);
+    return { text: "", cost: 0 };
+  }
+}
+
+// Convert word-level texts in transcript_json to the correct script.
+// Extracts all word texts, sends them as a JSON array to Claude for batch conversion,
+// then updates the JSON structure in-place preserving timestamps and speaker IDs.
+async function convertJsonWordTexts(
+  json: Record<string, unknown>,
+  langName: string,
+  nativeName: string,
+  targetScriptLabel: string,
+): Promise<{ json: Record<string, unknown> | null; cost: number }> {
+  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!anthropicKey) return { json: null, cost: 0 };
+
+  // Extract word texts from known JSON structures
+  type WordEntry = { text: string; [key: string]: unknown };
+  let wordEntries: WordEntry[] = [];
+  let source: "words" | "utterances" | null = null;
+
+  const words = json.words as WordEntry[] | undefined;
+  const utterances = json.utterances as WordEntry[] | undefined;
+
+  if (words?.length) {
+    wordEntries = words.filter((w) => w.type !== "spacing" && w.text?.trim());
+    source = "words";
+  } else if (utterances?.length) {
+    wordEntries = utterances.filter((u) => u.text?.trim());
+    source = "utterances";
+  }
+
+  if (!wordEntries.length || !source) return { json: null, cost: 0 };
+
+  const texts = wordEntries.map((w) => w.text);
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 8192,
+        messages: [
+          {
+            role: "user",
+            content: `Convert these ${langName} words/phrases to ${targetScriptLabel} script.
+Input is a JSON array of strings. Output ONLY a JSON array of the same length with converted strings.
+Keep common English words as-is (hello, okay, brother, etc.).
+Do NOT translate — just convert the script.
+
+${JSON.stringify(texts)}`,
+          },
+        ],
+      }),
+    });
+
+    if (!resp.ok) {
+      console.error("JSON word conversion failed:", resp.status);
+      return { json: null, cost: 0 };
+    }
+
+    const result = await resp.json();
+    const rawText = result.content?.[0]?.text ?? "";
+    const inTok = result.usage?.input_tokens ?? 0;
+    const outTok = result.usage?.output_tokens ?? 0;
+    const cost = (inTok * 0.25 + outTok * 1.25) / 1_000_000;
+
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+    const converted: string[] = JSON.parse(cleaned);
+
+    if (!Array.isArray(converted) || converted.length !== wordEntries.length) {
+      console.error(`Word conversion length mismatch: expected ${wordEntries.length}, got ${converted.length}`);
+      return { json: null, cost };
+    }
+
+    // Update in-place
+    const updatedJson = JSON.parse(JSON.stringify(json));
+    const targetArr = updatedJson[source] as WordEntry[];
+    let ci = 0;
+    for (const entry of targetArr) {
+      if (source === "words" && entry.type === "spacing") continue;
+      if (!entry.text?.trim()) continue;
+      if (ci < converted.length) {
+        entry.text = converted[ci];
+        ci++;
+      }
+    }
+
+    return { json: updatedJson, cost };
+  } catch (e) {
+    console.error("JSON word conversion error:", e);
+    return { json: null, cost: 0 };
+  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
