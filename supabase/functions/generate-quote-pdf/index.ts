@@ -26,15 +26,20 @@ function jsonError(message: string, status = 400) {
   });
 }
 
-const CETHOS_BLUE = rgb(0.118, 0.251, 0.686);
-const TEXT_DARK = rgb(0.13, 0.13, 0.15);
-const TEXT_MUTED = rgb(0.45, 0.47, 0.52);
-const TABLE_HEADER_BG = rgb(0.95, 0.96, 0.98);
-const TABLE_BORDER = rgb(0.85, 0.86, 0.88);
+// CETHOS brand palette (from tailwind.config.ts).
+const CETHOS_NAVY = rgb(0x0c / 255, 0x23 / 255, 0x40 / 255); // #0C2340
+const CETHOS_TEAL = rgb(0x08 / 255, 0x91 / 255, 0xb2 / 255); // #0891B2
+const CETHOS_TEAL_LIGHT = rgb(0xec / 255, 0xfe / 255, 0xff / 255); // #ECFEFF
+const TEXT_DARK = rgb(0x1f / 255, 0x29 / 255, 0x37 / 255); // slate-800
+const TEXT_MUTED = rgb(0x64 / 255, 0x74 / 255, 0x8b / 255); // #64748B
+const TABLE_HEADER_BG = rgb(0xf8 / 255, 0xfa / 255, 0xfc / 255); // slate-50
+const TABLE_BORDER = rgb(0xe5 / 255, 0xe7 / 255, 0xeb / 255); // #E5E7EB
+const WHITE = rgb(1, 1, 1);
 
 const PAGE_W = 612;
 const PAGE_H = 792;
 const MARGIN = 50;
+const HEADER_H = 90;
 
 function unitLabel(unit: string | null, qty: number): string {
   if (!unit) return qty === 1 ? "page" : "pages";
@@ -175,31 +180,66 @@ serve(async (req: Request) => {
       page.drawText(s, { x, y, size, font, color });
     };
 
-    // Header bar
+    // ─── Branded header ────────────────────────────────────────────────
+    // Navy band (full width) with the CETHOS wordmark + tagline on the
+    // left and a teal accent stripe below for brand emphasis. The
+    // marketing wordmark is rendered as text — the app's logo_url
+    // app_settings row is currently empty, and the in-app sidebar falls
+    // back to the same "CETHOS" wordmark when no image is uploaded.
     page.drawRectangle({
       x: 0,
-      y: PAGE_H - 70,
+      y: PAGE_H - HEADER_H,
       width: PAGE_W,
-      height: 70,
-      color: CETHOS_BLUE,
+      height: HEADER_H,
+      color: CETHOS_NAVY,
     });
-    draw("CETHOS Translation Services", MARGIN, PAGE_H - 42, {
-      size: 18,
+    // Teal accent stripe along the bottom edge of the header
+    page.drawRectangle({
+      x: 0,
+      y: PAGE_H - HEADER_H - 4,
+      width: PAGE_W,
+      height: 4,
+      color: CETHOS_TEAL,
+    });
+    // Wordmark
+    draw("CETHOS", MARGIN, PAGE_H - 42, {
+      size: 28,
       font: fontBold,
-      color: rgb(1, 1, 1),
+      color: WHITE,
     });
-    draw("Quote", PAGE_W - MARGIN - 60, PAGE_H - 42, {
-      size: 18,
-      font: fontBold,
-      color: rgb(1, 1, 1),
-    });
-
-    let y = PAGE_H - 100;
-
-    // Quote meta
-    draw(`Quote #: ${quote.quote_number ?? "—"}`, MARGIN, y, {
+    draw("Translation Services", MARGIN, PAGE_H - 60, {
       size: 11,
+      color: rgb(0.78, 0.85, 0.92),
+    });
+    // "QUOTE" tag on the right
+    const tagWidth = 80;
+    const tagX = PAGE_W - MARGIN - tagWidth;
+    page.drawRectangle({
+      x: tagX,
+      y: PAGE_H - 50,
+      width: tagWidth,
+      height: 24,
+      color: CETHOS_TEAL,
+    });
+    const tagLabel = "QUOTE";
+    const tagLabelWidth = fontBold.widthOfTextAtSize(tagLabel, 13);
+    draw(tagLabel, tagX + (tagWidth - tagLabelWidth) / 2, PAGE_H - 43, {
+      size: 13,
       font: fontBold,
+      color: WHITE,
+    });
+    draw("portal.cethos.com", PAGE_W - MARGIN - 110, PAGE_H - 72, {
+      size: 9,
+      color: rgb(0.78, 0.85, 0.92),
+    });
+
+    let y = PAGE_H - HEADER_H - 30;
+
+    // Quote meta row
+    draw(`Quote #: ${quote.quote_number ?? "—"}`, MARGIN, y, {
+      size: 12,
+      font: fontBold,
+      color: CETHOS_NAVY,
     });
     draw(
       `Date: ${new Date(quote.created_at).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}`,
@@ -216,7 +256,7 @@ serve(async (req: Request) => {
         { size: 10, color: TEXT_MUTED },
       );
     }
-    draw(`Status: ${(quote.status ?? "").toUpperCase()}`, MARGIN, y, {
+    draw(`Status: ${(quote.status ?? "").toUpperCase().replace(/_/g, " ")}`, MARGIN, y, {
       size: 10,
       color: TEXT_MUTED,
     });
@@ -449,7 +489,49 @@ serve(async (req: Request) => {
     });
     totalsRow(`Total (${currency})`, money(quote.total, currency), true);
 
-    y -= 16;
+    y -= 18;
+    // ─── Payment terms block ───────────────────────────────────────────
+    // Enterprise-billing default: Invoice — Net 45. Per-customer override
+    // can come later via a customers.payment_terms column.
+    const dueDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+    const dueDateLabel = dueDate.toLocaleDateString("en-CA", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const blockH = 56;
+    page.drawRectangle({
+      x: MARGIN - 6,
+      y: y - blockH + 8,
+      width: PAGE_W - 2 * MARGIN + 12,
+      height: blockH,
+      color: CETHOS_TEAL_LIGHT,
+    });
+    page.drawRectangle({
+      x: MARGIN - 6,
+      y: y - blockH + 8,
+      width: 3,
+      height: blockH,
+      color: CETHOS_TEAL,
+    });
+    draw("Payment Terms", MARGIN + 4, y - 4, {
+      size: 10,
+      font: fontBold,
+      color: CETHOS_NAVY,
+    });
+    draw("Invoice — Net 45", MARGIN + 4, y - 20, {
+      size: 11,
+      font: fontBold,
+      color: CETHOS_TEAL,
+    });
+    draw(
+      `Payment is due ${dueDateLabel} (45 days from invoice date). Invoice will be issued upon project completion.`,
+      MARGIN + 4,
+      y - 36,
+      { size: 9, color: TEXT_DARK },
+    );
+    y -= blockH + 12;
+
     if (quote.special_instructions) {
       draw("Notes", MARGIN, y, { size: 10, font: fontBold });
       y -= 14;
