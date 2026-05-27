@@ -151,6 +151,38 @@ async function uploadResumable(
   });
 }
 
+// PUT a File to a signed URL (used for GCS-direct uploads via the URL minted
+// by transcription-create-gcs-upload-url). Uses XHR so we can report upload
+// progress — fetch() doesn't expose upload-side progress events.
+//
+// The signed URL was generated with a specific content_type; we must send
+// exactly that on the PUT or GCS will reject with a signature mismatch.
+function uploadToSignedUrl(
+  file: File | Blob,
+  signedUrl: string,
+  contentType: string,
+  onProgress?: (uploaded: number, total: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", signedUrl, true);
+    xhr.setRequestHeader("Content-Type", contentType);
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+    });
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`GCS PUT failed: ${xhr.status} ${xhr.statusText} — ${xhr.responseText?.slice(0, 200) ?? ""}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("GCS PUT network error"));
+    xhr.onabort = () => reject(new Error("GCS PUT aborted"));
+    xhr.send(file);
+  });
+}
+
 function isVideoFile(f: File): boolean {
   const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
   return VIDEO_EXTENSIONS.has(ext) || f.type.startsWith("video/");
@@ -381,51 +413,56 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
 
     setUploading(true);
     const jobId = crypto.randomUUID();
-    const sourceFiles: Array<{ name: string; path: string; size: number; duration: number; format: string }> = [];
+    const sourceFiles: Array<{ name: string; path: string; size: number; duration: number; format: string; gcs_uri?: string }> = [];
 
     try {
-      // Upload each file to storage under the same job ID.
-      //
-      // Browser-side audio extraction has been removed — transcription-process
-      // calls the cethos-stt-extractor Cloud Run service for any video file
-      // before STT runs. So we just upload raw bytes (video or audio) here and
-      // let the server do the heavy lifting. This makes the modal close in
-      // seconds instead of hours even for a 2hr video.
+      // GCS-direct upload path (default). Browser PUTs straight to Google Cloud
+      // Storage via a signed URL minted by transcription-create-gcs-upload-url.
+      // Bypasses all Supabase Storage size caps + TUS auth weirdness. Storage
+      // for the transcription pipeline now lives in GCS for the whole lifetime
+      // of the job (extraction output and Google batchRecognize use the same
+      // bucket — no inter-storage round-trips).
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        setProgress(`Uploading file ${i + 1} of ${files.length}: ${file.name}`);
+        setProgress(`Preparing upload ${i + 1} of ${files.length}: ${file.name}`);
 
         const fileFormat = file.name.split(".").pop()?.toLowerCase() ?? "bin";
-        const storagePath = `${jobId}/source/raw_${i}.${fileFormat}`;
         const contentType = (file.type || "application/octet-stream").split(";")[0];
 
-        // Standard POST endpoint for small files (fast); TUS resumable for
-        // anything bigger so sequential large uploads don't trip the silent
-        // 400 from the standard endpoint.
-        if (file.size > TUS_THRESHOLD_BYTES) {
-          try {
-            await uploadResumable(
-              file,
-              "transcription-uploads",
-              storagePath,
-              contentType,
-              (uploaded, total) => {
-                const pct = total > 0 ? Math.round((uploaded / total) * 100) : 0;
-                setProgress(
-                  `Uploading file ${i + 1} of ${files.length}: ${file.name} (${pct}%)`,
-                );
-              },
-            );
-          } catch (err: any) {
-            throw new Error(`Upload failed for ${file.name}: ${err?.message || err}`);
-          }
-        } else {
-          const buf = await file.arrayBuffer();
-          const { error: upErr } = await supabase.storage
-            .from("transcription-uploads")
-            .upload(storagePath, buf, { contentType, upsert: false });
-          if (upErr) throw new Error(`Upload failed for ${file.name}: ${upErr.message}`);
+        // 1) Mint a signed PUT URL for GCS
+        const { data: urlData, error: urlErr } = await supabase.functions.invoke(
+          "transcription-create-gcs-upload-url",
+          {
+            body: {
+              job_id: jobId,
+              file_index: i,
+              filename: file.name,
+              content_type: contentType,
+            },
+          },
+        );
+        if (urlErr || !urlData?.success || !urlData?.signed_url) {
+          throw new Error(
+            `Failed to mint upload URL for ${file.name}: ${urlErr?.message ?? urlData?.error ?? "unknown"}`,
+          );
         }
+
+        // 2) PUT the file to GCS. The signed URL was generated with the
+        // content_type we just sent — must match exactly on the PUT.
+        // Use XHR for progress events (fetch has no upload progress).
+        await uploadToSignedUrl(
+          file,
+          urlData.signed_url,
+          contentType,
+          (uploaded, total) => {
+            const pct = total > 0 ? Math.round((uploaded / total) * 100) : 0;
+            setProgress(`Uploading ${i + 1}/${files.length}: ${file.name} (${pct}%)`);
+          },
+        );
+
+        // We still capture a Supabase-style storage path for backward compat
+        // (transcription-process reads gcs_uri when present, falls back to path).
+        const storagePath = `${jobId}/source/raw_${i}.${fileFormat}`;
 
         // Best-effort duration probe. For audio files AudioContext works
         // directly; for video files the <video> element reads container
@@ -454,7 +491,8 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
 
         sourceFiles.push({
           name: file.name,
-          path: storagePath,
+          path: storagePath,                  // legacy field — kept null-equivalent
+          gcs_uri: urlData.gcs_uri,           // GCS-direct path used by transcription-process
           size: file.size,
           duration: durationSeconds,
           format: fileFormat,
