@@ -154,7 +154,7 @@ serve(async (req: Request) => {
         for (let attempt = 0; attempt < providerChain.length; attempt++) {
           const tryProvider = providerChain[attempt];
           try {
-            fileTranscript = await callProvider(tryProvider, sf, job, admin);
+            fileTranscript = await callProvider(tryProvider, sf, job, admin, jobId, fi);
             if (tryProvider !== provider) {
               const origProvider = provider;
               provider = tryProvider;
@@ -176,6 +176,50 @@ serve(async (req: Request) => {
 
         if (!fileTranscript) {
           throw lastErr ?? new Error("All providers in fallback chain failed");
+        }
+
+        // ── Async short-circuit (Google batchRecognize) ───────────────────
+        // The provider returned an operation name instead of a transcript.
+        // Store the LRO name on the job and exit — transcription-poll-google-
+        // batch will pick it up, parse the result, and trigger downstream chain
+        // (proofread + delivery). Multi-file async isn't supported in Phase 1:
+        // we only kick off batch for single-file jobs (see transcribeGoogle's
+        // routing — needsBatch only triggers when sourceFiles.length === 1
+        // because callProvider only passes durationSec from the per-file sf).
+        if (fileTranscript.async) {
+          if (sourceFiles.length > 1) {
+            // Defensive: chain should not have selected Google for multi-file
+            // long-form. Fail loud so we don't silently mis-handle.
+            await markFailed(
+              admin,
+              jobId,
+              "Google batchRecognize triggered on multi-file job — not supported in Phase 1. Upload as a single file or pick a different provider.",
+            );
+            return jsonResponse({ success: false, error: "Multi-file async unsupported" }, 400);
+          }
+          await admin
+            .from("transcription_jobs")
+            .update({
+              provider: "google",
+              provider_async_operation_name: fileTranscript.operationName ?? null,
+              provider_async_started_at: new Date().toISOString(),
+              provider_async_gcs_uri: fileTranscript.gcsUri ?? null,
+            })
+            .eq("id", jobId);
+          await auditLog(admin, jobId, "google_batch_started", "system", null, {
+            operation_name: fileTranscript.operationName,
+            gcs_uri: fileTranscript.gcsUri,
+            duration_sec: sf.duration,
+            size_bytes: sf.size,
+          });
+          return jsonResponse({
+            success: true,
+            job_id: jobId,
+            async: true,
+            provider: "google",
+            operation_name: fileTranscript.operationName,
+            note: "Long-running batchRecognize started; transcription-poll-google-batch will complete the job.",
+          });
         }
 
         // Offset timestamps for multi-file jobs so they form a continuous timeline
@@ -675,6 +719,8 @@ async function callProvider(
   sf: { name: string; path: string; size: number; duration: number; format: string },
   job: Record<string, unknown>,
   admin: ReturnType<typeof getServiceClient>,
+  jobId: string,
+  fileIndex: number,
 ): Promise<TranscriptResult> {
   const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
   const fileJob = { ...job, file_format: sf.format };
@@ -705,7 +751,13 @@ async function callProvider(
 
   if (providerName === "openai") return transcribeOpenAi(fileData, fileJob);
   if (providerName === "elevenlabs") return transcribeElevenLabs(fileData, fileJob);
-  if (providerName === "google") return transcribeGoogle(fileData, fileJob);
+  if (providerName === "google") return transcribeGoogle(fileData, fileJob, {
+    jobId,
+    fileIndex,
+    fileFormat: sf.format,
+    durationSec: sf.duration,
+    sizeBytes: sf.size,
+  });
   throw new Error(`Unknown provider: ${providerName}`);
 }
 
@@ -718,6 +770,13 @@ interface TranscriptResult {
   languageConfidence?: number;
   providerJobId?: string;
   providerCost?: number;
+  // Async path (Google batchRecognize): when true, the provider kicked off a
+  // long-running operation and the transcript will arrive later via the poll
+  // function. Main handler short-circuits the chain and stores operationName +
+  // gcsUri on the job for transcription-poll-google-batch to pick up.
+  async?: true;
+  operationName?: string;
+  gcsUri?: string;
 }
 
 // ── AssemblyAI ───────────────────────────────────────────────────────────────
@@ -1026,116 +1085,69 @@ function mapToGoogleBCP47(code: string): string {
 }
 
 // ── Google Speech-to-Text v2 ─────────────────────────────────────────────────
-// Phase 1: synchronous recognize endpoint, API-key auth, audio ≤ 60s per request
-// (long-audio chunking lands in PR #2). Beyond 60s, the per-language fallback
-// chain will route Google requests away to Deepgram or ElevenLabs.
+// Two paths:
+//   sync recognize   — inline base64, ≤ 60s / ≤ 10 MB. Returns transcript inline.
+//   batch recognize  — GCS-staged audio, async LRO, up to 8h / 2 GB. Returns
+//                      operation name; transcription-poll-google-batch picks it up.
+//
+// Routing is automatic based on the source file's duration + size. Multi-file
+// jobs always use sync (async polling for multi-file is tracked separately).
 
-async function transcribeGoogle(
-  audioBlob: Blob,
-  job: Record<string, unknown>,
-): Promise<TranscriptResult> {
-  // Auth: service-account JWT exchange (same pattern as ocr-process-next).
-  // Reuses GOOGLE_APPLICATION_CREDENTIALS_JSON + GOOGLE_CLOUD_PROJECT already
-  // set for Document AI — no new secrets required for STT.
-  const accessToken = await getGoogleAccessToken();
-  const projectId = getGoogleProjectId();
-
-  // Determine language codes. Google v2 / Chirp 2 supports multi-language
-  // recognition ("code-switching") by passing multiple BCP-47 codes — we use
-  // this for bilingual audio. The primary source_language_id is always first;
-  // additional_language_ids (when set) are appended. If neither is set we
-  // pass "auto" and let Chirp 2 detect.
-  //
-  // Code mapping: some entries in `languages` use Cethos-internal codes that
-  // aren't in Google's catalog (e.g. kmr-badini for Badini Kurdish). We map
-  // those to the closest documented Google STT v2 code via mapToGoogleBCP47
-  // so the request doesn't 400 — quality on the unsupported variant is best-
-  // effort and may come back as the closest mapped language.
-  let languageCodes: string[] = ["auto"];
+// Build the languageCodes array consumed by both sync and batch paths.
+async function resolveGoogleLanguageCodes(job: Record<string, unknown>): Promise<string[]> {
   const allLangIds: string[] = [
     ...(job.source_language_id ? [job.source_language_id as string] : []),
     ...((job.additional_language_ids as string[] | null) ?? []),
   ];
-  if (allLangIds.length > 0) {
-    const admin = getServiceClient();
-    const { data: langs } = await admin
-      .from("languages")
-      .select("id, code")
-      .in("id", allLangIds);
-    // Preserve the order: primary first, then additionals in the order
-    // declared on the job. langs[] from PostgREST may be unordered.
-    const codeById = new Map<string, string>();
-    for (const l of langs ?? []) {
-      if (l.code) codeById.set(l.id as string, mapToGoogleBCP47(l.code as string));
-    }
-    const ordered: string[] = [];
-    for (const id of allLangIds) {
-      const code = codeById.get(id);
-      if (code && !ordered.includes(code)) ordered.push(code);
-    }
-    if (ordered.length > 0) languageCodes = ordered;
-  }
+  if (allLangIds.length === 0) return ["auto"];
 
-  // Convert audio to base64 for inline content (v2 sync supports up to ~1 minute / 10 MB).
-  const audioBytes = new Uint8Array(await audioBlob.arrayBuffer());
-  if (audioBytes.length > 10 * 1024 * 1024) {
-    throw new Error("Google STT v2 sync recognize limit is 10 MB; longer audio routes through chunking (PR #2)");
+  const admin = getServiceClient();
+  const { data: langs } = await admin
+    .from("languages")
+    .select("id, code")
+    .in("id", allLangIds);
+  const codeById = new Map<string, string>();
+  for (const l of langs ?? []) {
+    if (l.code) codeById.set(l.id as string, mapToGoogleBCP47(l.code as string));
   }
-  // btoa in chunks to avoid stack overflow on large arrays.
-  let binary = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < audioBytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, Array.from(audioBytes.subarray(i, i + CHUNK)));
+  const ordered: string[] = [];
+  for (const id of allLangIds) {
+    const code = codeById.get(id);
+    if (code && !ordered.includes(code)) ordered.push(code);
   }
-  const audioBase64 = btoa(binary);
+  return ordered.length > 0 ? ordered : ["auto"];
+}
 
-  const body = {
-    config: {
-      autoDecodingConfig: {},
-      languageCodes,
-      model: "chirp_2",
-      features: {
-        enableAutomaticPunctuation: true,
-        enableWordTimeOffsets: true,
-        enableWordConfidence: true,
-        diarizationConfig: {
-          minSpeakerCount: 1,
-          maxSpeakerCount: 6,
-        },
+function buildGoogleRecognitionConfig(languageCodes: string[]): Record<string, unknown> {
+  return {
+    autoDecodingConfig: {},
+    languageCodes,
+    model: "chirp_2",
+    features: {
+      enableAutomaticPunctuation: true,
+      enableWordTimeOffsets: true,
+      enableWordConfidence: true,
+      diarizationConfig: {
+        minSpeakerCount: 1,
+        maxSpeakerCount: 6,
       },
     },
-    content: audioBase64,
   };
+}
 
-  const url = `https://speech.googleapis.com/v2/projects/${projectId}/locations/global/recognizers/_:recognize`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!resp.ok) {
-    const errText = await resp.text();
-    // Most common cause on first run: Speech-to-Text API not enabled on the project.
-    if (resp.status === 403 && /Speech-to-Text|speech\.googleapis\.com|SERVICE_DISABLED/i.test(errText)) {
-      throw new Error(
-        `Google STT v2: Cloud Speech-to-Text API is not enabled on project ${projectId}. Enable it at https://console.cloud.google.com/apis/library/speech.googleapis.com — original error: ${errText.slice(0, 300)}`,
-      );
-    }
-    throw new Error(`Google STT v2 failed: ${resp.status} — ${errText}`);
-  }
-
-  const result = await resp.json();
-  const results = (result?.results ?? []) as Array<Record<string, unknown>>;
-
-  // Stitch alternatives across result chunks into a single transcript + word stream.
+// Shared parser: Google STT v2 sync.results and batch.transcript.results have
+// identical shape (results[].alternatives[].words[] etc.) — this stitches both.
+interface ParsedGoogleResult {
+  text: string;
+  words: Array<Record<string, unknown>>;
+  detectedLanguage: string | null;
+}
+function parseGoogleSttResults(
+  results: Array<Record<string, unknown>>,
+): ParsedGoogleResult {
   const fullText: string[] = [];
   const allWords: Array<Record<string, unknown>> = [];
   let detectedLanguage: string | null = null;
-
   for (const r of results) {
     const lang = r.languageCode as string | undefined;
     if (lang && !detectedLanguage) detectedLanguage = lang;
@@ -1152,15 +1164,159 @@ async function transcribeGoogle(
       });
     }
   }
+  return { text: fullText.join(" ").trim(), words: allWords, detectedLanguage };
+}
+
+// Sync path: inline base64. ≤ 60s / 10 MB.
+async function transcribeGoogleSync(
+  audioBlob: Blob,
+  job: Record<string, unknown>,
+): Promise<TranscriptResult> {
+  const accessToken = await getGoogleAccessToken();
+  const projectId = getGoogleProjectId();
+  const languageCodes = await resolveGoogleLanguageCodes(job);
+
+  const audioBytes = new Uint8Array(await audioBlob.arrayBuffer());
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < audioBytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(audioBytes.subarray(i, i + CHUNK)));
+  }
+  const audioBase64 = btoa(binary);
+
+  const body = {
+    config: buildGoogleRecognitionConfig(languageCodes),
+    content: audioBase64,
+  };
+
+  const url = `https://speech.googleapis.com/v2/projects/${projectId}/locations/global/recognizers/_:recognize`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    if (resp.status === 403 && /Speech-to-Text|speech\.googleapis\.com|SERVICE_DISABLED/i.test(errText)) {
+      throw new Error(
+        `Google STT v2: Cloud Speech-to-Text API is not enabled on project ${projectId}. Enable it at https://console.cloud.google.com/apis/library/speech.googleapis.com — original error: ${errText.slice(0, 300)}`,
+      );
+    }
+    throw new Error(`Google STT v2 sync failed: ${resp.status} — ${errText}`);
+  }
+
+  const result = await resp.json();
+  const parsed = parseGoogleSttResults((result?.results ?? []) as Array<Record<string, unknown>>);
 
   return {
-    text: fullText.join(" ").trim(),
+    text: parsed.text,
     json: {
-      words: allWords,
-      language_code: detectedLanguage,
+      words: parsed.words,
+      language_code: parsed.detectedLanguage,
     },
-    detectedLanguage: detectedLanguage ?? undefined,
+    detectedLanguage: parsed.detectedLanguage ?? undefined,
   };
+}
+
+// Batch path: stage audio in GCS, call batchRecognize (async), return operation
+// name. The main handler stores the name on the job and exits; the cron
+// function transcription-poll-google-batch polls until done and fills in the
+// transcript.
+async function transcribeGoogleBatch(
+  audioBlob: Blob,
+  job: Record<string, unknown>,
+  jobId: string,
+  fileIndex: number,
+  fileFormat: string,
+): Promise<TranscriptResult> {
+  const { ensureSttInputBucket, uploadAudioToGcs } = await import("../_shared/google-storage.ts");
+
+  const accessToken = await getGoogleAccessToken();
+  const projectId = getGoogleProjectId();
+  const languageCodes = await resolveGoogleLanguageCodes(job);
+
+  // Stage the audio in GCS so batchRecognize can read it.
+  const bucketName = await ensureSttInputBucket();
+  const objectName = `jobs/${jobId}/audio_${fileIndex}.${fileFormat}`;
+  const contentType = audioBlob.type || `audio/${fileFormat}`;
+  const gcsUri = await uploadAudioToGcs(bucketName, objectName, audioBlob, contentType);
+
+  // Kick off the long-running batch operation.
+  const body = {
+    files: [{ uri: gcsUri }],
+    config: buildGoogleRecognitionConfig(languageCodes),
+    recognitionOutputConfig: { inlineResponseConfig: {} },
+    processingStrategy: "DYNAMIC_BATCHING",
+  };
+
+  const url = `https://speech.googleapis.com/v2/projects/${projectId}/locations/global/recognizers/_:batchRecognize`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    if (resp.status === 403 && /Speech-to-Text|speech\.googleapis\.com|SERVICE_DISABLED/i.test(errText)) {
+      throw new Error(
+        `Google STT v2 batch: Cloud Speech-to-Text API is not enabled on project ${projectId}. Enable it at https://console.cloud.google.com/apis/library/speech.googleapis.com — original error: ${errText.slice(0, 300)}`,
+      );
+    }
+    throw new Error(`Google STT v2 batchRecognize failed: ${resp.status} — ${errText}`);
+  }
+
+  const opResp = await resp.json();
+  const operationName = opResp?.name;
+  if (!operationName) {
+    throw new Error(`Google STT v2 batchRecognize: no operation name in response: ${JSON.stringify(opResp).slice(0, 300)}`);
+  }
+
+  // Return an "async" marker — main handler shorts out the chain and stores
+  // the operation name on the job for the poll cron.
+  return {
+    text: "",
+    json: null,
+    async: true,
+    operationName,
+    gcsUri,
+  } as TranscriptResult & { async: true; operationName: string; gcsUri: string };
+}
+
+// Public dispatcher: routes to sync or batch based on file size + duration.
+async function transcribeGoogle(
+  audioBlob: Blob,
+  job: Record<string, unknown>,
+  routingHints?: { jobId?: string; fileIndex?: number; fileFormat?: string; durationSec?: number; sizeBytes?: number },
+): Promise<TranscriptResult> {
+  const SYNC_MAX_BYTES = 10 * 1024 * 1024;
+  const SYNC_MAX_SECONDS = 60;
+  const size = routingHints?.sizeBytes ?? audioBlob.size;
+  const duration = routingHints?.durationSec ?? 0;
+  const needsBatch = size > SYNC_MAX_BYTES || duration > SYNC_MAX_SECONDS;
+
+  if (!needsBatch) {
+    return transcribeGoogleSync(audioBlob, job);
+  }
+  if (!routingHints?.jobId) {
+    // Caller didn't pass enough context to upload to GCS. Should not happen
+    // in normal flow — callProvider always passes them — but fail loud.
+    throw new Error(`Google STT batch routing requires jobId + fileIndex + fileFormat in routingHints`);
+  }
+  return transcribeGoogleBatch(
+    audioBlob,
+    job,
+    routingHints.jobId,
+    routingHints.fileIndex ?? 0,
+    routingHints.fileFormat ?? "audio",
+  );
 }
 
 // ── Multi-file helpers ──────────────────────────────────────────────────────
