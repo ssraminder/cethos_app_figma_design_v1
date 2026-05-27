@@ -224,6 +224,7 @@ export default function FastQuoteCreate() {
   const [turnaroundOptionId, setTurnaroundOptionId] = useState("");
   const [deliveryOptionId, setDeliveryOptionId] = useState("");
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState("");
+  const [promisedDeliveryDateRush, setPromisedDeliveryDateRush] = useState("");
   const [discountEnabled, setDiscountEnabled] = useState(false);
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">(
     "percentage",
@@ -769,6 +770,7 @@ export default function FastQuoteCreate() {
           rushFee: totals.rushFee,
           physicalDeliveryOptionId: deliveryOptionId || null,
           promisedDeliveryDate: promisedDeliveryDate || null,
+          promisedDeliveryDateRush: promisedDeliveryDateRush || null,
           deliveryFee: totals.deliveryFee,
           entryPoint,
           manualQuoteNotes: internalNotes.trim() || null,
@@ -1684,21 +1686,38 @@ export default function FastQuoteCreate() {
               </select>
             </div>
 
-            {/* Promised delivery date */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Promised Delivery Date
-              </label>
-              <input
-                type="date"
-                value={promisedDeliveryDate}
-                onChange={(e) => setPromisedDeliveryDate(e.target.value)}
-                min={new Date().toISOString().slice(0, 10)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Leave blank to default from turnaround option.
-              </p>
+            {/* Promised delivery dates — standard + rush shown to customer */}
+            <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Standard Delivery Date
+                </label>
+                <input
+                  type="date"
+                  value={promisedDeliveryDate}
+                  onChange={(e) => setPromisedDeliveryDate(e.target.value)}
+                  min={new Date().toISOString().slice(0, 10)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Shown on the customer review page as the standard option.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Rush Delivery Date
+                </label>
+                <input
+                  type="date"
+                  value={promisedDeliveryDateRush}
+                  onChange={(e) => setPromisedDeliveryDateRush(e.target.value)}
+                  min={new Date().toISOString().slice(0, 10)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Shown when the customer toggles to rush. Leave blank to fall back to the computed default.
+                </p>
+              </div>
             </div>
 
             {/* Auto volume discount */}

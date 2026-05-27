@@ -27,6 +27,7 @@ const QUOTE_SELECT = `
   subtotal, certification_total, rush_fee, delivery_fee,
   tax_rate, tax_amount, total, calculated_totals, is_rush,
   turnaround_type, estimated_delivery_date,
+  promised_delivery_date, promised_delivery_date_rush, is_manual_quote,
   physical_delivery_option_id, selected_pickup_location_id,
   billing_address, shipping_address,
   base_rate_override, partner_id, partner_code,

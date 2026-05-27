@@ -815,10 +815,20 @@ export default function Step4ReviewCheckout() {
           // Calculate delivery dates with a default page estimate
           const days = calculateStandardDays(1);
           setStandardDays(days);
-          const standardDate = await getDeliveryDate(days);
-          const rushDate = await getDeliveryDate(calculateRushDays(days));
-          setStandardDeliveryDate(standardDate);
-          setRushDeliveryDate(rushDate);
+          const computedStandard = await getDeliveryDate(days);
+          const computedRush = await getDeliveryDate(calculateRushDays(days));
+          // Manual quotes can override the computed dates with admin-set values
+          // (quotes.promised_delivery_date / promised_delivery_date_rush). When
+          // either column is set, prefer it so the customer sees the date the
+          // admin promised instead of a freshly-recomputed business-day offset.
+          const adminStandard = quote?.promised_delivery_date
+            ? new Date(quote.promised_delivery_date + "T12:00:00")
+            : null;
+          const adminRush = quote?.promised_delivery_date_rush
+            ? new Date(quote.promised_delivery_date_rush + "T12:00:00")
+            : null;
+          setStandardDeliveryDate(adminStandard ?? computedStandard);
+          setRushDeliveryDate(adminRush ?? computedRush);
 
           setLoading(false);
           return;
@@ -934,10 +944,17 @@ export default function Step4ReviewCheckout() {
       // Calculate delivery dates
       const days = calculateStandardDays(totalBillablePages);
       setStandardDays(days);
-      const standardDate = await getDeliveryDate(days);
-      const rushDate = await getDeliveryDate(Math.max(1, days - 1));
-      setStandardDeliveryDate(standardDate);
-      setRushDeliveryDate(rushDate);
+      const computedStandard = await getDeliveryDate(days);
+      const computedRush = await getDeliveryDate(Math.max(1, days - 1));
+      // Admin-set dates (manual quotes) override computed offsets.
+      const adminStandard = quote?.promised_delivery_date
+        ? new Date(quote.promised_delivery_date + "T12:00:00")
+        : null;
+      const adminRush = quote?.promised_delivery_date_rush
+        ? new Date(quote.promised_delivery_date_rush + "T12:00:00")
+        : null;
+      setStandardDeliveryDate(adminStandard ?? computedStandard);
+      setRushDeliveryDate(adminRush ?? computedRush);
 
     } catch (err) {
       console.error("Error fetching analysis data:", err);

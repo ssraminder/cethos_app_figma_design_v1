@@ -220,6 +220,7 @@ serve(async (req: Request) => {
         internal_project_id: internalProjectId,
         manual_quote_notes: order.notes || null,
         promised_delivery_date: order.promisedDeliveryDate || null,
+        promised_delivery_date_rush: order.promisedDeliveryDateRush || null,
         turnaround_type: order.turnaroundType || "standard",
         paid_at: new Date().toISOString(),
         currency: order.currency || custRec.currency || "CAD",

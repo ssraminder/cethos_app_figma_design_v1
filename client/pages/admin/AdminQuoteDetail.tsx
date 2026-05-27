@@ -107,6 +107,7 @@ interface QuoteDetail {
   turnaround_type: string | null;
   turnaround_option_id: string | null;
   promised_delivery_date: string | null;
+  promised_delivery_date_rush: string | null;
   physical_delivery_option_id: string | null;
   shipping_address: any;
   billing_address: any;
@@ -577,6 +578,8 @@ export default function AdminQuoteDetail() {
   const [isSavingTurnaround, setIsSavingTurnaround] = useState(false);
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState("");
   const [isSavingPromisedDate, setIsSavingPromisedDate] = useState(false);
+  const [promisedDeliveryDateRush, setPromisedDeliveryDateRush] = useState("");
+  const [isSavingPromisedDateRush, setIsSavingPromisedDateRush] = useState(false);
   const [deliveryOptionsList, setDeliveryOptionsList] = useState<DeliveryOptionItem[]>([]);
   const [selectedDeliveryOptionId, setSelectedDeliveryOptionId] = useState("");
   const [isSavingDelivery, setIsSavingDelivery] = useState(false);
@@ -1121,6 +1124,7 @@ export default function AdminQuoteDetail() {
 
       // Initialize promised delivery date
       setPromisedDeliveryDate(quoteData?.promised_delivery_date || quoteData?.estimated_delivery_date || "");
+      setPromisedDeliveryDateRush(quoteData?.promised_delivery_date_rush || "");
 
       // Initialize delivery option
       if (quoteData?.physical_delivery_option_id) {
@@ -2072,6 +2076,29 @@ export default function AdminQuoteDetail() {
       toast.error("Failed to update delivery date");
     } finally {
       setIsSavingPromisedDate(false);
+    }
+  };
+
+  const handlePromisedDateRushChange = async (date: string) => {
+    if (!id) return;
+    setIsSavingPromisedDateRush(true);
+    try {
+      const { error } = await supabase
+        .from("quotes")
+        .update({
+          promised_delivery_date_rush: date || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+      setPromisedDeliveryDateRush(date);
+      setQuote(prev => prev ? { ...prev, promised_delivery_date_rush: date || null } : null);
+    } catch (err) {
+      console.error("Failed to update rush delivery date:", err);
+      toast.error("Failed to update rush delivery date");
+    } finally {
+      setIsSavingPromisedDateRush(false);
     }
   };
 
@@ -5092,7 +5119,7 @@ export default function AdminQuoteDetail() {
                 {/* Promised Delivery Date */}
                 <div className="space-y-1">
                   <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
-                    Delivery Date
+                    Standard Delivery Date
                   </label>
                   <div className="flex items-center gap-1">
                     <input
@@ -5106,6 +5133,29 @@ export default function AdminQuoteDetail() {
                       <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
                     )}
                   </div>
+                </div>
+
+                {/* Rush Delivery Date (manual quotes — optional) */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Rush Delivery Date
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="date"
+                      value={promisedDeliveryDateRush}
+                      onChange={(e) => handlePromisedDateRushChange(e.target.value)}
+                      disabled={isSavingPromisedDateRush}
+                      placeholder="Optional"
+                      className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 text-gray-700 bg-white hover:border-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50"
+                    />
+                    {isSavingPromisedDateRush && (
+                      <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Shown when the customer toggles to rush. Leave blank to use the computed default.
+                  </p>
                 </div>
 
                 {/* Delivery Method */}
