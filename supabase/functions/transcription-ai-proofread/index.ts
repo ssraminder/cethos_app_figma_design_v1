@@ -1,7 +1,8 @@
 // POST /functions/v1/transcription-ai-proofread
-// Body: { job_id: string, model?: "haiku" | "sonnet" | "opus" }
+// Body: { job_id: string, model?: "haiku" | "sonnet" | "opus", file_index?: number }
 // Admin-invoked: Claude proofreads the transcript, fixes spelling errors,
 // normalizes speaker labels, removes filler. Saves as a new version.
+// file_index: null/omitted = whole-job combined, 0-based = specific source file.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import {
@@ -27,6 +28,7 @@ serve(async (req: Request) => {
     const body = await req.json().catch(() => null);
     const jobId = body?.job_id as string;
     const modelKey = (body?.model as string) ?? "sonnet";
+    const fileIndex = typeof body?.file_index === "number" ? body.file_index : null;
 
     if (!jobId) {
       return jsonResponse({ success: false, error: "job_id required" }, 400);
@@ -41,7 +43,7 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await admin
       .from("transcription_jobs")
-      .select("id, transcript_text, detected_language, source_language_id, ai_total_cost")
+      .select("id, transcript_text, detected_language, source_language_id, ai_total_cost, source_files")
       .eq("id", jobId)
       .is("deleted_at", null)
       .maybeSingle();
@@ -50,7 +52,19 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Job not found" }, 404);
     }
 
-    if (!job.transcript_text?.trim()) {
+    // Resolve transcript text: per-file or combined
+    let transcriptText: string;
+    if (fileIndex !== null) {
+      const files = job.source_files as Array<{ transcript_text?: string }> | null;
+      if (!files || fileIndex < 0 || fileIndex >= files.length) {
+        return jsonResponse({ success: false, error: `Invalid file_index: ${fileIndex}` }, 400);
+      }
+      transcriptText = files[fileIndex].transcript_text ?? "";
+    } else {
+      transcriptText = job.transcript_text ?? "";
+    }
+
+    if (!transcriptText.trim()) {
       return jsonResponse({ success: false, error: "No transcript to proofread" }, 400);
     }
 
@@ -104,7 +118,7 @@ Rules:
 - Output ONLY the corrected transcript text, nothing else
 
 Transcript:
-${job.transcript_text}`,
+${transcriptText}`,
           },
         ],
       }),
@@ -127,7 +141,7 @@ ${job.transcript_text}`,
     const cost = (inputTokens * modelInfo.inputPer1M + outputTokens * modelInfo.outputPer1M) / 1_000_000;
     const wordCount = proofreadText.split(/\s+/).filter(Boolean).length;
 
-    // Save as a new version
+    // Save as a new version (with file_index if per-file)
     const { error: versionErr } = await admin
       .from("transcription_versions")
       .insert({
@@ -139,6 +153,7 @@ ${job.transcript_text}`,
         word_count: wordCount,
         cost,
         is_active: false,
+        ...(fileIndex !== null ? { file_index: fileIndex } : {}),
       });
 
     if (versionErr) {
@@ -159,6 +174,7 @@ ${job.transcript_text}`,
       output_tokens: outputTokens,
       cost: cost.toFixed(6),
       word_count: wordCount,
+      ...(fileIndex !== null ? { file_index: fileIndex } : {}),
     });
 
     return jsonResponse({

@@ -1,7 +1,8 @@
 // POST /functions/v1/transcription-ai-translate
-// Body: { job_id: string }
+// Body: { job_id: string, file_index?: number }
 // Claude translates the transcript text to the target language.
 // Paragraph-level translation preserving speaker labels and structure.
+// file_index: null/omitted = whole-job combined, 0-based = specific source file.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import {
@@ -22,6 +23,8 @@ serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => null);
     const jobId = body?.job_id as string;
+    const fileIndex = typeof body?.file_index === "number" ? body.file_index : null;
+
     if (!jobId) {
       return jsonResponse({ success: false, error: "job_id required" }, 400);
     }
@@ -30,7 +33,7 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await admin
       .from("transcription_jobs")
-      .select("id, transcript_text, translation_target_language_id, detected_language, ai_total_cost")
+      .select("id, transcript_text, translation_target_language_id, detected_language, ai_total_cost, source_files")
       .eq("id", jobId)
       .is("deleted_at", null)
       .maybeSingle();
@@ -39,7 +42,19 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Job not found" }, 404);
     }
 
-    if (!job.transcript_text?.trim()) {
+    // Resolve transcript text: per-file or combined
+    let transcriptText: string;
+    if (fileIndex !== null) {
+      const files = job.source_files as Array<{ transcript_text?: string }> | null;
+      if (!files || fileIndex < 0 || fileIndex >= files.length) {
+        return jsonResponse({ success: false, error: `Invalid file_index: ${fileIndex}` }, 400);
+      }
+      transcriptText = files[fileIndex].transcript_text ?? "";
+    } else {
+      transcriptText = job.transcript_text ?? "";
+    }
+
+    if (!transcriptText.trim()) {
       return jsonResponse({ success: false, error: "No transcript to translate" }, 400);
     }
 
@@ -67,7 +82,7 @@ serve(async (req: Request) => {
     const targetLangName = targetLang.name;
 
     // Split long transcripts into chunks for reliable translation
-    const chunks = splitIntoChunks(job.transcript_text, MAX_CHUNK_CHARS);
+    const chunks = splitIntoChunks(transcriptText, MAX_CHUNK_CHARS);
     const translatedChunks: string[] = [];
     let totalCost = 0;
 
@@ -126,14 +141,29 @@ ${chunk}`,
     // Accumulate cost
     const newTotalCost = ((job.ai_total_cost as number) ?? 0) + totalCost;
 
-    const { error: updateErr } = await admin
-      .from("transcription_jobs")
-      .update({ translated_text: fullTranslation, ai_total_cost: newTotalCost })
-      .eq("id", jobId);
+    if (fileIndex !== null) {
+      // Per-file: update source_files[fileIndex].translated_text via JSONB
+      const files = (job.source_files as Array<Record<string, unknown>>) ?? [];
+      files[fileIndex] = { ...files[fileIndex], translated_text: fullTranslation };
+      const { error: updateErr } = await admin
+        .from("transcription_jobs")
+        .update({ source_files: files, ai_total_cost: newTotalCost })
+        .eq("id", jobId);
 
-    if (updateErr) {
-      console.error("Translation update failed:", updateErr);
-      return jsonResponse({ success: false, error: "Failed to store translation" }, 500);
+      if (updateErr) {
+        console.error("Per-file translation update failed:", updateErr);
+        return jsonResponse({ success: false, error: "Failed to store translation" }, 500);
+      }
+    } else {
+      const { error: updateErr } = await admin
+        .from("transcription_jobs")
+        .update({ translated_text: fullTranslation, ai_total_cost: newTotalCost })
+        .eq("id", jobId);
+
+      if (updateErr) {
+        console.error("Translation update failed:", updateErr);
+        return jsonResponse({ success: false, error: "Failed to store translation" }, 500);
+      }
     }
 
     await auditLog(admin, jobId, "translation_completed", "system", null, {
@@ -141,6 +171,7 @@ ${chunk}`,
       chunks: chunks.length,
       translated_length: fullTranslation.length,
       cost: totalCost.toFixed(6),
+      ...(fileIndex !== null ? { file_index: fileIndex } : {}),
     });
 
     return jsonResponse({

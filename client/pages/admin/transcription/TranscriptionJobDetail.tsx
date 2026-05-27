@@ -5,18 +5,11 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   ArrowLeft,
-  Play,
   FileText,
   Clock,
   Globe,
   DollarSign,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
-  Download,
-  Languages,
   Shield,
-  User,
   Loader2,
   Copy,
   ChevronDown,
@@ -26,8 +19,27 @@ import {
   Star,
   ChevronRight,
   FileAudio,
+  RefreshCw,
+  Languages,
+  CheckCircle,
+  Download,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
+
+// ── Interfaces ──────────────────────────────────────────────────────────────
+
+interface SourceFile {
+  name: string;
+  path: string;
+  size: number;
+  duration: number;
+  format: string;
+  transcript_text?: string;
+  transcript_json?: Record<string, unknown>;
+  translated_text?: string;
+}
 
 interface Job {
   id: string;
@@ -65,14 +77,7 @@ interface Job {
   source_language_id: string | null;
   translation_target_language_id: string | null;
   ai_total_cost: number | null;
-  source_files: Array<{
-    name: string;
-    path: string;
-    size: number;
-    duration: number;
-    format: string;
-    transcript_text?: string;
-  }> | null;
+  source_files: SourceFile[] | null;
 }
 
 interface Version {
@@ -87,6 +92,7 @@ interface Version {
   is_active: boolean;
   notes: string | null;
   created_at: string;
+  file_index: number | null;
 }
 
 interface AuditEntry {
@@ -98,12 +104,45 @@ interface AuditEntry {
   created_at: string;
 }
 
+// ── Constants ───────────────────────────────────────────────────────────────
+
 const QUALITY_LABELS: Record<string, { label: string; color: string }> = {
   A: { label: "High Quality", color: "text-green-700 bg-green-50 border-green-200" },
   B: { label: "Good Quality", color: "text-blue-700 bg-blue-50 border-blue-200" },
   C: { label: "Acceptable", color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
   D: { label: "Review Recommended", color: "text-red-700 bg-red-50 border-red-200" },
 };
+
+const FORMAT_BADGE_COLORS: Record<string, string> = {
+  mp3: "bg-blue-100 text-blue-700",
+  wav: "bg-green-100 text-green-700",
+  m4a: "bg-purple-100 text-purple-700",
+  mp4: "bg-orange-100 text-orange-700",
+  mov: "bg-pink-100 text-pink-700",
+  ogg: "bg-gray-100 text-gray-700",
+  flac: "bg-teal-100 text-teal-700",
+  webm: "bg-red-100 text-red-700",
+};
+
+const DOWNLOAD_FORMAT_STYLES: Record<string, string> = {
+  txt: "bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200",
+  docx: "bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200",
+  doc: "bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200",
+  pdf: "bg-red-50 text-red-700 hover:bg-red-100 border-red-200",
+  srt: "bg-yellow-50 text-yellow-700 hover:bg-yellow-100 border-yellow-200",
+  json: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200",
+};
+
+const SPEAKER_COLORS = [
+  { text: "text-blue-700", bg: "bg-blue-50", badge: "bg-blue-100 text-blue-800" },
+  { text: "text-emerald-700", bg: "bg-emerald-50", badge: "bg-emerald-100 text-emerald-800" },
+  { text: "text-purple-700", bg: "bg-purple-50", badge: "bg-purple-100 text-purple-800" },
+  { text: "text-orange-700", bg: "bg-orange-50", badge: "bg-orange-100 text-orange-800" },
+  { text: "text-pink-700", bg: "bg-pink-50", badge: "bg-pink-100 text-pink-800" },
+  { text: "text-cyan-700", bg: "bg-cyan-50", badge: "bg-cyan-100 text-cyan-800" },
+];
+
+// ── Utilities ───────────────────────────────────────────────────────────────
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -117,6 +156,16 @@ function formatDuration(seconds: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
+function fmtTs(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+// ── Main component ──────────────────────────────────────────────────────────
+
 export default function TranscriptionJobDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -124,7 +173,6 @@ export default function TranscriptionJobDetail() {
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [versions, setVersions] = useState<Version[]>([]);
-  const [reprocessing, setReprocessing] = useState(false);
   const [tab, setTab] = useState<"transcript" | "translation" | "versions" | "audit">("transcript");
 
   useEffect(() => {
@@ -169,21 +217,9 @@ export default function TranscriptionJobDetail() {
     setVersions((data ?? []) as Version[]);
   };
 
-  const reprocess = async () => {
-    if (!job) return;
-    setReprocessing(true);
-    try {
-      const { error } = await supabase.functions.invoke("transcription-process", {
-        body: { job_id: job.id },
-      });
-      if (error) throw error;
-      toast.success("Reprocessing triggered");
-      setTimeout(fetchJob, 3000);
-    } catch (e) {
-      toast.error("Failed to trigger reprocessing");
-    } finally {
-      setReprocessing(false);
-    }
+  const onUpdate = () => {
+    fetchJob();
+    fetchVersions();
   };
 
   if (loading || !job) {
@@ -195,6 +231,22 @@ export default function TranscriptionJobDetail() {
   }
 
   const quality = QUALITY_LABELS[job.ai_quality_score ?? ""] ?? null;
+
+  // Build per-file list: real source_files or synthetic single-file entry
+  const isMultiFile = (job.source_files?.length ?? 0) > 1;
+  const isSyntheticSingleFile = !job.source_files || job.source_files.length === 0;
+  const files: SourceFile[] = job.source_files && job.source_files.length > 0
+    ? job.source_files
+    : [{
+        name: job.file_name,
+        path: job.file_path,
+        size: job.file_size_bytes,
+        duration: job.file_duration_seconds,
+        format: job.file_format,
+        transcript_text: job.transcript_text ?? undefined,
+        transcript_json: job.transcript_json ?? undefined,
+        translated_text: job.translated_text ?? undefined,
+      }];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -211,26 +263,14 @@ export default function TranscriptionJobDetail() {
               <h1 className="text-xl font-bold text-gray-900">{job.file_name}</h1>
               <p className="text-sm text-gray-500 mt-0.5">{job.customer_email}</p>
             </div>
-            <div className="flex items-center gap-3">
-              {(job.status === "failed" || job.status === "pending") && (
-                <button
-                  onClick={reprocess}
-                  disabled={reprocessing}
-                  className="flex items-center gap-2 px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50"
-                >
-                  {reprocessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  Reprocess
-                </button>
-              )}
-              <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
-                job.status === "completed" ? "bg-green-50 text-green-700 border-green-200" :
-                job.status === "failed" ? "bg-red-50 text-red-700 border-red-200" :
-                job.status === "processing" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                "bg-gray-50 text-gray-600 border-gray-200"
-              }`}>
-                {job.status}
-              </span>
-            </div>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
+              job.status === "completed" ? "bg-green-50 text-green-700 border-green-200" :
+              job.status === "failed" ? "bg-red-50 text-red-700 border-red-200" :
+              job.status === "processing" ? "bg-blue-50 text-blue-700 border-blue-200" :
+              "bg-gray-50 text-gray-600 border-gray-200"
+            }`}>
+              {job.status}
+            </span>
           </div>
         </div>
       </header>
@@ -243,11 +283,6 @@ export default function TranscriptionJobDetail() {
           <InfoCard icon={DollarSign} label="Charged" value={job.amount_charged > 0 ? `$${job.amount_charged.toFixed(2)} ${job.currency}` : "Free"} sub={`Tier: ${job.pricing_tier} · Payment: ${job.payment_status}`} />
           <InfoCard icon={Shield} label="Provider" value={job.provider ?? "—"} sub={`STT: $${(job.provider_cost ?? 0).toFixed(4)} · Total AI: $${(job.ai_total_cost ?? 0).toFixed(4)}`} />
         </div>
-
-        {/* Source files accordion (multi-file jobs) */}
-        {job.source_files && job.source_files.length > 1 && (
-          <SourceFilesAccordion job={job} />
-        )}
 
         {/* Quality + meta row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -282,172 +317,645 @@ export default function TranscriptionJobDetail() {
           )}
         </div>
 
-        {/* Actions: Translate + AI Tools + Downloads */}
+        {/* Per-file accordions — always shown when transcript exists */}
         {job.transcript_text && (
-          <div className="flex flex-wrap items-start gap-4">
-            <TranslateAction job={job} onTranslated={fetchJob} />
-            <ProofreadAction job={job} onComplete={() => { fetchJob(); fetchVersions(); }} />
-            <ReprocessAction job={job} onComplete={() => { fetchJob(); fetchVersions(); }} />
-            {versions.length >= 2 && (
-              <CompareAction job={job} versions={versions} onComplete={fetchJob} />
-            )}
-            {(job.delivery_formats ?? []).length > 0 && (
-              <DownloadSection jobId={job.id} formats={job.delivery_formats} />
-            )}
+          <PerFileAccordions
+            job={job}
+            files={files}
+            versions={versions}
+            isSyntheticSingleFile={isSyntheticSingleFile}
+            onUpdate={onUpdate}
+          />
+        )}
+
+        {/* Combined downloads — multi-file only */}
+        {isMultiFile && (job.delivery_formats ?? []).length > 0 && (
+          <CombinedDownloads jobId={job.id} formats={job.delivery_formats} />
+        )}
+
+        {/* Bottom tabs — multi-file only (single-file accordion already shows everything) */}
+        {isMultiFile && (
+          <div className="bg-white rounded-lg border border-gray-200">
+            <div className="border-b border-gray-200 flex">
+              {(["transcript", ...(job.translation_requested ? ["translation"] : []), ...(versions.filter(v => v.file_index == null).length > 0 ? ["versions"] : []), "audit"] as const).map((t) => {
+                const combinedVersions = versions.filter(v => v.file_index == null);
+                const labels: Record<string, string> = {
+                  transcript: "Transcript",
+                  translation: "Translation",
+                  versions: `Versions (${combinedVersions.length})`,
+                  audit: "Audit Log",
+                };
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t as typeof tab)}
+                    className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                      tab === t
+                        ? "border-teal-600 text-teal-700"
+                        : "border-transparent text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {labels[t] ?? t}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="p-6">
+              {tab === "transcript" && (
+                <div>
+                  {job.transcript_text ? (
+                    <SpeakerTranscript transcriptJson={job.transcript_json} transcriptText={job.transcript_text} />
+                  ) : (
+                    <p className="text-gray-400 text-center py-8">No transcript available</p>
+                  )}
+                </div>
+              )}
+
+              {tab === "translation" && (
+                <div>
+                  {job.translated_text ? (
+                    <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans max-h-[600px] overflow-y-auto">
+                      {job.translated_text}
+                    </pre>
+                  ) : (
+                    <p className="text-gray-400 text-center py-8">Translation not yet available</p>
+                  )}
+                </div>
+              )}
+
+              {tab === "versions" && (
+                <VersionsPanel job={job} versions={versions.filter(v => v.file_index == null)} onActivated={onUpdate} />
+              )}
+
+              {tab === "audit" && (
+                <div className="space-y-3">
+                  {audit.length === 0 ? (
+                    <p className="text-gray-400 text-center py-8">No audit entries</p>
+                  ) : (
+                    audit.map((entry) => (
+                      <div key={entry.id} className="flex items-start gap-3 text-sm">
+                        <div className="w-2 h-2 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-gray-900 font-medium">{entry.action.replace(/_/g, " ")}</p>
+                          <p className="text-gray-500 text-xs">
+                            {entry.actor_type}{entry.actor_id ? ` · ${entry.actor_id}` : ""} · {format(new Date(entry.created_at), "MMM d, HH:mm:ss")}
+                          </p>
+                          {entry.details && (
+                            <pre className="text-xs text-gray-400 mt-1 bg-gray-50 rounded p-2 overflow-x-auto">
+                              {JSON.stringify(entry.details, null, 2)}
+                            </pre>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="bg-white rounded-lg border border-gray-200">
-          <div className="border-b border-gray-200 flex">
-            {(["transcript", ...(job.translation_requested ? ["translation"] : []), ...(versions.length > 0 ? ["versions"] : []), "audit"] as const).map((t) => {
-              const labels: Record<string, string> = { transcript: "Transcript", translation: "Translation", versions: `Versions (${versions.length})`, audit: "Audit Log" };
-              return (
-                <button
-                  key={t}
-                  onClick={() => setTab(t as typeof tab)}
-                  className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                    tab === t
-                      ? "border-teal-600 text-teal-700"
-                      : "border-transparent text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  {labels[t] ?? t}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="p-6">
-            {tab === "transcript" && (
-              <div>
-                {job.transcript_text ? (
-                  <SpeakerTranscript job={job} />
-                ) : (
-                  <p className="text-gray-400 text-center py-8">
-                    {job.status === "processing" ? "Transcription in progress..." : "No transcript available"}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {tab === "translation" && (
-              <div>
-                {job.translated_text ? (
-                  <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans max-h-[600px] overflow-y-auto">
-                    {job.translated_text}
-                  </pre>
-                ) : (
-                  <p className="text-gray-400 text-center py-8">Translation not yet available</p>
-                )}
-              </div>
-            )}
-
-            {tab === "versions" && (
-              <VersionsPanel job={job} versions={versions} onActivated={() => { fetchJob(); fetchVersions(); }} />
-            )}
-
-            {tab === "audit" && (
-              <div className="space-y-3">
-                {audit.length === 0 ? (
-                  <p className="text-gray-400 text-center py-8">No audit entries</p>
-                ) : (
-                  audit.map((entry) => (
-                    <div key={entry.id} className="flex items-start gap-3 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-gray-900 font-medium">{entry.action.replace(/_/g, " ")}</p>
-                        <p className="text-gray-500 text-xs">
-                          {entry.actor_type}{entry.actor_id ? ` · ${entry.actor_id}` : ""} · {format(new Date(entry.created_at), "MMM d, HH:mm:ss")}
-                        </p>
-                        {entry.details && (
-                          <pre className="text-xs text-gray-400 mt-1 bg-gray-50 rounded p-2 overflow-x-auto">
-                            {JSON.stringify(entry.details, null, 2)}
-                          </pre>
-                        )}
-                      </div>
+        {/* Audit log tab for single-file jobs */}
+        {!isMultiFile && (
+          <div className="bg-white rounded-lg border border-gray-200">
+            <div className="border-b border-gray-200 px-4 py-3">
+              <span className="text-sm font-medium text-gray-700">Audit Log</span>
+            </div>
+            <div className="p-6 space-y-3">
+              {audit.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">No audit entries</p>
+              ) : (
+                audit.map((entry) => (
+                  <div key={entry.id} className="flex items-start gap-3 text-sm">
+                    <div className="w-2 h-2 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-gray-900 font-medium">{entry.action.replace(/_/g, " ")}</p>
+                      <p className="text-gray-500 text-xs">
+                        {entry.actor_type}{entry.actor_id ? ` · ${entry.actor_id}` : ""} · {format(new Date(entry.created_at), "MMM d, HH:mm:ss")}
+                      </p>
+                      {entry.details && (
+                        <pre className="text-xs text-gray-400 mt-1 bg-gray-50 rounded p-2 overflow-x-auto">
+                          {JSON.stringify(entry.details, null, 2)}
+                        </pre>
+                      )}
                     </div>
-                  ))
-                )}
-              </div>
-            )}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   );
 }
 
-// ── Translate action ────────────────────────────────────────────────────────
+// ── Info card ────────────────────────────────────────────────────────────────
 
-function TranslateAction({ job, onTranslated }: { job: Job; onTranslated: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [langId, setLangId] = useState(job.translation_target_language_id ?? "");
-  const [translating, setTranslating] = useState(false);
+function InfoCard({ icon: Icon, label, value, sub }: {
+  icon: typeof Clock;
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon className="w-4 h-4 text-gray-400" />
+        <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</span>
+      </div>
+      <p className="text-lg font-semibold text-gray-900">{value}</p>
+      {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+// ── Per-file accordions ─────────────────────────────────────────────────────
+
+function PerFileAccordions({ job, files, versions, isSyntheticSingleFile, onUpdate }: {
+  job: Job;
+  files: SourceFile[];
+  versions: Version[];
+  isSyntheticSingleFile: boolean;
+  onUpdate: () => void;
+}) {
+  const [expanded, setExpanded] = useState<number | null>(files.length === 1 ? 0 : null);
   const { targetLanguages } = useDropdownOptions();
 
-  const runTranslation = async () => {
-    if (!langId) { toast.error("Select a target language"); return; }
-    setTranslating(true);
+  return (
+    <div className="space-y-2">
+      {files.length > 1 && (
+        <div className="flex items-center gap-2 px-1">
+          <FileAudio className="w-4 h-4 text-gray-400" />
+          <span className="text-sm font-medium text-gray-700">Source Files ({files.length})</span>
+        </div>
+      )}
+
+      {files.map((sf, i) => {
+        const fileVersions = versions.filter(v =>
+          v.file_index === i || (isSyntheticSingleFile && v.file_index == null)
+        );
+
+        return (
+          <FileCard
+            key={i}
+            file={sf}
+            fileIndex={i}
+            job={job}
+            fileVersions={fileVersions}
+            isExpanded={expanded === i}
+            onToggle={() => setExpanded(expanded === i ? null : i)}
+            onUpdate={onUpdate}
+            targetLanguages={targetLanguages}
+            isSyntheticSingleFile={isSyntheticSingleFile}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ── File card (full per-file workspace) ─────────────────────────────────────
+
+function FileCard({
+  file,
+  fileIndex,
+  job,
+  fileVersions,
+  isExpanded,
+  onToggle,
+  onUpdate,
+  targetLanguages,
+  isSyntheticSingleFile,
+}: {
+  file: SourceFile;
+  fileIndex: number;
+  job: Job;
+  fileVersions: Version[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  onUpdate: () => void;
+  targetLanguages: Array<{ id: string; name: string; native_name?: string }>;
+  isSyntheticSingleFile: boolean;
+}) {
+  const badgeColor = FORMAT_BADGE_COLORS[file.format.toLowerCase()] ?? "bg-gray-100 text-gray-700";
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Accordion header */}
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50 transition"
+      >
+        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+        <span className={`px-2 py-0.5 text-xs font-semibold rounded ${badgeColor}`}>
+          {file.format.toUpperCase()}
+        </span>
+        <span className="flex-1 text-sm font-medium text-gray-800 truncate">{file.name}</span>
+        <span className="text-xs text-gray-500 flex-shrink-0">{formatDuration(file.duration)}</span>
+        <span className="text-xs text-gray-400 flex-shrink-0">{formatBytes(file.size)}</span>
+        {file.transcript_text && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />}
+      </button>
+
+      {/* Expanded workspace */}
+      {isExpanded && (
+        <div className="border-t border-gray-100 px-4 py-4 pl-11 space-y-5">
+          {/* 1. Transcript preview */}
+          <FileTranscriptSection file={file} />
+
+          {/* 2. Translation preview */}
+          {file.translated_text && (
+            <FileTranslationSection translatedText={file.translated_text} />
+          )}
+
+          {/* 3. Versions list */}
+          {fileVersions.length > 0 && (
+            <FileVersionsSection
+              job={job}
+              versions={fileVersions}
+              fileIndex={fileIndex}
+              isSyntheticSingleFile={isSyntheticSingleFile}
+              onUpdate={onUpdate}
+            />
+          )}
+
+          {/* 4. AI Tools */}
+          <FileActionsSection
+            job={job}
+            fileIndex={fileIndex}
+            fileVersions={fileVersions}
+            targetLanguages={targetLanguages}
+            hasTranslation={!!file.translated_text}
+            onUpdate={onUpdate}
+          />
+
+          {/* 5. Downloads */}
+          <FileDownloadsSection
+            job={job}
+            file={file}
+            fileIndex={fileIndex}
+            isSyntheticSingleFile={isSyntheticSingleFile}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 1. Transcript preview section ───────────────────────────────────────────
+
+function FileTranscriptSection({ file }: { file: SourceFile }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!file.transcript_text) {
+    return (
+      <div>
+        <SectionLabel label="Transcript" />
+        <p className="text-sm text-gray-400 italic">No transcript available</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <SectionLabel label="Transcript" />
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(file.transcript_text ?? "");
+              toast.success("Copied to clipboard");
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+          >
+            <Copy className="w-3 h-3" /> Copy
+          </button>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+          >
+            {expanded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+            {expanded ? "Collapse" : "Expand"}
+          </button>
+        </div>
+      </div>
+      <div className={`${expanded ? "" : "max-h-[300px]"} overflow-y-auto rounded-lg border border-gray-100 p-3 bg-gray-50/50`}>
+        <SpeakerTranscript
+          transcriptJson={file.transcript_json ?? null}
+          transcriptText={file.transcript_text}
+          compact
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── 2. Translation preview section ──────────────────────────────────────────
+
+function FileTranslationSection({ translatedText }: { translatedText: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <SectionLabel label="Translation" />
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(translatedText);
+              toast.success("Copied to clipboard");
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+          >
+            <Copy className="w-3 h-3" /> Copy
+          </button>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+          >
+            {expanded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+            {expanded ? "Collapse" : "Expand"}
+          </button>
+        </div>
+      </div>
+      <div className={`${expanded ? "" : "max-h-[200px]"} overflow-y-auto rounded-lg border border-purple-100 p-3 bg-purple-50/30`}>
+        <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans">
+          {translatedText}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+// ── 3. Versions section (mini list) ─────────────────────────────────────────
+
+function FileVersionsSection({ job, versions, fileIndex, isSyntheticSingleFile, onUpdate }: {
+  job: Job;
+  versions: Version[];
+  fileIndex: number;
+  isSyntheticSingleFile: boolean;
+  onUpdate: () => void;
+}) {
+  const [activating, setActivating] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  const activateVersion = async (version: Version) => {
+    setActivating(version.id);
     try {
-      // Set translation fields on the job
+      if (isSyntheticSingleFile) {
+        await supabase
+          .from("transcription_jobs")
+          .update({ transcript_text: version.transcript_text, word_count: version.word_count })
+          .eq("id", job.id);
+      } else {
+        const files = [...(job.source_files ?? [])];
+        if (files[fileIndex]) {
+          files[fileIndex] = { ...files[fileIndex], transcript_text: version.transcript_text ?? undefined };
+          await supabase
+            .from("transcription_jobs")
+            .update({ source_files: files })
+            .eq("id", job.id);
+        }
+      }
+
       await supabase
-        .from("transcription_jobs")
-        .update({
-          translation_requested: true,
-          translation_target_language_id: langId,
-          translation_type: "ai_instant",
-          translated_text: null,
-        })
-        .eq("id", job.id);
+        .from("transcription_versions")
+        .update({ is_active: false })
+        .eq("job_id", job.id)
+        .eq("file_index", fileIndex);
+      await supabase
+        .from("transcription_versions")
+        .update({ is_active: true })
+        .eq("id", version.id);
 
-      const { error } = await supabase.functions.invoke("transcription-ai-translate", {
-        body: { job_id: job.id },
-      });
-      if (error) throw error;
-
-      toast.success("Translation complete");
-
-      // Re-generate deliverables with translation included
-      supabase.functions.invoke("transcription-deliver", {
-        body: { job_id: job.id },
-      }).catch(() => {});
-
-      onTranslated();
+      toast.success("Version activated");
+      supabase.functions.invoke("transcription-deliver", { body: { job_id: job.id } }).catch(() => {});
+      onUpdate();
     } catch (e: any) {
-      toast.error(e.message ?? "Translation failed");
+      toast.error(e.message ?? "Failed to activate version");
     } finally {
-      setTranslating(false);
-      setOpen(false);
+      setActivating(null);
     }
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 flex-1 min-w-[280px]">
-      <div className="flex items-center gap-2 mb-3">
-        <Languages className="w-4 h-4 text-purple-500" />
-        <span className="text-sm font-medium text-gray-700">Translate</span>
-        {job.translated_text && (
-          <span className="ml-auto text-xs text-green-600 font-medium flex items-center gap-1">
-            <CheckCircle className="w-3 h-3" /> Translated
-          </span>
+    <div>
+      <SectionLabel label={`Versions (${versions.length})`} />
+      <div className="space-y-2 mt-2">
+        {versions.map((v) => (
+          <div key={v.id} className={`rounded-lg border p-3 ${v.is_active ? "border-teal-300 bg-teal-50/50" : "border-gray-100 bg-gray-50/30"}`}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${
+                v.version_type === "original" ? "bg-gray-100 text-gray-600" :
+                v.version_type === "reprocess" ? "bg-blue-100 text-blue-600" :
+                "bg-amber-100 text-amber-600"
+              }`}>
+                {v.version_type}
+              </span>
+              <span className="text-xs text-gray-500">{v.provider}{v.model ? `/${v.model}` : ""}</span>
+              <span className="text-xs text-gray-400">{format(new Date(v.created_at), "MMM d HH:mm")}</span>
+              {v.word_count && <span className="text-xs text-gray-400">{v.word_count} words</span>}
+              {v.is_active && (
+                <span className="flex items-center gap-0.5 text-xs text-teal-700 font-medium">
+                  <Star className="w-3 h-3 fill-current" /> Active
+                </span>
+              )}
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  onClick={() => setPreviewId(previewId === v.id ? null : v.id)}
+                  className="px-2 py-0.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                >
+                  {previewId === v.id ? "Hide" : "Preview"}
+                </button>
+                {!v.is_active && v.transcript_text && (
+                  <button
+                    onClick={() => activateVersion(v)}
+                    disabled={activating === v.id}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50"
+                  >
+                    {activating === v.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                    Set Active
+                  </button>
+                )}
+              </div>
+            </div>
+            {previewId === v.id && v.transcript_text && (
+              <pre className="mt-2 p-2 bg-white rounded text-xs text-gray-700 max-h-[200px] overflow-y-auto whitespace-pre-wrap font-sans border border-gray-100">
+                {v.transcript_text.slice(0, 2000)}{v.transcript_text.length > 2000 ? "\n\n[...truncated...]" : ""}
+              </pre>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 4. AI tools section ─────────────────────────────────────────────────────
+
+function FileActionsSection({ job, fileIndex, fileVersions, targetLanguages, hasTranslation, onUpdate }: {
+  job: Job;
+  fileIndex: number;
+  fileVersions: Version[];
+  targetLanguages: Array<{ id: string; name: string; native_name?: string }>;
+  hasTranslation: boolean;
+  onUpdate: () => void;
+}) {
+  const [activeAction, setActiveAction] = useState<string | null>(null);
+
+  // Translate state
+  const [langId, setLangId] = useState(job.translation_target_language_id ?? "");
+  const [translating, setTranslating] = useState(false);
+
+  // Proofread state
+  const [proofModel, setProofModel] = useState("sonnet");
+  const [proofreading, setProofreading] = useState(false);
+
+  // Reprocess state
+  const [reprocessProvider, setReprocessProvider] = useState(job.provider ?? "openai");
+  const [reprocessing, setReprocessing] = useState(false);
+
+  // Compare state
+  const [compareModel, setCompareModel] = useState("sonnet");
+  const [versionA, setVersionA] = useState("current");
+  const [versionB, setVersionB] = useState(fileVersions[0]?.id ?? "");
+  const [comparing, setComparing] = useState(false);
+  const [compareResult, setCompareResult] = useState<Record<string, unknown> | null>(null);
+
+  const runTranslate = async () => {
+    if (!langId) { toast.error("Select a target language"); return; }
+    setTranslating(true);
+    try {
+      await supabase.from("transcription_jobs").update({
+        translation_requested: true,
+        translation_target_language_id: langId,
+        translation_type: "ai_instant",
+      }).eq("id", job.id);
+
+      const { error } = await supabase.functions.invoke("transcription-ai-translate", {
+        body: { job_id: job.id, file_index: fileIndex },
+      });
+      if (error) throw error;
+      toast.success("Translation complete");
+      supabase.functions.invoke("transcription-deliver", { body: { job_id: job.id } }).catch(() => {});
+      onUpdate();
+    } catch (e: any) {
+      toast.error(e.message ?? "Translation failed");
+    } finally {
+      setTranslating(false);
+      setActiveAction(null);
+    }
+  };
+
+  const runProofread = async () => {
+    setProofreading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("transcription-ai-proofread", {
+        body: { job_id: job.id, model: proofModel, file_index: fileIndex },
+      });
+      if (error) throw error;
+      if (data && !data.success) throw new Error(data.error);
+      toast.success(`Proofread complete (${proofModel}) — cost: $${data?.cost?.toFixed(4) ?? "?"}`);
+      onUpdate();
+    } catch (e: any) {
+      toast.error(e.message ?? "Proofread failed");
+    } finally {
+      setProofreading(false);
+      setActiveAction(null);
+    }
+  };
+
+  const runReprocess = async () => {
+    setReprocessing(true);
+    try {
+      await supabase.from("transcription_jobs").update({ status: "pending", provider: reprocessProvider }).eq("id", job.id);
+      const { error } = await supabase.functions.invoke("transcription-process", {
+        body: { job_id: job.id },
+      });
+      if (error) throw error;
+      toast.success(`Reprocessed with ${reprocessProvider}`);
+      setTimeout(onUpdate, 2000);
+    } catch (e: any) {
+      toast.error(e.message ?? "Reprocess failed");
+    } finally {
+      setReprocessing(false);
+      setActiveAction(null);
+    }
+  };
+
+  const runCompare = async () => {
+    setComparing(true);
+    setCompareResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("transcription-ai-compare", {
+        body: { job_id: job.id, version_a: versionA, version_b: versionB, model: compareModel, file_index: fileIndex },
+      });
+      if (error) throw error;
+      if (data && !data.success) throw new Error(data.error);
+      setCompareResult(data?.comparison ?? null);
+      toast.success(`Comparison complete — cost: $${data?.cost?.toFixed(4) ?? "?"}`);
+      onUpdate();
+    } catch (e: any) {
+      toast.error(e.message ?? "Compare failed");
+    } finally {
+      setComparing(false);
+    }
+  };
+
+  const versionOptions = [
+    { value: "current", label: "Current (active)" },
+    ...fileVersions.map((v) => ({
+      value: v.id,
+      label: `${v.version_type} — ${v.provider}/${v.model} (${format(new Date(v.created_at), "MMM d HH:mm")})`,
+    })),
+  ];
+
+  return (
+    <div>
+      <SectionLabel label="AI Tools" />
+      <div className="flex flex-wrap gap-2 mt-2">
+        <ActionToggleButton
+          label={hasTranslation ? "Re-translate" : "Translate"}
+          icon={Languages}
+          active={activeAction === "translate"}
+          loading={translating}
+          color="purple"
+          onClick={() => setActiveAction(activeAction === "translate" ? null : "translate")}
+        />
+        <ActionToggleButton
+          label="Proofread"
+          icon={Sparkles}
+          active={activeAction === "proofread"}
+          loading={proofreading}
+          color="amber"
+          onClick={() => setActiveAction(activeAction === "proofread" ? null : "proofread")}
+        />
+        <ActionToggleButton
+          label="Reprocess"
+          icon={RefreshCw}
+          active={activeAction === "reprocess"}
+          loading={reprocessing}
+          color="blue"
+          onClick={() => setActiveAction(activeAction === "reprocess" ? null : "reprocess")}
+        />
+        {fileVersions.length >= 2 && (
+          <ActionToggleButton
+            label="Compare"
+            icon={GitCompare}
+            active={activeAction === "compare"}
+            loading={comparing}
+            color="indigo"
+            onClick={() => setActiveAction(activeAction === "compare" ? null : "compare")}
+          />
         )}
       </div>
-      {!open ? (
-        <button
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50 transition"
-        >
-          <Languages className="w-3.5 h-3.5" />
-          {job.translated_text ? "Re-translate" : "Translate transcript"}
-          <ChevronDown className="w-3.5 h-3.5" />
-        </button>
-      ) : (
-        <div className="space-y-2">
-          <select
-            value={langId}
-            onChange={(e) => setLangId(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+
+      {/* Translate panel */}
+      {activeAction === "translate" && (
+        <InlinePanel color="purple">
+          <select value={langId} onChange={(e) => setLangId(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
             <option value="">Select target language...</option>
             {targetLanguages.map((lang) => (
@@ -456,29 +964,289 @@ function TranslateAction({ job, onTranslated }: { job: Job; onTranslated: () => 
               </option>
             ))}
           </select>
-          <div className="flex gap-2">
-            <button
-              onClick={runTranslation}
-              disabled={!langId || translating}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
-            >
-              {translating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Languages className="w-3.5 h-3.5" />}
-              {translating ? "Translating..." : "Translate"}
-            </button>
-            <button
-              onClick={() => setOpen(false)}
-              className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100"
-            >
-              Cancel
-            </button>
+          <ActionButtons
+            onRun={runTranslate}
+            onCancel={() => setActiveAction(null)}
+            disabled={!langId || translating}
+            loading={translating}
+            label="Translate"
+            loadingLabel="Translating..."
+            icon={Languages}
+            color="purple"
+          />
+        </InlinePanel>
+      )}
+
+      {/* Proofread panel */}
+      {activeAction === "proofread" && (
+        <InlinePanel color="amber">
+          <select value={proofModel} onChange={(e) => setProofModel(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+          >
+            <option value="haiku">Haiku (fastest, cheapest)</option>
+            <option value="sonnet">Sonnet (balanced)</option>
+            <option value="opus">Opus (best quality)</option>
+          </select>
+          <ActionButtons
+            onRun={runProofread}
+            onCancel={() => setActiveAction(null)}
+            disabled={proofreading}
+            loading={proofreading}
+            label="Run Proofread"
+            loadingLabel="Proofreading..."
+            icon={Sparkles}
+            color="amber"
+          />
+        </InlinePanel>
+      )}
+
+      {/* Reprocess panel */}
+      {activeAction === "reprocess" && (
+        <InlinePanel color="blue">
+          <select value={reprocessProvider} onChange={(e) => setReprocessProvider(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="openai">OpenAI gpt-4o-transcribe</option>
+            <option value="assemblyai">AssemblyAI Universal-2</option>
+            <option value="elevenlabs">ElevenLabs Scribe v2</option>
+          </select>
+          <ActionButtons
+            onRun={runReprocess}
+            onCancel={() => setActiveAction(null)}
+            disabled={reprocessing}
+            loading={reprocessing}
+            label="Reprocess"
+            loadingLabel="Processing..."
+            icon={RefreshCw}
+            color="blue"
+          />
+        </InlinePanel>
+      )}
+
+      {/* Compare panel */}
+      {activeAction === "compare" && (
+        <InlinePanel color="indigo">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Version A</label>
+              <select value={versionA} onChange={(e) => setVersionA(e.target.value)} className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg">
+                {versionOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Version B</label>
+              <select value={versionB} onChange={(e) => setVersionB(e.target.value)} className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg">
+                {versionOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
           </div>
-        </div>
+          <select value={compareModel} onChange={(e) => setCompareModel(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg">
+            <option value="haiku">Haiku (cheapest)</option>
+            <option value="sonnet">Sonnet (balanced)</option>
+            <option value="opus">Opus (best)</option>
+          </select>
+          <ActionButtons
+            onRun={runCompare}
+            onCancel={() => { setActiveAction(null); setCompareResult(null); }}
+            disabled={comparing || versionA === versionB}
+            loading={comparing}
+            label="Compare"
+            loadingLabel="Comparing..."
+            icon={GitCompare}
+            color="indigo"
+          />
+          {compareResult && (
+            <div className="p-3 bg-white rounded-lg text-sm space-y-2 max-h-[300px] overflow-y-auto border border-indigo-100">
+              {(compareResult as any).summary && (
+                <p className="font-medium text-indigo-900">{(compareResult as any).summary}</p>
+              )}
+              {(compareResult as any).recommendation && (
+                <p className="text-indigo-700 text-xs">
+                  <strong>Recommendation:</strong> Version {(compareResult as any).recommendation?.toUpperCase()} — {(compareResult as any).recommendation_reason}
+                </p>
+              )}
+              {(compareResult as any).differences && (
+                <div className="space-y-1">
+                  <p className="font-medium text-indigo-800 text-xs uppercase tracking-wide">Key Differences</p>
+                  {((compareResult as any).differences as any[]).map((d: any, i: number) => (
+                    <div key={i} className="bg-indigo-50/50 rounded p-2 text-xs border border-indigo-100">
+                      <p className="text-gray-500 mb-1">{d.location}</p>
+                      <p><span className="text-red-600">A:</span> {d.version_a}</p>
+                      <p><span className="text-green-600">B:</span> {d.version_b}</p>
+                      <p className="text-gray-600 italic mt-1">{d.assessment}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </InlinePanel>
       )}
     </div>
   );
 }
 
-// ── Speaker-formatted transcript view ──────────────────────────────────────
+// ── 5. Downloads section ────────────────────────────────────────────────────
+
+function FileDownloadsSection({ job, file, fileIndex, isSyntheticSingleFile }: {
+  job: Job;
+  file: SourceFile;
+  fileIndex: number;
+  isSyntheticSingleFile: boolean;
+}) {
+  const [links, setLinks] = useState<Array<{ label: string; format: string; url: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchLinks() {
+      const results: Array<{ label: string; format: string; url: string }> = [];
+
+      // Source audio download
+      const { data: srcUrl } = await supabase.storage
+        .from("transcription-uploads")
+        .createSignedUrl(file.path, 3600);
+      if (srcUrl?.signedUrl) {
+        results.push({ label: `Source ${file.format.toUpperCase()}`, format: file.format.toLowerCase(), url: srcUrl.signedUrl });
+      }
+
+      // Per-file output format downloads
+      for (const fmt of (job.delivery_formats ?? [])) {
+        const outputPath = isSyntheticSingleFile
+          ? `${job.id}/output/transcript.${fmt}`
+          : `${job.id}/output/file-${fileIndex + 1}.${fmt}`;
+        const { data: outUrl } = await supabase.storage
+          .from("transcription-uploads")
+          .createSignedUrl(outputPath, 3600);
+        if (outUrl?.signedUrl) {
+          results.push({ label: fmt.toUpperCase(), format: fmt.toLowerCase(), url: outUrl.signedUrl });
+        }
+      }
+
+      if (!cancelled) { setLinks(results); setLoading(false); }
+    }
+    fetchLinks();
+    return () => { cancelled = true; };
+  }, [job.id, file.path, fileIndex, isSyntheticSingleFile, job.delivery_formats]);
+
+  return (
+    <div>
+      <SectionLabel label="Downloads" />
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-gray-400 mt-2">
+          <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+        </div>
+      ) : links.length > 0 ? (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {links.map((link) => {
+            const style = DOWNLOAD_FORMAT_STYLES[link.format] ?? "bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200";
+            return (
+              <a
+                key={link.label}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition ${style}`}
+              >
+                <Download className="w-3 h-3" /> {link.label}
+              </a>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-400 mt-2">No downloads available yet</p>
+      )}
+    </div>
+  );
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────────────
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
+  );
+}
+
+const TOGGLE_ACTIVE_STYLES: Record<string, string> = {
+  purple: "border-purple-300 bg-purple-50 text-purple-700",
+  amber: "border-amber-300 bg-amber-50 text-amber-700",
+  blue: "border-blue-300 bg-blue-50 text-blue-700",
+  indigo: "border-indigo-300 bg-indigo-50 text-indigo-700",
+};
+
+const PANEL_STYLES: Record<string, string> = {
+  purple: "bg-purple-50/50 border-purple-100",
+  amber: "bg-amber-50/50 border-amber-100",
+  blue: "bg-blue-50/50 border-blue-100",
+  indigo: "bg-indigo-50/50 border-indigo-100",
+};
+
+const BUTTON_STYLES: Record<string, string> = {
+  purple: "bg-purple-600 hover:bg-purple-700",
+  amber: "bg-amber-600 hover:bg-amber-700",
+  blue: "bg-blue-600 hover:bg-blue-700",
+  indigo: "bg-indigo-600 hover:bg-indigo-700",
+};
+
+function ActionToggleButton({ label, icon: Icon, active, loading, color, onClick }: {
+  label: string;
+  icon: typeof Languages;
+  active: boolean;
+  loading: boolean;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition ${
+        active
+          ? TOGGLE_ACTIVE_STYLES[color] ?? ""
+          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+      }`}
+    >
+      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Icon className="w-3.5 h-3.5" />}
+      {label}
+    </button>
+  );
+}
+
+function InlinePanel({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <div className={`mt-3 p-3 rounded-lg border space-y-2 ${PANEL_STYLES[color] ?? ""}`}>
+      {children}
+    </div>
+  );
+}
+
+function ActionButtons({ onRun, onCancel, disabled, loading, label, loadingLabel, icon: Icon, color }: {
+  onRun: () => void;
+  onCancel: () => void;
+  disabled: boolean;
+  loading: boolean;
+  label: string;
+  loadingLabel: string;
+  icon: typeof Languages;
+  color: string;
+}) {
+  return (
+    <div className="flex gap-2">
+      <button
+        onClick={onRun}
+        disabled={disabled}
+        className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-white rounded-lg disabled:opacity-50 ${BUTTON_STYLES[color] ?? ""}`}
+      >
+        {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Icon className="w-3 h-3" />}
+        {loading ? loadingLabel : label}
+      </button>
+      <button onClick={onCancel} className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+    </div>
+  );
+}
+
+// ── Speaker-formatted transcript view ────────────────────────────────────────
 
 interface SpeakerSeg {
   speaker: string;
@@ -486,29 +1254,15 @@ interface SpeakerSeg {
   text: string;
 }
 
-const SPEAKER_COLORS = [
-  { text: "text-blue-700", bg: "bg-blue-50", badge: "bg-blue-100 text-blue-800" },
-  { text: "text-emerald-700", bg: "bg-emerald-50", badge: "bg-emerald-100 text-emerald-800" },
-  { text: "text-purple-700", bg: "bg-purple-50", badge: "bg-purple-100 text-purple-800" },
-  { text: "text-orange-700", bg: "bg-orange-50", badge: "bg-orange-100 text-orange-800" },
-  { text: "text-pink-700", bg: "bg-pink-50", badge: "bg-pink-100 text-pink-800" },
-  { text: "text-cyan-700", bg: "bg-cyan-50", badge: "bg-cyan-100 text-cyan-800" },
-];
-
-function fmtTs(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function SpeakerTranscript({ job }: { job: Job }) {
+function SpeakerTranscript({ transcriptJson, transcriptText, compact }: {
+  transcriptJson: Record<string, unknown> | null;
+  transcriptText?: string | null;
+  compact?: boolean;
+}) {
   const segments = useMemo<SpeakerSeg[] | null>(() => {
-    const json = job.transcript_json;
+    const json = transcriptJson;
     if (!json) return null;
 
-    // AssemblyAI: utterances grouped by speaker
     const utterances = json.utterances as
       | Array<{ text: string; start: number; end: number; speaker: string }>
       | undefined;
@@ -520,8 +1274,6 @@ function SpeakerTranscript({ job }: { job: Job }) {
       }));
     }
 
-    // ElevenLabs: words with speaker_id
-    // ElevenLabs timestamps are in seconds (e.g., 8.06), not milliseconds
     const words = json.words as
       | Array<{ text: string; start: number; end: number; speaker_id?: string; type?: string }>
       | undefined;
@@ -545,7 +1297,6 @@ function SpeakerTranscript({ job }: { job: Job }) {
       return segs.length > 0 ? segs : null;
     }
 
-    // OpenAI: segments with timestamps (no speaker)
     const oaiSegments = json.segments as
       | Array<{ text: string; start: number; end: number }>
       | undefined;
@@ -558,7 +1309,7 @@ function SpeakerTranscript({ job }: { job: Job }) {
     }
 
     return null;
-  }, [job.transcript_json]);
+  }, [transcriptJson]);
 
   const speakerColorMap = useMemo(() => {
     const map = new Map<string, (typeof SPEAKER_COLORS)[0]>();
@@ -573,60 +1324,35 @@ function SpeakerTranscript({ job }: { job: Job }) {
     return map;
   }, [segments]);
 
-  const hasSpeakers = segments?.some((s) => s.speaker) ?? false;
-
-  const copyAll = () => {
-    if (!segments) {
-      navigator.clipboard.writeText(job.transcript_text ?? "");
-    } else {
-      const text = segments
-        .map((s) => `${s.speaker ? s.speaker + " " : ""}[${fmtTs(s.startMs)}]\n${s.text}`)
-        .join("\n\n");
-      navigator.clipboard.writeText(text);
-    }
-    toast.success("Copied to clipboard");
-  };
-
-  // Fallback: no structured data
   if (!segments) {
     return (
-      <div>
-        <div className="flex justify-end mb-2">
-          <button onClick={copyAll} className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded">
-            <Copy className="w-3.5 h-3.5" /> Copy
-          </button>
-        </div>
-        <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans max-h-[600px] overflow-y-auto">
-          {job.transcript_text}
-        </pre>
-      </div>
+      <pre className={`whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans ${compact ? "" : "max-h-[600px] overflow-y-auto"}`}>
+        {transcriptText ?? ""}
+      </pre>
     );
   }
 
+  const hasSpeakers = segments.some((s) => s.speaker);
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        {hasSpeakers && (
-          <div className="flex items-center gap-2">
-            {Array.from(speakerColorMap.entries()).map(([name, color]) => (
-              <span key={name} className={`text-xs font-medium px-2 py-0.5 rounded-full ${color.badge}`}>
-                {name}
-              </span>
-            ))}
-          </div>
-        )}
-        <button onClick={copyAll} className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded ml-auto">
-          <Copy className="w-3.5 h-3.5" /> Copy
-        </button>
-      </div>
-      <div className="max-h-[600px] overflow-y-auto space-y-4">
+      {hasSpeakers && !compact && (
+        <div className="flex items-center gap-2 mb-3">
+          {Array.from(speakerColorMap.entries()).map(([name, color]) => (
+            <span key={name} className={`text-xs font-medium px-2 py-0.5 rounded-full ${color.badge}`}>
+              {name}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className={`space-y-3 ${compact ? "" : "max-h-[600px] overflow-y-auto"}`}>
         {segments.map((seg, i) => {
           const color = speakerColorMap.get(seg.speaker);
           return (
-            <div key={i} className={`rounded-lg p-3 ${color?.bg ?? "bg-gray-50"}`}>
-              <div className="flex items-center gap-2 mb-1.5">
+            <div key={i} className={`rounded-lg p-2.5 ${color?.bg ?? "bg-gray-50"}`}>
+              <div className="flex items-center gap-2 mb-1">
                 {seg.speaker && (
-                  <span className={`text-sm font-semibold ${color?.text ?? "text-gray-700"}`}>{seg.speaker}</span>
+                  <span className={`text-xs font-semibold ${color?.text ?? "text-gray-700"}`}>{seg.speaker}</span>
                 )}
                 <span className="text-xs text-gray-400 font-mono">{fmtTs(seg.startMs)}</span>
               </div>
@@ -639,275 +1365,57 @@ function SpeakerTranscript({ job }: { job: Job }) {
   );
 }
 
-// ── AI Proofread action ──────────────────────────────────────────────────
+// ── Combined downloads (multi-file) ─────────────────────────────────────────
 
-function ProofreadAction({ job, onComplete }: { job: Job; onComplete: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [model, setModel] = useState("sonnet");
-  const [running, setRunning] = useState(false);
+function CombinedDownloads({ jobId, formats }: { jobId: string; formats: string[] }) {
+  const [links, setLinks] = useState<Array<{ format: string; url: string }>>([]);
+  const [loading, setLoading] = useState(true);
 
-  const run = async () => {
-    setRunning(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("transcription-ai-proofread", {
-        body: { job_id: job.id, model },
-      });
-      if (error) throw error;
-      if (data && !data.success) throw new Error(data.error);
-      toast.success(`Proofread complete (${model}) — cost: $${data?.cost?.toFixed(4) ?? "?"}`);
-      onComplete();
-    } catch (e: any) {
-      toast.error(e.message ?? "Proofread failed");
-    } finally {
-      setRunning(false);
-      setOpen(false);
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchLinks() {
+      const results: Array<{ format: string; url: string }> = [];
+      for (const fmt of formats) {
+        const { data } = await supabase.storage
+          .from("transcription-uploads")
+          .createSignedUrl(`${jobId}/output/transcript.${fmt}`, 3600);
+        if (data?.signedUrl) results.push({ format: fmt, url: data.signedUrl });
+      }
+      if (!cancelled) { setLinks(results); setLoading(false); }
     }
-  };
+    fetchLinks();
+    return () => { cancelled = true; };
+  }, [jobId, formats]);
+
+  if (loading || links.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 min-w-[220px]">
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Sparkles className="w-4 h-4 text-amber-500" />
-        <span className="text-sm font-medium text-gray-700">AI Proofread</span>
+        <FileText className="w-4 h-4 text-gray-400" />
+        <span className="text-sm font-medium text-gray-700">Combined Transcript</span>
       </div>
-      {!open ? (
-        <button
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50 transition"
-        >
-          <Sparkles className="w-3.5 h-3.5" /> Proofread transcript
-        </button>
-      ) : (
-        <div className="space-y-2">
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-          >
-            <option value="haiku">Haiku (fastest, cheapest)</option>
-            <option value="sonnet">Sonnet (balanced)</option>
-            <option value="opus">Opus (best quality)</option>
-          </select>
-          <div className="flex gap-2">
-            <button
-              onClick={run}
-              disabled={running}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+      <div className="flex flex-wrap gap-2">
+        {links.map((link) => {
+          const style = DOWNLOAD_FORMAT_STYLES[link.format.toLowerCase()] ?? "bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200";
+          return (
+            <a
+              key={link.format}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border transition ${style}`}
             >
-              {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-              {running ? "Proofreading..." : "Run"}
-            </button>
-            <button onClick={() => setOpen(false)} className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+              <Download className="w-3.5 h-3.5" /> {link.format.toUpperCase()}
+            </a>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-// ── Reprocess with provider selection ──────────────────────────────────────
-
-function ReprocessAction({ job, onComplete }: { job: Job; onComplete: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [provider, setProvider] = useState(job.provider ?? "openai");
-  const [running, setRunning] = useState(false);
-
-  const run = async () => {
-    setRunning(true);
-    try {
-      // Reset job status + provider for reprocessing
-      await supabase
-        .from("transcription_jobs")
-        .update({ status: "pending", provider })
-        .eq("id", job.id);
-
-      const { data, error } = await supabase.functions.invoke("transcription-process", {
-        body: { job_id: job.id },
-      });
-      if (error) throw error;
-      toast.success(`Reprocessed with ${provider} — ${data?.word_count ?? "?"} words`);
-      setTimeout(onComplete, 2000);
-    } catch (e: any) {
-      toast.error(e.message ?? "Reprocess failed");
-    } finally {
-      setRunning(false);
-      setOpen(false);
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 min-w-[220px]">
-      <div className="flex items-center gap-2 mb-3">
-        <RefreshCw className="w-4 h-4 text-blue-500" />
-        <span className="text-sm font-medium text-gray-700">Reprocess</span>
-      </div>
-      {!open ? (
-        <button
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Reprocess with different provider
-        </button>
-      ) : (
-        <div className="space-y-2">
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="openai">OpenAI gpt-4o-transcribe</option>
-            <option value="assemblyai">AssemblyAI Universal-2</option>
-            <option value="elevenlabs">ElevenLabs Scribe v2</option>
-          </select>
-          <div className="flex gap-2">
-            <button
-              onClick={run}
-              disabled={running}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              {running ? "Processing..." : "Reprocess"}
-            </button>
-            <button onClick={() => setOpen(false)} className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── AI Compare action ────────────────────────────────────────────────────
-
-function CompareAction({ job, versions, onComplete }: { job: Job; versions: Version[]; onComplete: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [versionA, setVersionA] = useState("current");
-  const [versionB, setVersionB] = useState(versions[0]?.id ?? "");
-  const [model, setModel] = useState("sonnet");
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
-
-  const run = async () => {
-    setRunning(true);
-    setResult(null);
-    try {
-      const { data, error } = await supabase.functions.invoke("transcription-ai-compare", {
-        body: { job_id: job.id, version_a: versionA, version_b: versionB, model },
-      });
-      if (error) throw error;
-      if (data && !data.success) throw new Error(data.error);
-      setResult(data?.comparison ?? null);
-      toast.success(`Comparison complete — cost: $${data?.cost?.toFixed(4) ?? "?"}`);
-      onComplete();
-    } catch (e: any) {
-      toast.error(e.message ?? "Compare failed");
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const versionOptions = [
-    { value: "current", label: "Current (active transcript)" },
-    ...versions.map((v) => ({
-      value: v.id,
-      label: `${v.version_type} — ${v.provider}/${v.model} (${format(new Date(v.created_at), "MMM d HH:mm")})`,
-    })),
-  ];
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 min-w-[280px]">
-      <div className="flex items-center gap-2 mb-3">
-        <GitCompare className="w-4 h-4 text-indigo-500" />
-        <span className="text-sm font-medium text-gray-700">AI Compare</span>
-      </div>
-      {!open ? (
-        <button
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-50 transition"
-        >
-          <GitCompare className="w-3.5 h-3.5" /> Compare versions
-        </button>
-      ) : (
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Version A</label>
-              <select
-                value={versionA}
-                onChange={(e) => setVersionA(e.target.value)}
-                className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg"
-              >
-                {versionOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Version B</label>
-              <select
-                value={versionB}
-                onChange={(e) => setVersionB(e.target.value)}
-                className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg"
-              >
-                {versionOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-          </div>
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
-          >
-            <option value="haiku">Haiku (cheapest)</option>
-            <option value="sonnet">Sonnet (balanced)</option>
-            <option value="opus">Opus (best)</option>
-          </select>
-          <div className="flex gap-2">
-            <button
-              onClick={run}
-              disabled={running || versionA === versionB}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitCompare className="w-3.5 h-3.5" />}
-              {running ? "Comparing..." : "Compare"}
-            </button>
-            <button onClick={() => { setOpen(false); setResult(null); }} className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100">
-              Cancel
-            </button>
-          </div>
-          {result && (
-            <div className="mt-3 p-3 bg-indigo-50 rounded-lg text-sm space-y-2 max-h-[400px] overflow-y-auto">
-              {(result as any).summary && (
-                <p className="font-medium text-indigo-900">{(result as any).summary}</p>
-              )}
-              {(result as any).recommendation && (
-                <p className="text-indigo-700">
-                  <strong>Recommendation:</strong> Version {(result as any).recommendation?.toUpperCase()} — {(result as any).recommendation_reason}
-                </p>
-              )}
-              {(result as any).differences && (
-                <div className="space-y-1">
-                  <p className="font-medium text-indigo-800 text-xs uppercase tracking-wide">Key Differences</p>
-                  {((result as any).differences as any[]).map((d: any, i: number) => (
-                    <div key={i} className="bg-white rounded p-2 text-xs border border-indigo-100">
-                      <p className="text-gray-500 mb-1">{d.location}</p>
-                      <p><span className="text-red-600">A:</span> {d.version_a}</p>
-                      <p><span className="text-green-600">B:</span> {d.version_b}</p>
-                      <p className="text-gray-600 italic mt-1">{d.assessment}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Versions panel ────────────────────────────────────────────────────────
+// ── Versions panel (combined, for bottom tabs) ──────────────────────────────
 
 function VersionsPanel({ job, versions, onActivated }: { job: Job; versions: Version[]; onActivated: () => void }) {
   const [activating, setActivating] = useState<string | null>(null);
@@ -916,34 +1424,24 @@ function VersionsPanel({ job, versions, onActivated }: { job: Job; versions: Ver
   const activateVersion = async (version: Version) => {
     setActivating(version.id);
     try {
-      // Update the job's transcript with this version's text
       const { error } = await supabase
         .from("transcription_jobs")
-        .update({
-          transcript_text: version.transcript_text,
-          transcript_json: version.transcript_json ?? null,
-          word_count: version.word_count,
-        })
+        .update({ transcript_text: version.transcript_text, word_count: version.word_count })
         .eq("id", job.id);
       if (error) throw error;
 
-      // Mark all versions inactive, then this one active
       await supabase
         .from("transcription_versions")
         .update({ is_active: false })
-        .eq("job_id", job.id);
+        .eq("job_id", job.id)
+        .is("file_index", null);
       await supabase
         .from("transcription_versions")
         .update({ is_active: true })
         .eq("id", version.id);
 
       toast.success("Version activated — re-delivering...");
-
-      // Re-deliver with updated transcript
-      supabase.functions.invoke("transcription-deliver", {
-        body: { job_id: job.id },
-      }).catch(() => {});
-
+      supabase.functions.invoke("transcription-deliver", { body: { job_id: job.id } }).catch(() => {});
       onActivated();
     } catch (e: any) {
       toast.error(e.message ?? "Failed to activate version");
@@ -953,7 +1451,7 @@ function VersionsPanel({ job, versions, onActivated }: { job: Job; versions: Ver
   };
 
   if (versions.length === 0) {
-    return <p className="text-gray-400 text-center py-8">No versions recorded yet</p>;
+    return <p className="text-gray-400 text-center py-8">No combined versions recorded</p>;
   }
 
   return (
@@ -969,12 +1467,8 @@ function VersionsPanel({ job, versions, onActivated }: { job: Job; versions: Ver
               }`}>
                 {v.version_type}
               </span>
-              <span className="text-sm text-gray-600">
-                {v.provider}{v.model ? ` / ${v.model}` : ""}
-              </span>
-              <span className="text-xs text-gray-400">
-                {format(new Date(v.created_at), "MMM d, HH:mm")}
-              </span>
+              <span className="text-sm text-gray-600">{v.provider}{v.model ? ` / ${v.model}` : ""}</span>
+              <span className="text-xs text-gray-400">{format(new Date(v.created_at), "MMM d, HH:mm")}</span>
               {v.word_count && <span className="text-xs text-gray-400">{v.word_count} words</span>}
               {v.cost != null && v.cost > 0 && <span className="text-xs text-gray-400">${v.cost.toFixed(4)}</span>}
               {v.is_active && (
@@ -1009,182 +1503,6 @@ function VersionsPanel({ job, versions, onActivated }: { job: Job; versions: Ver
           )}
         </div>
       ))}
-    </div>
-  );
-}
-
-// ── Source files accordion ─────────────────────────────────────────────────
-
-function SourceFilesAccordion({ job }: { job: Job }) {
-  const files = job.source_files!;
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const [fileLinks, setFileLinks] = useState<Record<number, Array<{ label: string; url: string }>>>({});
-  const [loadingIdx, setLoadingIdx] = useState<number | null>(null);
-
-  const toggle = async (idx: number) => {
-    if (expanded === idx) { setExpanded(null); return; }
-    setExpanded(idx);
-
-    if (fileLinks[idx]) return;
-    setLoadingIdx(idx);
-
-    const links: Array<{ label: string; url: string }> = [];
-
-    // Source file download
-    const { data: srcUrl } = await supabase.storage
-      .from("transcription-uploads")
-      .createSignedUrl(files[idx].path, 3600);
-    if (srcUrl?.signedUrl) {
-      links.push({ label: `Source (${files[idx].format.toUpperCase()})`, url: srcUrl.signedUrl });
-    }
-
-    // Per-file output downloads
-    for (const fmt of (job.delivery_formats ?? [])) {
-      const { data: outUrl } = await supabase.storage
-        .from("transcription-uploads")
-        .createSignedUrl(`${job.id}/output/file-${idx + 1}.${fmt}`, 3600);
-      if (outUrl?.signedUrl) {
-        links.push({ label: fmt.toUpperCase(), url: outUrl.signedUrl });
-      }
-    }
-
-    setFileLinks((prev) => ({ ...prev, [idx]: links }));
-    setLoadingIdx(null);
-  };
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-        <FileAudio className="w-4 h-4 text-gray-400" />
-        <span className="text-sm font-medium text-gray-700">Source Files ({files.length})</span>
-      </div>
-      {files.map((sf, i) => (
-        <div key={i} className={`border-b border-gray-100 last:border-b-0 ${expanded === i ? "bg-gray-50" : ""}`}>
-          <button
-            onClick={() => toggle(i)}
-            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition"
-          >
-            <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${expanded === i ? "rotate-90" : ""}`} />
-            <span className="flex-1 text-sm font-medium text-gray-800 truncate">{sf.name}</span>
-            <span className="text-xs text-gray-500">{formatDuration(sf.duration)}</span>
-            <span className="text-xs text-gray-400">{formatBytes(sf.size)}</span>
-          </button>
-          {expanded === i && (
-            <div className="px-4 pb-3 pl-11">
-              {loadingIdx === i ? (
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Loading...
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {(fileLinks[i] ?? []).map((link) => (
-                    <a
-                      key={link.label}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-teal-600 text-white rounded hover:bg-teal-700 transition"
-                    >
-                      <Download className="w-3 h-3" /> {link.label}
-                    </a>
-                  ))}
-                  {(fileLinks[i] ?? []).length === 0 && (
-                    <span className="text-xs text-gray-400">No downloads available yet</span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function DownloadSection({ jobId, formats }: { jobId: string; formats: string[] }) {
-  const [links, setLinks] = useState<Array<{ format: string; url: string }>>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchLinks() {
-      setLoading(true);
-      const results: Array<{ format: string; url: string }> = [];
-
-      for (const fmt of formats) {
-        const path = `${jobId}/output/transcript.${fmt}`;
-        const { data, error } = await supabase.storage
-          .from("transcription-uploads")
-          .createSignedUrl(path, 60 * 60); // 1 hour
-
-        if (!error && data?.signedUrl) {
-          results.push({ format: fmt, url: data.signedUrl });
-        }
-      }
-
-      if (!cancelled) {
-        setLinks(results);
-        setLoading(false);
-      }
-    }
-
-    fetchLinks();
-    return () => { cancelled = true; };
-  }, [jobId, formats]);
-
-  if (loading) {
-    return (
-      <div className="bg-white rounded-lg border border-gray-200 p-4 flex items-center gap-2 text-sm text-gray-500">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading download links...
-      </div>
-    );
-  }
-
-  if (links.length === 0) return null;
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Download className="w-4 h-4 text-gray-400" />
-        <span className="text-sm font-medium text-gray-700">Download Files</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {links.map((link) => (
-          <a
-            key={link.format}
-            href={link.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition"
-          >
-            <Download className="w-3.5 h-3.5" />
-            {link.format.toUpperCase()}
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function InfoCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: typeof Clock;
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <Icon className="w-4 h-4 text-gray-400" />
-        <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</span>
-      </div>
-      <p className="text-lg font-semibold text-gray-900">{value}</p>
-      {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
     </div>
   );
 }
