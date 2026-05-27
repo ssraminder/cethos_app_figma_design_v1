@@ -1689,6 +1689,9 @@ export default function AdminQuoteDetail() {
     const timestamp = Date.now();
 
     // Duplicate-batch guard: warn if this quote already has OCR batches.
+    // If the admin confirms, we pass `force: true` to the edge function so
+    // server-side idempotency doesn't refuse to create the new batch.
+    let userConfirmedNewBatch = false;
     try {
       const { count } = await supabase
         .from('ocr_batches')
@@ -1701,6 +1704,7 @@ export default function AdminQuoteDetail() {
           `Running OCR again will create another batch and re-bill for these ${quoteFiles.length} file(s). Continue?`,
         );
         if (!ok) return;
+        userConfirmedNewBatch = true;
       }
     } catch (err) {
       console.warn('Could not check existing OCR batches; proceeding anyway:', err);
@@ -1776,6 +1780,10 @@ export default function AdminQuoteDetail() {
           quoteId: id,
           notes: `Re-processed from AdminQuoteDetail for quote ${quote?.quote_number} ` +
                  `(${succeededFiles.length} file${succeededFiles.length === 1 ? '' : 's'}: ${fileLabels})`,
+          // Bypass server-side idempotency when the admin explicitly confirmed
+          // the duplicate-batch prompt. First-run path leaves force=false so
+          // race conditions / forgotten guards still get deduped server-side.
+          force: userConfirmedNewBatch,
         }),
       });
 
