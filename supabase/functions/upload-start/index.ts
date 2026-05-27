@@ -46,19 +46,13 @@ const corsHeaders = {
 const ANON_BUCKET = "public-submissions";
 const CUSTOMER_BUCKET = "customer-files";
 const MAX_FILES = 25;
-const MAX_FILE_SIZE = 100 * 1024 * 1024;
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
 
-const ACCEPTED_MIME_TYPES = new Set([
-  "application/pdf",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/tiff",
-  "image/heic",
-  "image/heif",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/msword",
-]);
+// File-type allowlist removed 2026-05-27: the form is OTP-gated and every
+// upload is virus-scanned downstream, so format restrictions add friction
+// without buying us security. EXT_TO_MIME below is now used purely as a
+// best-effort fallback to set a sensible Content-Type when the browser
+// omits one.
 
 interface FileRequest {
   name: string;
@@ -114,21 +108,14 @@ serve(async (req) => {
       if (f.size > MAX_FILE_SIZE) {
         return jsonResponse(400, {
           success: false,
-          error: `${f.name}: exceeds 100 MB`,
+          error: `${f.name}: exceeds 500 MB`,
         });
       }
       // Browsers sometimes send an empty/odd content-type (especially for
-      // .heic, .tif, older .doc). Fall back to file-extension lookup.
-      const effectiveMime = ACCEPTED_MIME_TYPES.has(f.type)
-        ? f.type
-        : inferMimeFromName(f.name);
-      if (!effectiveMime || !ACCEPTED_MIME_TYPES.has(effectiveMime)) {
-        return jsonResponse(400, {
-          success: false,
-          error: `${f.name}: file type not allowed (received "${f.type || "unknown"}")`,
-        });
-      }
-      f.type = effectiveMime;
+      // .heic, .tif, older .doc). Fall back to file-extension lookup so the
+      // stored object carries a sensible Content-Type. If both fail, default
+      // to application/octet-stream — virus scanning + OTP gating cover us.
+      f.type = f.type || inferMimeFromName(f.name) || "application/octet-stream";
     }
 
     // Resolve context. Order matters: explicit admin (staff JWT + targetCustomerId)
@@ -348,7 +335,12 @@ async function sha256(input: string): Promise<string> {
 }
 
 const EXT_TO_MIME: Record<string, string> = {
+  // Documents
   pdf: "application/pdf",
+  docx:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  doc: "application/msword",
+  // Images
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   png: "image/png",
@@ -357,9 +349,33 @@ const EXT_TO_MIME: Record<string, string> = {
   tiff: "image/tiff",
   heic: "image/heic",
   heif: "image/heif",
-  docx:
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  doc: "application/msword",
+  // Audio
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  wav: "audio/wav",
+  aac: "audio/aac",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  flac: "audio/flac",
+  opus: "audio/opus",
+  amr: "audio/amr",
+  wma: "audio/x-ms-wma",
+  // Video
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  m4v: "video/x-m4v",
+  avi: "video/x-msvideo",
+  mkv: "video/x-matroska",
+  webm: "video/webm",
+  wmv: "video/x-ms-wmv",
+  "3gp": "video/3gpp",
+  // Archives
+  zip: "application/zip",
+  "7z": "application/x-7z-compressed",
+  rar: "application/vnd.rar",
+  tar: "application/x-tar",
+  gz: "application/gzip",
+  tgz: "application/gzip",
 };
 
 function inferMimeFromName(name: string): string | null {
