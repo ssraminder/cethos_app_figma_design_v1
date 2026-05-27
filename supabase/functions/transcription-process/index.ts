@@ -99,9 +99,13 @@ serve(async (req: Request) => {
         }];
 
     // ── Call STT provider (per file, then merge) ────────────────────────
-    const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
+    // Resolve the per-language fallback chain once per job (provider may be overridden
+    // per language) — the chain is walked per file so each chunk gets a fresh try.
+    const initialProvider = (job.provider as string | null) ?? "deepgram";
+    const sourceLangCode = await resolveSourceLangCode(admin, job);
+    const providerChain = await resolveProviderChain(admin, sourceLangCode, initialProvider);
 
-    let provider = job.provider ?? "openai";
+    let provider = providerChain[0];
     const allTranscripts: TranscriptResult[] = [];
     let timeOffsetMs = 0;
 
@@ -116,53 +120,34 @@ serve(async (req: Request) => {
           });
         }
 
-        let fileTranscript: TranscriptResult;
+        let fileTranscript: TranscriptResult | null = null;
+        let lastErr: unknown = null;
 
-        if (provider === "assemblyai") {
-          const { data: signedUrlData, error: urlErr } = await admin.storage
-            .from("transcription-uploads")
-            .createSignedUrl(sf.path, 3600);
-          if (urlErr || !signedUrlData?.signedUrl) {
-            throw new Error(`Failed to create signed URL for ${sf.name}`);
-          }
-          fileTranscript = await transcribeAssemblyAi(signedUrlData.signedUrl, job);
-        } else {
-          if (sf.size > MAX_DOWNLOAD_BYTES) {
-            await markFailed(admin, jobId, `File too large: ${sf.name} (${(sf.size / 1024 / 1024).toFixed(0)} MB). Extract audio first.`);
-            return jsonResponse({ success: false, error: "File too large" }, 400);
-          }
-
-          const { data: fileData, error: dlErr } = await admin.storage
-            .from("transcription-uploads")
-            .download(sf.path);
-          if (dlErr || !fileData) {
-            throw new Error(`Failed to download ${sf.name}`);
-          }
-
-          const fileJob = { ...job, file_format: sf.format };
-
+        for (let attempt = 0; attempt < providerChain.length; attempt++) {
+          const tryProvider = providerChain[attempt];
           try {
-            if (provider === "openai") {
-              fileTranscript = await transcribeOpenAi(fileData, fileJob);
-            } else {
-              fileTranscript = await transcribeElevenLabs(fileData, fileJob);
-            }
-          } catch (primaryErr) {
-            if (provider !== "elevenlabs") {
-              console.log(`${provider} failed on file ${fi}, falling back to ElevenLabs:`, primaryErr);
+            fileTranscript = await callProvider(tryProvider, sf, job, admin);
+            if (tryProvider !== provider) {
               const origProvider = provider;
-              provider = "elevenlabs";
+              provider = tryProvider;
               await admin.from("transcription_jobs").update({ provider }).eq("id", jobId);
               await auditLog(admin, jobId, "provider_fallback", "system", null, {
                 original: origProvider,
-                fallback: "elevenlabs",
-                reason: primaryErr instanceof Error ? primaryErr.message : String(primaryErr),
+                fallback: tryProvider,
+                file_index: fi,
+                reason: lastErr instanceof Error ? lastErr.message : String(lastErr ?? "unknown"),
+                chain: providerChain,
               });
-              fileTranscript = await transcribeElevenLabs(fileData, fileJob);
-            } else {
-              throw primaryErr;
             }
+            break;
+          } catch (err) {
+            lastErr = err;
+            console.log(`${tryProvider} failed on file ${fi} (attempt ${attempt + 1}/${providerChain.length}):`, err);
           }
+        }
+
+        if (!fileTranscript) {
+          throw lastErr ?? new Error("All providers in fallback chain failed");
         }
 
         // Offset timestamps for multi-file jobs so they form a continuous timeline
@@ -190,7 +175,13 @@ serve(async (req: Request) => {
 
     // Estimate STT provider cost based on duration
     const totalDurationMin = sourceFiles.reduce((acc, sf) => acc + (sf.duration / 60), 0);
-    const STT_RATES: Record<string, number> = { assemblyai: 0.0025, openai: 0.006, elevenlabs: 0.007 };
+    const STT_RATES: Record<string, number> = {
+      assemblyai: 0.0025,
+      openai: 0.006,
+      elevenlabs: 0.007,
+      deepgram: 0.0043,   // Nova-3 prerecorded
+      google: 0.024,      // Chirp 2 v2 (USD/min, rounded up)
+    };
     const sttCost = totalDurationMin * (STT_RATES[provider] ?? 0.006);
 
     // ── Script enforcement (in-memory; mutates `transcript` before v2 normalize) ──
@@ -254,7 +245,9 @@ serve(async (req: Request) => {
     const providerHint: ProviderHint =
       provider === "assemblyai" ? "assemblyai" :
       provider === "elevenlabs" ? "elevenlabs" :
-      provider === "openai" ? "openai" : "unknown";
+      provider === "openai" ? "openai" :
+      provider === "deepgram" ? "deepgram" :
+      provider === "google" ? "google" : "unknown";
 
     const isReprocess = !!job.transcript_text?.trim();
 
@@ -341,7 +334,12 @@ serve(async (req: Request) => {
         job_id: jobId,
         version_type: isReprocess ? "reprocess" : "original",
         provider,
-        model: provider === "openai" ? "gpt-4o-transcribe" : provider === "assemblyai" ? "universal-2" : "scribe-v2",
+        model: provider === "openai" ? "gpt-4o-transcribe"
+          : provider === "assemblyai" ? "universal-2"
+          : provider === "elevenlabs" ? "scribe-v2"
+          : provider === "deepgram" ? "nova-3"
+          : provider === "google" ? "chirp_2"
+          : provider,
         transcript_text: combinedText,
         transcript_json: combinedV2,
         transcript_format_version: TRANSCRIPT_FORMAT_VERSION,
@@ -446,6 +444,140 @@ serve(async (req: Request) => {
     return jsonResponse({ success: false, error: "Internal error" }, 500);
   }
 });
+
+// ── Per-language provider fallback chain ────────────────────────────────────
+
+// Per-language fallback chains — picked by the source language code (ISO 639-1).
+// The "default" chain is used when the language is auto-detect or unmapped.
+// Indic / RTL languages favor ElevenLabs (best accuracy in our prior testing per
+// memory feature_transcript_segment_ids_v2). CJK favors ElevenLabs too. Latin /
+// Cyrillic / Greek languages default to Deepgram (best price/quality). Rare
+// languages (Pashto, Khmer, Tagalog) fall through to Google.
+const DEFAULT_FALLBACK_CHAINS: Record<string, string[]> = {
+  // English + Western European → Deepgram primary, ElevenLabs backup
+  en: ["deepgram", "elevenlabs"],
+  fr: ["deepgram", "elevenlabs"],
+  es: ["deepgram", "elevenlabs"],
+  de: ["deepgram", "elevenlabs"],
+  it: ["deepgram", "elevenlabs"],
+  pt: ["deepgram", "elevenlabs"],
+  nl: ["deepgram", "elevenlabs"],
+  // Cyrillic / Greek
+  ru: ["deepgram", "elevenlabs"],
+  uk: ["deepgram", "elevenlabs"],
+  el: ["deepgram", "elevenlabs"],
+  // Indic / RTL → ElevenLabs primary (better script support)
+  pa: ["elevenlabs", "google"],
+  hi: ["elevenlabs", "google"],
+  ur: ["elevenlabs", "google"],
+  bn: ["elevenlabs", "google"],
+  ta: ["elevenlabs", "google"],
+  te: ["elevenlabs", "google"],
+  ar: ["elevenlabs", "google"],
+  fa: ["elevenlabs", "google"],
+  he: ["elevenlabs", "deepgram"],
+  // CJK
+  zh: ["elevenlabs", "deepgram"],
+  ja: ["elevenlabs", "deepgram"],
+  ko: ["elevenlabs", "deepgram"],
+  // Rare languages — Google has the widest catalog
+  ps: ["google", "elevenlabs"],
+  km: ["google", "elevenlabs"],
+  tl: ["google", "elevenlabs"],
+  default: ["deepgram", "elevenlabs"],
+};
+
+async function resolveSourceLangCode(
+  admin: ReturnType<typeof getServiceClient>,
+  job: Record<string, unknown>,
+): Promise<string | null> {
+  if (!job.source_language_id) return null;
+  const { data: lang } = await admin
+    .from("languages")
+    .select("code")
+    .eq("id", job.source_language_id)
+    .maybeSingle();
+  return lang?.code?.toLowerCase().split("-")[0] ?? null;
+}
+
+async function resolveProviderChain(
+  admin: ReturnType<typeof getServiceClient>,
+  langCode: string | null,
+  customerPickedPrimary: string,
+): Promise<string[]> {
+  // app_settings.transcription_fallback_chain_by_language is an optional JSON
+  // override. Shape: { "en": ["deepgram","elevenlabs"], "default": [...] }
+  let overrideMap: Record<string, string[]> = {};
+  try {
+    const { data: setting } = await admin
+      .from("app_settings")
+      .select("setting_value")
+      .eq("setting_key", "transcription_fallback_chain_by_language")
+      .maybeSingle();
+    if (setting?.setting_value) {
+      const parsed = typeof setting.setting_value === "string"
+        ? JSON.parse(setting.setting_value)
+        : setting.setting_value;
+      if (parsed && typeof parsed === "object") overrideMap = parsed as Record<string, string[]>;
+    }
+  } catch {
+    // ignore — fall back to hard-coded defaults
+  }
+
+  const chains = { ...DEFAULT_FALLBACK_CHAINS, ...overrideMap };
+  const fromLang = langCode ? chains[langCode] : null;
+  const baseChain = fromLang ?? chains.default ?? ["deepgram", "elevenlabs"];
+
+  // Honor customer/admin pick by putting it at the front (unique-merge with the chain).
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const p of [customerPickedPrimary, ...baseChain]) {
+    if (!seen.has(p)) {
+      merged.push(p);
+      seen.add(p);
+    }
+  }
+  return merged;
+}
+
+async function callProvider(
+  providerName: string,
+  sf: { name: string; path: string; size: number; duration: number; format: string },
+  job: Record<string, unknown>,
+  admin: ReturnType<typeof getServiceClient>,
+): Promise<TranscriptResult> {
+  const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
+  const fileJob = { ...job, file_format: sf.format };
+
+  // URL-ingest providers: AssemblyAI, Deepgram (Phase 1) — no edge-function download.
+  if (providerName === "assemblyai" || providerName === "deepgram") {
+    const { data: signedUrlData, error: urlErr } = await admin.storage
+      .from("transcription-uploads")
+      .createSignedUrl(sf.path, 3600);
+    if (urlErr || !signedUrlData?.signedUrl) {
+      throw new Error(`Failed to create signed URL for ${sf.name}`);
+    }
+    return providerName === "assemblyai"
+      ? transcribeAssemblyAi(signedUrlData.signedUrl, fileJob)
+      : transcribeDeepgram(signedUrlData.signedUrl, fileJob);
+  }
+
+  // Download-required providers: OpenAI, ElevenLabs, Google (Phase 1 sync recognize).
+  if (sf.size > MAX_DOWNLOAD_BYTES) {
+    throw new Error(`File too large for ${providerName}: ${sf.name} (${(sf.size / 1024 / 1024).toFixed(0)} MB)`);
+  }
+  const { data: fileData, error: dlErr } = await admin.storage
+    .from("transcription-uploads")
+    .download(sf.path);
+  if (dlErr || !fileData) {
+    throw new Error(`Failed to download ${sf.name}`);
+  }
+
+  if (providerName === "openai") return transcribeOpenAi(fileData, fileJob);
+  if (providerName === "elevenlabs") return transcribeElevenLabs(fileData, fileJob);
+  if (providerName === "google") return transcribeGoogle(fileData, fileJob);
+  throw new Error(`Unknown provider: ${providerName}`);
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -651,6 +783,206 @@ async function transcribeElevenLabs(
     },
     detectedLanguage: result.language_code,
     languageConfidence: result.language_probability,
+  };
+}
+
+// ── Deepgram (Nova-3) ────────────────────────────────────────────────────────
+
+async function transcribeDeepgram(
+  audioUrl: string,
+  job: Record<string, unknown>,
+): Promise<TranscriptResult> {
+  const apiKey = Deno.env.get("DEEPGRAM_API_KEY");
+  if (!apiKey) throw new Error("DEEPGRAM_API_KEY not configured");
+
+  const params = new URLSearchParams({
+    model: "nova-3",
+    smart_format: "true",
+    diarize: "true",
+    utterances: "true",
+    punctuate: "true",
+    detect_language: "true",
+  });
+
+  if (job.source_language_id) {
+    const admin = getServiceClient();
+    const { data: lang } = await admin
+      .from("languages")
+      .select("code")
+      .eq("id", job.source_language_id)
+      .maybeSingle();
+    if (lang?.code) {
+      params.set("language", lang.code);
+      params.delete("detect_language");
+    }
+  }
+
+  const resp = await fetch(`https://api.deepgram.com/v1/listen?${params.toString()}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ url: audioUrl }),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Deepgram STT failed: ${resp.status} — ${errText}`);
+  }
+
+  const result = await resp.json();
+  const channel = result?.results?.channels?.[0];
+  const alt = channel?.alternatives?.[0];
+  const text = alt?.transcript ?? "";
+  const words = alt?.words ?? [];
+  const utterances = result?.results?.utterances ?? [];
+  const detected = channel?.detected_language ?? result?.metadata?.detected_language ?? null;
+  const confidence = alt?.confidence ?? null;
+  const requestId = result?.metadata?.request_id ?? null;
+
+  // Normalize Deepgram utterances to AssemblyAI-shape so Branch 1 of
+  // normalizeToSegments picks them up cleanly. Times stay in seconds —
+  // transcript-segments.ts toMs() with "s" hint handles it.
+  const utterancesNormalized = utterances.map((u: Record<string, unknown>) => ({
+    speaker: u.speaker,
+    text: u.transcript,
+    start: u.start,
+    end: u.end,
+    words: (u.words as Array<Record<string, unknown>> | undefined)?.map((w) => ({
+      text: w.punctuated_word ?? w.word,
+      speaker: w.speaker,
+      start: w.start,
+      end: w.end,
+      type: "text",
+    })),
+  }));
+
+  return {
+    text,
+    json: {
+      utterances: utterancesNormalized,
+      words: words.map((w: Record<string, unknown>) => ({
+        text: w.punctuated_word ?? w.word,
+        speaker: w.speaker,
+        start: w.start,
+        end: w.end,
+        type: "text",
+      })),
+    },
+    detectedLanguage: detected,
+    languageConfidence: confidence,
+    providerJobId: requestId,
+  };
+}
+
+// ── Google Speech-to-Text v2 ─────────────────────────────────────────────────
+// Phase 1: synchronous recognize endpoint, API-key auth, audio ≤ 60s per request
+// (long-audio chunking lands in PR #2). Beyond 60s, the per-language fallback
+// chain will route Google requests away to Deepgram or ElevenLabs.
+
+async function transcribeGoogle(
+  audioBlob: Blob,
+  job: Record<string, unknown>,
+): Promise<TranscriptResult> {
+  // Accept either the dedicated STT-only secrets or the project-wide Google secrets
+  // (the project already has GOOGLE_API_KEY + GOOGLE_CLOUD_PROJECT set for other features).
+  const apiKey = Deno.env.get("GOOGLE_STT_API_KEY") ?? Deno.env.get("GOOGLE_API_KEY");
+  const projectId = Deno.env.get("GOOGLE_PROJECT_ID") ?? Deno.env.get("GOOGLE_CLOUD_PROJECT");
+  if (!apiKey) throw new Error("GOOGLE_STT_API_KEY (or GOOGLE_API_KEY) not configured");
+  if (!projectId) throw new Error("GOOGLE_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) not configured");
+
+  // Determine language code: Google v2 wants BCP-47 (e.g. en-US, fr-FR, es-ES).
+  // We pass the language code from `languages` table and rely on Google's
+  // tolerance for short codes; if the customer left it on auto, we pass `auto`.
+  let languageCodes: string[] = ["auto"];
+  if (job.source_language_id) {
+    const admin = getServiceClient();
+    const { data: lang } = await admin
+      .from("languages")
+      .select("code")
+      .eq("id", job.source_language_id)
+      .maybeSingle();
+    if (lang?.code) {
+      languageCodes = [lang.code];
+    }
+  }
+
+  // Convert audio to base64 for inline content (v2 sync supports up to ~1 minute / 10 MB).
+  const audioBytes = new Uint8Array(await audioBlob.arrayBuffer());
+  if (audioBytes.length > 10 * 1024 * 1024) {
+    throw new Error("Google STT v2 sync recognize limit is 10 MB; longer audio routes through chunking (PR #2)");
+  }
+  // btoa in chunks to avoid stack overflow on large arrays.
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < audioBytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(audioBytes.subarray(i, i + CHUNK)));
+  }
+  const audioBase64 = btoa(binary);
+
+  const body = {
+    config: {
+      autoDecodingConfig: {},
+      languageCodes,
+      model: "chirp_2",
+      features: {
+        enableAutomaticPunctuation: true,
+        enableWordTimeOffsets: true,
+        enableWordConfidence: true,
+        diarizationConfig: {
+          minSpeakerCount: 1,
+          maxSpeakerCount: 6,
+        },
+      },
+    },
+    content: audioBase64,
+  };
+
+  const url = `https://speech.googleapis.com/v2/projects/${projectId}/locations/global/recognizers/_:recognize?key=${apiKey}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Google STT v2 failed: ${resp.status} — ${errText}`);
+  }
+
+  const result = await resp.json();
+  const results = (result?.results ?? []) as Array<Record<string, unknown>>;
+
+  // Stitch alternatives across result chunks into a single transcript + word stream.
+  const fullText: string[] = [];
+  const allWords: Array<Record<string, unknown>> = [];
+  let detectedLanguage: string | null = null;
+
+  for (const r of results) {
+    const lang = r.languageCode as string | undefined;
+    if (lang && !detectedLanguage) detectedLanguage = lang;
+    const alt = (r.alternatives as Array<Record<string, unknown>> | undefined)?.[0];
+    if (!alt) continue;
+    if (alt.transcript) fullText.push(String(alt.transcript));
+    const words = (alt.words as Array<Record<string, unknown>> | undefined) ?? [];
+    for (const w of words) {
+      allWords.push({
+        text: w.word,
+        startOffset: w.startOffset,
+        endOffset: w.endOffset,
+        speaker: w.speakerLabel,
+      });
+    }
+  }
+
+  return {
+    text: fullText.join(" ").trim(),
+    json: {
+      words: allWords,
+      language_code: detectedLanguage,
+    },
+    detectedLanguage: detectedLanguage ?? undefined,
   };
 }
 
