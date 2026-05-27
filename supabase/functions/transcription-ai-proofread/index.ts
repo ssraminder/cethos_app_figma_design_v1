@@ -1,8 +1,10 @@
 // POST /functions/v1/transcription-ai-proofread
-// Body: { job_id: string, model?: "haiku" | "sonnet" | "opus", file_index?: number }
-// Admin-invoked: Claude proofreads the transcript, fixes spelling errors,
-// normalizes speaker labels, removes filler. Saves as a new version.
+// Body: { job_id: string, model?: "haiku" | "sonnet" | "opus", file_index?: number, context?: string }
+// Admin-invoked: Claude proofreads transcript + translation with cross-file context.
+// Reads all files first to build a glossary of names/terms, then proofreads with that memory.
+// Saves proofread transcript as a new version; updates translated_text in source_files JSONB.
 // file_index: null/omitted = whole-job combined, 0-based = specific source file.
+// context: optional pre-built context string (names, terms from other files in a batch).
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import {
@@ -29,6 +31,7 @@ serve(async (req: Request) => {
     const jobId = body?.job_id as string;
     const modelKey = (body?.model as string) ?? "sonnet";
     const fileIndex = typeof body?.file_index === "number" ? body.file_index : null;
+    const externalContext = (body?.context as string) ?? "";
 
     if (!jobId) {
       return jsonResponse({ success: false, error: "job_id required" }, 400);
@@ -43,7 +46,7 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await admin
       .from("transcription_jobs")
-      .select("id, transcript_text, detected_language, source_language_id, ai_total_cost, source_files")
+      .select("id, transcript_text, translated_text, detected_language, source_language_id, ai_total_cost, source_files")
       .eq("id", jobId)
       .is("deleted_at", null)
       .maybeSingle();
@@ -52,16 +55,48 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Job not found" }, 404);
     }
 
-    // Resolve transcript text: per-file or combined
+    type Word = { text: string; speaker_id?: string; start?: number; type?: string };
+    type TranscriptJson = { words?: Word[] };
+    type SourceFile = { name?: string; transcript_text?: string; translated_text?: string; transcript_json?: TranscriptJson };
+    const files = (job.source_files as SourceFile[]) ?? [];
+
+    // Build numbered speaker segments from transcript_json for structured proofing
+    type SpeakerSegment = { speaker: string; text: string };
+    function buildSpeakerSegments(json: TranscriptJson | undefined): SpeakerSegment[] | null {
+      if (!json?.words?.length) return null;
+      const segments: SpeakerSegment[] = [];
+      let currentSpeaker = "";
+      let currentText = "";
+      for (const w of json.words) {
+        if (w.type === "spacing") continue;
+        const spk = w.speaker_id ?? "unknown";
+        if (spk !== currentSpeaker && currentText.trim()) {
+          segments.push({ speaker: currentSpeaker, text: currentText.trim() });
+          currentText = "";
+        }
+        currentSpeaker = spk;
+        currentText += w.text;
+      }
+      if (currentText.trim()) {
+        segments.push({ speaker: currentSpeaker, text: currentText.trim() });
+      }
+      return segments.length > 0 ? segments : null;
+    }
+
+    // Resolve transcript + translation text for the target file
     let transcriptText: string;
+    let translatedText: string;
+    let speakerSegments: SpeakerSegment[] | null = null;
     if (fileIndex !== null) {
-      const files = job.source_files as Array<{ transcript_text?: string }> | null;
-      if (!files || fileIndex < 0 || fileIndex >= files.length) {
+      if (fileIndex < 0 || fileIndex >= files.length) {
         return jsonResponse({ success: false, error: `Invalid file_index: ${fileIndex}` }, 400);
       }
       transcriptText = files[fileIndex].transcript_text ?? "";
+      translatedText = files[fileIndex].translated_text ?? "";
+      speakerSegments = buildSpeakerSegments(files[fileIndex].transcript_json);
     } else {
       transcriptText = job.transcript_text ?? "";
+      translatedText = (job as Record<string, unknown>).translated_text as string ?? "";
     }
 
     if (!transcriptText.trim()) {
@@ -73,7 +108,7 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "ANTHROPIC_API_KEY not configured" }, 503);
     }
 
-    // Resolve source language for script-aware proofreading
+    // Resolve source language
     let langContext = "";
     if (job.source_language_id) {
       const { data: lang } = await admin
@@ -89,26 +124,106 @@ serve(async (req: Request) => {
       langContext = `Detected language: ${job.detected_language}`;
     }
 
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: modelInfo.id,
-        max_tokens: 8192,
-        messages: [
-          {
-            role: "user",
-            content: `You are a professional transcription proofreader. Fix the following AI-generated transcript.
+    // Build cross-file context: names, terms, speakers from all files
+    let contextBlock = "";
+    if (externalContext) {
+      contextBlock = externalContext;
+    } else if (files.length > 1) {
+      // Auto-build context from all files (truncated excerpts for names/terms)
+      const excerpts = files.map((f, i) => {
+        const text = f.transcript_text ?? "";
+        // First 500 chars of each file for name/term extraction
+        const excerpt = text.length > 500 ? text.slice(0, 500) + "..." : text;
+        return `File ${i + 1} (${f.name ?? "unknown"}): ${excerpt}`;
+      });
+      contextBlock = excerpts.join("\n\n");
+    }
+
+    const hasTranslation = !!translatedText.trim();
+
+    // Build the prompt: proofread transcript, and translation if available
+    const useNumberedSegments = hasTranslation && speakerSegments && speakerSegments.length > 0;
+    let prompt: string;
+    if (useNumberedSegments) {
+      // Numbered segment approach: gives Claude explicit structure to match
+      const numberedTranscript = speakerSegments!.map((s, i) => `[${i + 1}] ${s.speaker}: ${s.text}`).join("\n");
+      prompt = `You are a professional transcription proofreader. Proofread BOTH the transcript segments AND provide a matching English translation for each segment.
 
 ${langContext}
 
-Rules:
+${contextBlock ? `=== CONTEXT FROM OTHER FILES (use for consistent names, terms, spelling) ===\n${contextBlock}\n\n` : ""}=== TRANSCRIPT SEGMENTS (${speakerSegments!.length} segments, numbered) ===
+${numberedTranscript}
+
+=== CURRENT ENGLISH TRANSLATION (for reference — may have alignment errors) ===
+${translatedText}
+
+Rules for transcript:
+- Fix spelling errors, especially in the transcript's native script
+- Fix obvious misrecognitions (garbled proper nouns, words that don't make sense in context)
+- Use consistent spelling for names and terms across all files (refer to context above)
+- Remove or clean up repeated filler words (um, uh, etc.) only if excessive
+- Do NOT change the meaning, tone, or content
+- Do NOT translate — keep each segment in its original language
+- LANGUAGE CHECK: if the transcript is in a different language than expected above (e.g., Hindi instead of Punjabi), note it as [Language: actual_language] on the first line before segment [1]
+
+Rules for translation:
+- Each segment's translation MUST accurately correspond to ONLY that segment's source text
+- If the current translation has content misplaced under the wrong segment, fix it
+- Fix grammar, spelling, and punctuation errors
+- Ensure names and proper nouns match the corrected transcript
+
+Output EXACTLY ${speakerSegments!.length} numbered lines for EACH section. Use these exact markers:
+---TRANSCRIPT---
+[1] corrected text for segment 1
+[2] corrected text for segment 2
+...
+---TRANSLATION---
+[1] English translation for segment 1
+[2] English translation for segment 2
+...`
+    } else if (hasTranslation) {
+      prompt = `You are a professional transcription proofreader. You will proofread BOTH the original transcript AND its English translation.
+
+${langContext}
+
+${contextBlock ? `=== CONTEXT FROM OTHER FILES (use for consistent names, terms, spelling) ===\n${contextBlock}\n\n` : ""}=== ORIGINAL TRANSCRIPT (proofread this) ===
+${transcriptText}
+
+=== ENGLISH TRANSLATION (proofread this) ===
+${translatedText}
+
+Rules for transcript:
+- Fix spelling errors, especially in the transcript's native script
+- Fix obvious misrecognitions (garbled proper nouns, words that don't make sense in context)
+- Use consistent spelling for names and terms across all files (refer to context above)
+- Keep speaker labels exactly as they are (e.g., "Speaker 1:", "Speaker A")
+- Keep timestamps exactly as they are
+- Remove or clean up repeated filler words (um, uh, etc.) only if excessive
+- Do NOT change the meaning, tone, or content
+- Do NOT translate — keep the transcript in its original language
+- LANGUAGE CHECK: verify the transcript is actually in the expected language above. If it is in a different language (e.g., Hindi instead of Punjabi), note the actual language at the very top of the corrected transcript as a single comment line: [Language: Hindi] — then proofread in the actual language, not the expected one
+
+Rules for translation:
+- Fix grammar, spelling, and punctuation errors
+- Ensure names and proper nouns match the corrected transcript spelling
+- Fix awkward or unclear phrasing while preserving the original meaning
+- Keep speaker labels and timestamps exactly as they are
+- Do NOT re-translate from scratch — correct the existing translation
+
+Output format (use these exact markers):
+---TRANSCRIPT---
+[corrected transcript here]
+---TRANSLATION---
+[corrected translation here]`;
+    } else {
+      prompt = `You are a professional transcription proofreader. Fix the following AI-generated transcript.
+
+${langContext}
+
+${contextBlock ? `=== CONTEXT FROM OTHER FILES (use for consistent names, terms, spelling) ===\n${contextBlock}\n\n` : ""}Rules:
 - Fix spelling errors, especially for words in the transcript's native script
 - Fix obvious misrecognitions (garbled proper nouns, words that don't make sense in context)
+- Use consistent spelling for names and terms across all files (refer to context above)
 - Keep speaker labels exactly as they are (e.g., "Speaker 1:", "Speaker A")
 - Keep timestamps exactly as they are
 - Remove or clean up repeated filler words (um, uh, etc.) only if excessive
@@ -118,9 +233,20 @@ Rules:
 - Output ONLY the corrected transcript text, nothing else
 
 Transcript:
-${transcriptText}`,
-          },
-        ],
+${transcriptText}`;
+    }
+
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: modelInfo.id,
+        max_tokens: 16384,
+        messages: [{ role: "user", content: prompt }],
       }),
     });
 
@@ -135,13 +261,43 @@ ${transcriptText}`,
     }
 
     const result = await resp.json();
-    const proofreadText = result.content?.[0]?.text ?? "";
+    const rawText = result.content?.[0]?.text ?? "";
     const inputTokens = result.usage?.input_tokens ?? 0;
     const outputTokens = result.usage?.output_tokens ?? 0;
     const cost = (inputTokens * modelInfo.inputPer1M + outputTokens * modelInfo.outputPer1M) / 1_000_000;
+
+    // Parse response: split transcript and translation if both were proofread
+    let proofreadText: string;
+    let proofreadTranslation: string | null = null;
+
+    // Helper: parse numbered lines "[1] text" → array of text, joined by \n\n
+    function parseNumberedLines(section: string): string {
+      const lines = section.split("\n").filter(l => l.trim());
+      const parsed = lines.map(l => l.replace(/^\[\d+\]\s*/, "").trim()).filter(Boolean);
+      return parsed.join("\n\n");
+    }
+
+    if (rawText.includes("---TRANSCRIPT---")) {
+      const transcriptMatch = rawText.match(/---TRANSCRIPT---\s*([\s\S]*?)(?:---TRANSLATION---|$)/);
+      const translationMatch = rawText.match(/---TRANSLATION---\s*([\s\S]*?)$/);
+      const rawTranscript = transcriptMatch?.[1]?.trim() ?? rawText;
+      const rawTranslation = translationMatch?.[1]?.trim() ?? null;
+
+      if (useNumberedSegments && rawTranscript.includes("[1]")) {
+        // Numbered format: strip [N] prefixes, join with paragraph breaks
+        proofreadText = parseNumberedLines(rawTranscript);
+        proofreadTranslation = rawTranslation ? parseNumberedLines(rawTranslation) : null;
+      } else {
+        proofreadText = rawTranscript;
+        proofreadTranslation = rawTranslation;
+      }
+    } else {
+      proofreadText = rawText;
+    }
+
     const wordCount = proofreadText.split(/\s+/).filter(Boolean).length;
 
-    // Save as a new version (with file_index if per-file)
+    // Save proofread transcript as a new version
     const { error: versionErr } = await admin
       .from("transcription_versions")
       .insert({
@@ -161,6 +317,21 @@ ${transcriptText}`,
       return jsonResponse({ success: false, error: "Failed to save version" }, 500);
     }
 
+    // If translation was proofread, update it in source_files JSONB
+    if (proofreadTranslation && fileIndex !== null) {
+      const updatedFiles = [...files];
+      updatedFiles[fileIndex] = { ...updatedFiles[fileIndex], translated_text: proofreadTranslation };
+      await admin
+        .from("transcription_jobs")
+        .update({ source_files: updatedFiles })
+        .eq("id", jobId);
+    } else if (proofreadTranslation && fileIndex === null) {
+      await admin
+        .from("transcription_jobs")
+        .update({ translated_text: proofreadTranslation })
+        .eq("id", jobId);
+    }
+
     // Accumulate cost
     const newTotalCost = (job.ai_total_cost ?? 0) + cost;
     await admin
@@ -174,6 +345,7 @@ ${transcriptText}`,
       output_tokens: outputTokens,
       cost: cost.toFixed(6),
       word_count: wordCount,
+      translation_proofread: !!proofreadTranslation,
       ...(fileIndex !== null ? { file_index: fileIndex } : {}),
     });
 
@@ -182,6 +354,7 @@ ${transcriptText}`,
       job_id: jobId,
       model: modelKey,
       word_count: wordCount,
+      translation_proofread: !!proofreadTranslation,
       cost: Number(cost.toFixed(6)),
       ai_total_cost: Number(newTotalCost.toFixed(6)),
     });

@@ -25,6 +25,8 @@ import {
   Download,
   Eye,
   EyeOff,
+  Square,
+  CheckSquare,
 } from "lucide-react";
 import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 
@@ -173,7 +175,6 @@ export default function TranscriptionJobDetail() {
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [versions, setVersions] = useState<Version[]>([]);
-  const [tab, setTab] = useState<"transcript" | "translation" | "versions" | "audit">("transcript");
 
   useEffect(() => {
     if (!id) return;
@@ -317,8 +318,8 @@ export default function TranscriptionJobDetail() {
           )}
         </div>
 
-        {/* Per-file accordions — always shown when transcript exists */}
-        {job.transcript_text && (
+        {/* Per-file accordions — shown when we have files to display */}
+        {files.length > 0 && (
           <PerFileAccordions
             job={job}
             files={files}
@@ -328,124 +329,34 @@ export default function TranscriptionJobDetail() {
           />
         )}
 
-        {/* Combined downloads — multi-file only */}
-        {isMultiFile && (job.delivery_formats ?? []).length > 0 && (
-          <CombinedDownloads jobId={job.id} formats={job.delivery_formats} />
-        )}
-
-        {/* Bottom tabs — multi-file only (single-file accordion already shows everything) */}
-        {isMultiFile && (
-          <div className="bg-white rounded-lg border border-gray-200">
-            <div className="border-b border-gray-200 flex">
-              {(["transcript", ...(job.translation_requested ? ["translation"] : []), ...(versions.filter(v => v.file_index == null).length > 0 ? ["versions"] : []), "audit"] as const).map((t) => {
-                const combinedVersions = versions.filter(v => v.file_index == null);
-                const labels: Record<string, string> = {
-                  transcript: "Transcript",
-                  translation: "Translation",
-                  versions: `Versions (${combinedVersions.length})`,
-                  audit: "Audit Log",
-                };
-                return (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t as typeof tab)}
-                    className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                      tab === t
-                        ? "border-teal-600 text-teal-700"
-                        : "border-transparent text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    {labels[t] ?? t}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="p-6">
-              {tab === "transcript" && (
-                <div>
-                  {job.transcript_text ? (
-                    <SpeakerTranscript transcriptJson={job.transcript_json} transcriptText={job.transcript_text} />
-                  ) : (
-                    <p className="text-gray-400 text-center py-8">No transcript available</p>
-                  )}
-                </div>
-              )}
-
-              {tab === "translation" && (
-                <div>
-                  {job.translated_text ? (
-                    <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans max-h-[600px] overflow-y-auto">
-                      {job.translated_text}
-                    </pre>
-                  ) : (
-                    <p className="text-gray-400 text-center py-8">Translation not yet available</p>
-                  )}
-                </div>
-              )}
-
-              {tab === "versions" && (
-                <VersionsPanel job={job} versions={versions.filter(v => v.file_index == null)} onActivated={onUpdate} />
-              )}
-
-              {tab === "audit" && (
-                <div className="space-y-3">
-                  {audit.length === 0 ? (
-                    <p className="text-gray-400 text-center py-8">No audit entries</p>
-                  ) : (
-                    audit.map((entry) => (
-                      <div key={entry.id} className="flex items-start gap-3 text-sm">
-                        <div className="w-2 h-2 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
-                        <div className="flex-1">
-                          <p className="text-gray-900 font-medium">{entry.action.replace(/_/g, " ")}</p>
-                          <p className="text-gray-500 text-xs">
-                            {entry.actor_type}{entry.actor_id ? ` · ${entry.actor_id}` : ""} · {format(new Date(entry.created_at), "MMM d, HH:mm:ss")}
-                          </p>
-                          {entry.details && (
-                            <pre className="text-xs text-gray-400 mt-1 bg-gray-50 rounded p-2 overflow-x-auto">
-                              {JSON.stringify(entry.details, null, 2)}
-                            </pre>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+        {/* Audit log */}
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="border-b border-gray-200 px-4 py-3">
+            <span className="text-sm font-medium text-gray-700">Audit Log</span>
           </div>
-        )}
-
-        {/* Audit log tab for single-file jobs */}
-        {!isMultiFile && (
-          <div className="bg-white rounded-lg border border-gray-200">
-            <div className="border-b border-gray-200 px-4 py-3">
-              <span className="text-sm font-medium text-gray-700">Audit Log</span>
-            </div>
-            <div className="p-6 space-y-3">
-              {audit.length === 0 ? (
-                <p className="text-gray-400 text-center py-8">No audit entries</p>
-              ) : (
-                audit.map((entry) => (
-                  <div key={entry.id} className="flex items-start gap-3 text-sm">
-                    <div className="w-2 h-2 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-gray-900 font-medium">{entry.action.replace(/_/g, " ")}</p>
-                      <p className="text-gray-500 text-xs">
-                        {entry.actor_type}{entry.actor_id ? ` · ${entry.actor_id}` : ""} · {format(new Date(entry.created_at), "MMM d, HH:mm:ss")}
-                      </p>
-                      {entry.details && (
-                        <pre className="text-xs text-gray-400 mt-1 bg-gray-50 rounded p-2 overflow-x-auto">
-                          {JSON.stringify(entry.details, null, 2)}
-                        </pre>
-                      )}
-                    </div>
+          <div className="p-6 space-y-3">
+            {audit.length === 0 ? (
+              <p className="text-gray-400 text-center py-8">No audit entries</p>
+            ) : (
+              audit.map((entry) => (
+                <div key={entry.id} className="flex items-start gap-3 text-sm">
+                  <div className="w-2 h-2 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-gray-900 font-medium">{entry.action.replace(/_/g, " ")}</p>
+                    <p className="text-gray-500 text-xs">
+                      {entry.actor_type}{entry.actor_id ? ` · ${entry.actor_id}` : ""} · {format(new Date(entry.created_at), "MMM d, HH:mm:ss")}
+                    </p>
+                    {entry.details && (
+                      <pre className="text-xs text-gray-400 mt-1 bg-gray-50 rounded p-2 overflow-x-auto">
+                        {JSON.stringify(entry.details, null, 2)}
+                      </pre>
+                    )}
                   </div>
-                ))
-              )}
-            </div>
+                </div>
+              ))
+            )}
           </div>
-        )}
+        </div>
       </main>
     </div>
   );
@@ -481,15 +392,48 @@ function PerFileAccordions({ job, files, versions, isSyntheticSingleFile, onUpda
   onUpdate: () => void;
 }) {
   const [expanded, setExpanded] = useState<number | null>(files.length === 1 ? 0 : null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const { targetLanguages } = useDropdownOptions();
+
+  const toggleSelect = (i: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelected(new Set(files.map((_, i) => i)));
+  const deselectAll = () => setSelected(new Set());
 
   return (
     <div className="space-y-2">
       {files.length > 1 && (
-        <div className="flex items-center gap-2 px-1">
-          <FileAudio className="w-4 h-4 text-gray-400" />
-          <span className="text-sm font-medium text-gray-700">Source Files ({files.length})</span>
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <FileAudio className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-medium text-gray-700">Source Files ({files.length})</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={selected.size === files.length ? deselectAll : selectAll}
+              className="text-xs text-teal-600 hover:text-teal-800 font-medium"
+            >
+              {selected.size === files.length ? "Deselect All" : "Select All"}
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* Batch action bar */}
+      {selected.size > 0 && files.length > 1 && (
+        <BatchActionBar
+          job={job}
+          files={files}
+          selectedIndexes={selected}
+          targetLanguages={targetLanguages}
+          onUpdate={onUpdate}
+        />
       )}
 
       {files.map((sf, i) => {
@@ -505,13 +449,231 @@ function PerFileAccordions({ job, files, versions, isSyntheticSingleFile, onUpda
             job={job}
             fileVersions={fileVersions}
             isExpanded={expanded === i}
+            isSelected={selected.has(i)}
+            onToggleSelect={() => toggleSelect(i)}
             onToggle={() => setExpanded(expanded === i ? null : i)}
             onUpdate={onUpdate}
             targetLanguages={targetLanguages}
             isSyntheticSingleFile={isSyntheticSingleFile}
+            showCheckbox={files.length > 1}
           />
         );
       })}
+    </div>
+  );
+}
+
+// ── Batch action bar (multi-select operations) ────────────────────────────────
+
+function BatchActionBar({ job, files, selectedIndexes, targetLanguages, onUpdate }: {
+  job: Job;
+  files: SourceFile[];
+  selectedIndexes: Set<number>;
+  targetLanguages: Array<{ id: string; name: string; native_name?: string }>;
+  onUpdate: () => void;
+}) {
+  const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [langId, setLangId] = useState(job.translation_target_language_id ?? "");
+  const [proofModel, setProofModel] = useState("sonnet");
+  const [reprocessProvider, setReprocessProvider] = useState(job.provider ?? "openai");
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState("");
+
+  const count = selectedIndexes.size;
+  const sortedIndexes = Array.from(selectedIndexes).sort((a, b) => a - b);
+
+  const runBatchTranslate = async () => {
+    if (!langId) { toast.error("Select a target language"); return; }
+    setRunning(true);
+    await supabase.from("transcription_jobs").update({
+      translation_requested: true,
+      translation_target_language_id: langId,
+      translation_type: "ai_instant",
+    }).eq("id", job.id);
+
+    for (let i = 0; i < sortedIndexes.length; i++) {
+      setProgress(`Translating file ${i + 1} of ${sortedIndexes.length}...`);
+      const { error } = await supabase.functions.invoke("transcription-ai-translate", {
+        body: { job_id: job.id, file_index: sortedIndexes[i] },
+      });
+      if (error) { toast.error(`Translation failed on file ${sortedIndexes[i] + 1}`); break; }
+    }
+    toast.success(`Translated ${sortedIndexes.length} files`);
+    supabase.functions.invoke("transcription-deliver", { body: { job_id: job.id } }).catch(() => {});
+    setRunning(false); setProgress(""); setActiveAction(null); onUpdate();
+  };
+
+  const runBatchProofread = async () => {
+    setRunning(true);
+    // Build cross-file context from ALL files (names, terms, speakers)
+    const contextParts = files.map((f, i) => {
+      const text = f.transcript_text ?? "";
+      const excerpt = text.length > 500 ? text.slice(0, 500) + "..." : text;
+      return `File ${i + 1} (${f.name ?? "unknown"}): ${excerpt}`;
+    });
+    const context = contextParts.join("\n\n");
+
+    for (let i = 0; i < sortedIndexes.length; i++) {
+      setProgress(`Proofreading file ${i + 1} of ${sortedIndexes.length}...`);
+      const { data, error } = await supabase.functions.invoke("transcription-ai-proofread", {
+        body: { job_id: job.id, model: proofModel, file_index: sortedIndexes[i], context },
+      });
+      if (error || !data?.success) { toast.error(`Proofread failed on file ${sortedIndexes[i] + 1}`); break; }
+    }
+    toast.success(`Proofread ${sortedIndexes.length} files`);
+    setRunning(false); setProgress(""); setActiveAction(null); onUpdate();
+  };
+
+  const runBatchReprocess = async () => {
+    setRunning(true);
+    setProgress("Reprocessing all selected files...");
+    await supabase.from("transcription_jobs").update({ status: "pending", provider: reprocessProvider }).eq("id", job.id);
+    const { error } = await supabase.functions.invoke("transcription-process", {
+      body: { job_id: job.id },
+    });
+    if (error) toast.error("Reprocess failed");
+    else toast.success("Reprocessed");
+    setTimeout(onUpdate, 2000);
+    setRunning(false); setProgress(""); setActiveAction(null);
+  };
+
+  const downloadCombined = (format: "txt" | "srt" | "json") => {
+    const sections = sortedIndexes.map((idx) => {
+      const f = files[idx];
+      const text = f.transcript_text ?? "";
+      const translated = f.translated_text ?? "";
+      const divider = `━━━ ${f.name} ━━━`;
+
+      if (format === "json") {
+        return JSON.stringify({
+          file: f.name,
+          file_index: idx,
+          transcript: text,
+          ...(translated ? { translation: translated } : {}),
+        }, null, 2);
+      }
+
+      let section = `${divider}\n\n${text}`;
+      if (translated) {
+        section += `\n\n--- Translation ---\n\n${translated}`;
+      }
+      return section;
+    });
+
+    let content: string;
+    let mimeType: string;
+    let ext: string;
+
+    if (format === "json") {
+      content = `[\n${sections.join(",\n")}\n]`;
+      mimeType = "application/json";
+      ext = "json";
+    } else {
+      // Page-break separator: form feed character between files
+      content = sections.join("\n\n\f\n\n");
+      mimeType = "text/plain";
+      ext = format;
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `combined-${count}-files.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Downloaded combined ${ext.toUpperCase()}`);
+  };
+
+  const downloadCombinedDocx = async () => {
+    setRunning(true);
+    setProgress("Downloading combined DOCX...");
+    const { data: url } = await supabase.storage
+      .from("transcription-uploads")
+      .createSignedUrl(`${job.id}/output/transcript.docx`, 3600);
+    if (url?.signedUrl) {
+      window.open(url.signedUrl, "_blank");
+    } else {
+      toast.error("Combined DOCX not generated yet — run Deliver first");
+    }
+    setRunning(false); setProgress("");
+  };
+
+  return (
+    <div className="bg-teal-50 rounded-lg border border-teal-200 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-teal-800">
+          {count} file{count !== 1 ? "s" : ""} selected
+        </span>
+        {running && progress && (
+          <span className="flex items-center gap-1.5 text-xs text-teal-600">
+            <Loader2 className="w-3 h-3 animate-spin" /> {progress}
+          </span>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        <ActionToggleButton label="Translate" icon={Languages} active={activeAction === "translate"} loading={running && activeAction === "translate"} color="purple" onClick={() => setActiveAction(activeAction === "translate" ? null : "translate")} />
+        <ActionToggleButton label="Proofread" icon={Sparkles} active={activeAction === "proofread"} loading={running && activeAction === "proofread"} color="amber" onClick={() => setActiveAction(activeAction === "proofread" ? null : "proofread")} />
+        <ActionToggleButton label="Reprocess" icon={RefreshCw} active={activeAction === "reprocess"} loading={running && activeAction === "reprocess"} color="blue" onClick={() => setActiveAction(activeAction === "reprocess" ? null : "reprocess")} />
+      </div>
+
+      {/* Inline panels for each action */}
+      {activeAction === "translate" && (
+        <InlinePanel color="purple">
+          <select value={langId} onChange={(e) => setLangId(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+            <option value="">Select target language...</option>
+            {targetLanguages.map((lang) => (
+              <option key={lang.id} value={lang.id}>{lang.name}{lang.native_name && lang.native_name !== lang.name ? ` (${lang.native_name})` : ""}</option>
+            ))}
+          </select>
+          <ActionButtons onRun={runBatchTranslate} onCancel={() => setActiveAction(null)} disabled={!langId || running} loading={running} label={`Translate ${count} files`} loadingLabel={progress || "Translating..."} icon={Languages} color="purple" />
+        </InlinePanel>
+      )}
+
+      {activeAction === "proofread" && (
+        <InlinePanel color="amber">
+          <select value={proofModel} onChange={(e) => setProofModel(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+            <option value="haiku">Haiku (fastest, cheapest)</option>
+            <option value="sonnet">Sonnet (balanced)</option>
+            <option value="opus">Opus (best quality)</option>
+          </select>
+          <ActionButtons onRun={runBatchProofread} onCancel={() => setActiveAction(null)} disabled={running} loading={running} label={`Proofread ${count} files`} loadingLabel={progress || "Proofreading..."} icon={Sparkles} color="amber" />
+        </InlinePanel>
+      )}
+
+      {activeAction === "reprocess" && (
+        <InlinePanel color="blue">
+          <select value={reprocessProvider} onChange={(e) => setReprocessProvider(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="openai">OpenAI gpt-4o-transcribe</option>
+            <option value="assemblyai">AssemblyAI Universal-2</option>
+            <option value="elevenlabs">ElevenLabs Scribe v2</option>
+          </select>
+          <ActionButtons onRun={runBatchReprocess} onCancel={() => setActiveAction(null)} disabled={running} loading={running} label="Reprocess All" loadingLabel={progress || "Processing..."} icon={RefreshCw} color="blue" />
+        </InlinePanel>
+      )}
+
+      {/* Combined download */}
+      {!activeAction && (
+        <div>
+          <p className="text-xs text-teal-600 font-medium uppercase tracking-wide mb-1.5">Combined Download</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => downloadCombined("txt")} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200">
+              <Download className="w-3 h-3" /> TXT
+            </button>
+            <button onClick={downloadCombinedDocx} disabled={running} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 disabled:opacity-50">
+              <Download className="w-3 h-3" /> DOCX
+            </button>
+            <button onClick={() => downloadCombined("srt")} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition bg-yellow-50 text-yellow-700 hover:bg-yellow-100 border-yellow-200">
+              <Download className="w-3 h-3" /> SRT
+            </button>
+            <button onClick={() => downloadCombined("json")} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200">
+              <Download className="w-3 h-3" /> JSON
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -524,50 +686,93 @@ function FileCard({
   job,
   fileVersions,
   isExpanded,
+  isSelected,
+  onToggleSelect,
   onToggle,
   onUpdate,
   targetLanguages,
   isSyntheticSingleFile,
+  showCheckbox,
 }: {
   file: SourceFile;
   fileIndex: number;
   job: Job;
   fileVersions: Version[];
   isExpanded: boolean;
+  isSelected: boolean;
+  onToggleSelect: () => void;
   onToggle: () => void;
   onUpdate: () => void;
   targetLanguages: Array<{ id: string; name: string; native_name?: string }>;
   isSyntheticSingleFile: boolean;
+  showCheckbox: boolean;
 }) {
   const badgeColor = FORMAT_BADGE_COLORS[file.format.toLowerCase()] ?? "bg-gray-100 text-gray-700";
+  const hasTranscript = !!file.transcript_text;
+  const hasTranslation = !!file.translated_text;
+  const wordCount = file.transcript_text ? file.transcript_text.split(/\s+/).filter(Boolean).length : 0;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div className={`bg-white rounded-lg border overflow-hidden transition ${isSelected ? "border-teal-300 ring-1 ring-teal-200" : "border-gray-200"}`}>
       {/* Accordion header */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50 transition"
-      >
-        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
-        <span className={`px-2 py-0.5 text-xs font-semibold rounded ${badgeColor}`}>
-          {file.format.toUpperCase()}
-        </span>
-        <span className="flex-1 text-sm font-medium text-gray-800 truncate">{file.name}</span>
-        <span className="text-xs text-gray-500 flex-shrink-0">{formatDuration(file.duration)}</span>
-        <span className="text-xs text-gray-400 flex-shrink-0">{formatBytes(file.size)}</span>
-        {file.transcript_text && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />}
-      </button>
+      <div className="flex items-center gap-0">
+        {showCheckbox && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+            className="pl-3 pr-1 py-3.5 flex-shrink-0 hover:text-teal-600 text-gray-400 transition"
+          >
+            {isSelected
+              ? <CheckSquare className="w-4 h-4 text-teal-600" />
+              : <Square className="w-4 h-4" />
+            }
+          </button>
+        )}
+        <button
+          onClick={onToggle}
+          className={`flex-1 flex items-center gap-3 ${showCheckbox ? "pl-1" : "pl-4"} pr-4 py-3.5 text-left hover:bg-gray-50 transition`}
+        >
+          <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+          <span className={`px-2 py-0.5 text-xs font-semibold rounded ${badgeColor}`}>
+            {file.format.toUpperCase()}
+          </span>
+          <span className="flex-1 text-sm font-medium text-gray-800 truncate">{file.name}</span>
+          <span className="text-xs text-gray-500 flex-shrink-0">{formatDuration(file.duration)}</span>
+          <span className="text-xs text-gray-400 flex-shrink-0">{formatBytes(file.size)}</span>
+
+          {/* Per-file status indicators */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {hasTranscript ? (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-green-50 text-green-700 border border-green-200">
+                <CheckCircle className="w-3 h-3" /> {wordCount > 0 ? `${wordCount.toLocaleString()} words` : "Transcribed"}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-gray-50 text-gray-400 border border-gray-200">
+                Pending
+              </span>
+            )}
+            {hasTranslation && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                <Globe className="w-3 h-3" /> Translated
+              </span>
+            )}
+            {fileVersions.length > 1 && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                {fileVersions.length} versions
+              </span>
+            )}
+          </div>
+        </button>
+      </div>
 
       {/* Expanded workspace */}
       {isExpanded && (
         <div className="border-t border-gray-100 px-4 py-4 pl-11 space-y-5">
-          {/* 1. Transcript preview */}
-          <FileTranscriptSection file={file} />
-
-          {/* 2. Translation preview */}
-          {file.translated_text && (
-            <FileTranslationSection translatedText={file.translated_text} />
-          )}
+          {/* 1. Transcript + inline translation */}
+          <FileTranscriptSection
+            file={file}
+            translatedText={file.translated_text}
+            showPlainText={fileVersions.some(v => v.is_active && v.version_type !== "original")}
+          />
 
           {/* 3. Versions list */}
           {fileVersions.length > 0 && (
@@ -605,7 +810,11 @@ function FileCard({
 
 // ── 1. Transcript preview section ───────────────────────────────────────────
 
-function FileTranscriptSection({ file }: { file: SourceFile }) {
+function FileTranscriptSection({ file, translatedText, showPlainText }: {
+  file: SourceFile;
+  translatedText?: string;
+  showPlainText?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   if (!file.transcript_text) {
@@ -620,7 +829,7 @@ function FileTranscriptSection({ file }: { file: SourceFile }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <SectionLabel label="Transcript" />
+        <SectionLabel label={translatedText ? "Transcript & Translation" : "Transcript"} />
         <div className="flex items-center gap-1">
           <button
             onClick={() => {
@@ -642,47 +851,11 @@ function FileTranscriptSection({ file }: { file: SourceFile }) {
       </div>
       <div className={`${expanded ? "" : "max-h-[300px]"} overflow-y-auto rounded-lg border border-gray-100 p-3 bg-gray-50/50`}>
         <SpeakerTranscript
-          transcriptJson={file.transcript_json ?? null}
+          transcriptJson={showPlainText ? null : (file.transcript_json ?? null)}
           transcriptText={file.transcript_text}
+          translatedText={translatedText}
           compact
         />
-      </div>
-    </div>
-  );
-}
-
-// ── 2. Translation preview section ──────────────────────────────────────────
-
-function FileTranslationSection({ translatedText }: { translatedText: string }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <SectionLabel label="Translation" />
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(translatedText);
-              toast.success("Copied to clipboard");
-            }}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
-          >
-            <Copy className="w-3 h-3" /> Copy
-          </button>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
-          >
-            {expanded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-            {expanded ? "Collapse" : "Expand"}
-          </button>
-        </div>
-      </div>
-      <div className={`${expanded ? "" : "max-h-[200px]"} overflow-y-auto rounded-lg border border-purple-100 p-3 bg-purple-50/30`}>
-        <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans">
-          {translatedText}
-        </pre>
       </div>
     </div>
   );
@@ -856,7 +1029,8 @@ function FileActionsSection({ job, fileIndex, fileVersions, targetLanguages, has
       });
       if (error) throw error;
       if (data && !data.success) throw new Error(data.error);
-      toast.success(`Proofread complete (${proofModel}) — cost: $${data?.cost?.toFixed(4) ?? "?"}`);
+      const extra = data?.translation_proofread ? " + translation" : "";
+      toast.success(`Proofread complete${extra} (${proofModel}) — cost: $${data?.cost?.toFixed(4) ?? "?"}`);
       onUpdate();
     } catch (e: any) {
       toast.error(e.message ?? "Proofread failed");
@@ -1094,23 +1268,16 @@ function FileDownloadsSection({ job, file, fileIndex, isSyntheticSingleFile }: {
   fileIndex: number;
   isSyntheticSingleFile: boolean;
 }) {
-  const [links, setLinks] = useState<Array<{ label: string; format: string; url: string }>>([]);
+  const [outputLinks, setOutputLinks] = useState<Array<{ label: string; format: string; url: string }>>([]);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     async function fetchLinks() {
-      const results: Array<{ label: string; format: string; url: string }> = [];
+      const outputs: Array<{ label: string; format: string; url: string }> = [];
 
-      // Source audio download
-      const { data: srcUrl } = await supabase.storage
-        .from("transcription-uploads")
-        .createSignedUrl(file.path, 3600);
-      if (srcUrl?.signedUrl) {
-        results.push({ label: `Source ${file.format.toUpperCase()}`, format: file.format.toLowerCase(), url: srcUrl.signedUrl });
-      }
-
-      // Per-file output format downloads
+      // Per-file output format downloads (primary)
       for (const fmt of (job.delivery_formats ?? [])) {
         const outputPath = isSyntheticSingleFile
           ? `${job.id}/output/transcript.${fmt}`
@@ -1119,11 +1286,20 @@ function FileDownloadsSection({ job, file, fileIndex, isSyntheticSingleFile }: {
           .from("transcription-uploads")
           .createSignedUrl(outputPath, 3600);
         if (outUrl?.signedUrl) {
-          results.push({ label: fmt.toUpperCase(), format: fmt.toLowerCase(), url: outUrl.signedUrl });
+          outputs.push({ label: fmt.toUpperCase(), format: fmt.toLowerCase(), url: outUrl.signedUrl });
         }
       }
 
-      if (!cancelled) { setLinks(results); setLoading(false); }
+      // Source audio download (secondary)
+      const { data: srcUrl } = await supabase.storage
+        .from("transcription-uploads")
+        .createSignedUrl(file.path, 3600);
+
+      if (!cancelled) {
+        setOutputLinks(outputs);
+        setSourceUrl(srcUrl?.signedUrl ?? null);
+        setLoading(false);
+      }
     }
     fetchLinks();
     return () => { cancelled = true; };
@@ -1136,25 +1312,42 @@ function FileDownloadsSection({ job, file, fileIndex, isSyntheticSingleFile }: {
         <div className="flex items-center gap-2 text-xs text-gray-400 mt-2">
           <Loader2 className="w-3 h-3 animate-spin" /> Loading...
         </div>
-      ) : links.length > 0 ? (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {links.map((link) => {
-            const style = DOWNLOAD_FORMAT_STYLES[link.format] ?? "bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200";
-            return (
-              <a
-                key={link.label}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition ${style}`}
-              >
-                <Download className="w-3 h-3" /> {link.label}
-              </a>
-            );
-          })}
-        </div>
       ) : (
-        <p className="text-xs text-gray-400 mt-2">No downloads available yet</p>
+        <div className="mt-2 space-y-2">
+          {/* Output format downloads — primary */}
+          {outputLinks.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {outputLinks.map((link) => {
+                const style = DOWNLOAD_FORMAT_STYLES[link.format] ?? "bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200";
+                return (
+                  <a
+                    key={link.label}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition ${style}`}
+                  >
+                    <FileText className="w-3 h-3" /> {link.label}
+                  </a>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 italic">Output files not generated yet</p>
+          )}
+
+          {/* Source audio — secondary, subtle */}
+          {sourceUrl && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 hover:text-gray-600 transition"
+            >
+              <FileAudio className="w-3 h-3" /> Source {file.format.toUpperCase()}
+            </a>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1254,9 +1447,10 @@ interface SpeakerSeg {
   text: string;
 }
 
-function SpeakerTranscript({ transcriptJson, transcriptText, compact }: {
+function SpeakerTranscript({ transcriptJson, transcriptText, translatedText, compact }: {
   transcriptJson: Record<string, unknown> | null;
   transcriptText?: string | null;
+  translatedText?: string | null;
   compact?: boolean;
 }) {
   const segments = useMemo<SpeakerSeg[] | null>(() => {
@@ -1311,6 +1505,46 @@ function SpeakerTranscript({ transcriptJson, transcriptText, compact }: {
     return null;
   }, [transcriptJson]);
 
+  // Align translated text with speaker segments by distributing sentences proportionally
+  const translatedSegments = useMemo(() => {
+    if (!translatedText || !segments) return null;
+
+    // Try newline-split first; fall back to sentence-split
+    let parts = translatedText.split(/\n+/).filter(p => p.trim());
+    if (parts.length <= 1) {
+      // No newlines — split by sentence boundaries
+      parts = translatedText.match(/[^.!?]+[.!?]+[\s]*/g) || [translatedText];
+      parts = parts.map(s => s.trim()).filter(Boolean);
+    }
+    if (parts.length === 0) return null;
+    if (parts.length === segments.length) return parts;
+
+    // Distribute parts proportionally across segments by matching word-count ratios
+    const segWordCounts = segments.map(s => s.text.split(/\s+/).length);
+    const totalSegWords = segWordCounts.reduce((a, b) => a + b, 0) || 1;
+    const result: string[] = [];
+    let partIdx = 0;
+    for (let i = 0; i < segments.length; i++) {
+      const ratio = segWordCounts[i] / totalSegWords;
+      // How many translation parts this segment should get (at least 1 if parts remain)
+      const targetCount = Math.max(1, Math.round(ratio * parts.length));
+      const chunk = parts.slice(partIdx, partIdx + targetCount);
+      result.push(chunk.join(" "));
+      partIdx += targetCount;
+      if (partIdx >= parts.length && i < segments.length - 1) {
+        // Ran out of parts — fill remaining with empty
+        for (let j = i + 1; j < segments.length; j++) result.push("");
+        break;
+      }
+    }
+    // If parts remain, append to last non-empty segment
+    if (partIdx < parts.length) {
+      const remaining = parts.slice(partIdx).join(" ");
+      if (result.length > 0) result[result.length - 1] += " " + remaining;
+    }
+    return result;
+  }, [translatedText, segments]);
+
   const speakerColorMap = useMemo(() => {
     const map = new Map<string, (typeof SPEAKER_COLORS)[0]>();
     if (!segments) return map;
@@ -1326,9 +1560,19 @@ function SpeakerTranscript({ transcriptJson, transcriptText, compact }: {
 
   if (!segments) {
     return (
-      <pre className={`whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans ${compact ? "" : "max-h-[600px] overflow-y-auto"}`}>
-        {transcriptText ?? ""}
-      </pre>
+      <div>
+        <pre className={`whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-sans ${compact ? "" : "max-h-[600px] overflow-y-auto"}`}>
+          {transcriptText ?? ""}
+        </pre>
+        {translatedText && (
+          <div className="mt-3 pt-3 border-t border-purple-100">
+            <p className="text-[10px] text-purple-500 font-medium uppercase tracking-wide mb-1">Translation</p>
+            <pre className="whitespace-pre-wrap text-sm text-purple-800 leading-relaxed font-sans">
+              {translatedText}
+            </pre>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -1348,6 +1592,7 @@ function SpeakerTranscript({ transcriptJson, transcriptText, compact }: {
       <div className={`space-y-3 ${compact ? "" : "max-h-[600px] overflow-y-auto"}`}>
         {segments.map((seg, i) => {
           const color = speakerColorMap.get(seg.speaker);
+          const transText = translatedSegments?.[i];
           return (
             <div key={i} className={`rounded-lg p-2.5 ${color?.bg ?? "bg-gray-50"}`}>
               <div className="flex items-center gap-2 mb-1">
@@ -1357,6 +1602,9 @@ function SpeakerTranscript({ transcriptJson, transcriptText, compact }: {
                 <span className="text-xs text-gray-400 font-mono">{fmtTs(seg.startMs)}</span>
               </div>
               <p className="text-sm text-gray-800 leading-relaxed">{seg.text}</p>
+              {transText && (
+                <p className="text-sm text-purple-700 leading-relaxed mt-1.5 pl-3 border-l-2 border-purple-200 italic">{transText}</p>
+              )}
             </div>
           );
         })}
@@ -1365,55 +1613,6 @@ function SpeakerTranscript({ transcriptJson, transcriptText, compact }: {
   );
 }
 
-// ── Combined downloads (multi-file) ─────────────────────────────────────────
-
-function CombinedDownloads({ jobId, formats }: { jobId: string; formats: string[] }) {
-  const [links, setLinks] = useState<Array<{ format: string; url: string }>>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchLinks() {
-      const results: Array<{ format: string; url: string }> = [];
-      for (const fmt of formats) {
-        const { data } = await supabase.storage
-          .from("transcription-uploads")
-          .createSignedUrl(`${jobId}/output/transcript.${fmt}`, 3600);
-        if (data?.signedUrl) results.push({ format: fmt, url: data.signedUrl });
-      }
-      if (!cancelled) { setLinks(results); setLoading(false); }
-    }
-    fetchLinks();
-    return () => { cancelled = true; };
-  }, [jobId, formats]);
-
-  if (loading || links.length === 0) return null;
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <FileText className="w-4 h-4 text-gray-400" />
-        <span className="text-sm font-medium text-gray-700">Combined Transcript</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {links.map((link) => {
-          const style = DOWNLOAD_FORMAT_STYLES[link.format.toLowerCase()] ?? "bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200";
-          return (
-            <a
-              key={link.format}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border transition ${style}`}
-            >
-              <Download className="w-3.5 h-3.5" /> {link.format.toUpperCase()}
-            </a>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 // ── Versions panel (combined, for bottom tabs) ──────────────────────────────
 
