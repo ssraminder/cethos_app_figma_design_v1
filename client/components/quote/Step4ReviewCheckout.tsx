@@ -2212,12 +2212,43 @@ export default function Step4ReviewCheckout() {
                       <span className="inline-flex items-center px-2.5 py-0.5 bg-teal-50 text-teal-700 text-xs font-medium rounded-full border border-teal-200 whitespace-nowrap">
                         {langLabel}
                       </span>
-                      <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-xs rounded whitespace-nowrap">
-                        {doc.billable_pages?.toFixed(1)} pages
-                      </span>
-                      <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-xs rounded whitespace-nowrap">
-                        {doc.word_count?.toLocaleString()} words
-                      </span>
+                      {(() => {
+                        const unit = (doc as any).calculation_unit;
+                        const qty = Number((doc as any).unit_quantity ?? 0);
+                        const labels: Record<string, string> = {
+                          per_page: qty === 1 ? "page" : "pages",
+                          per_word: qty === 1 ? "word" : "words",
+                          per_hour: qty === 1 ? "hour" : "hours",
+                          per_minute: "min",
+                          flat: "flat",
+                        };
+                        const label = unit ? labels[unit] : null;
+                        if (unit && unit !== "flat" && qty > 0 && label) {
+                          return (
+                            <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-xs rounded whitespace-nowrap">
+                              {qty} {label}
+                            </span>
+                          );
+                        }
+                        if (unit === "flat") {
+                          return (
+                            <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-xs rounded whitespace-nowrap">
+                              Flat
+                            </span>
+                          );
+                        }
+                        // Legacy / per_page fallback
+                        return (
+                          <>
+                            <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-xs rounded whitespace-nowrap">
+                              {doc.billable_pages?.toFixed(1)} pages
+                            </span>
+                            <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-xs rounded whitespace-nowrap">
+                              {doc.word_count?.toLocaleString()} words
+                            </span>
+                          </>
+                        );
+                      })()}
                       <span className="inline-flex items-center px-2.5 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full border border-gray-200 whitespace-nowrap">
                         {docType}
                       </span>
@@ -2236,7 +2267,30 @@ export default function Step4ReviewCheckout() {
         <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">
-              {documents.reduce((sum, doc) => sum + (doc.billable_pages || 0), 0).toFixed(1)} pages × ${effectiveRate.toFixed(2)}/page
+              {(() => {
+                // Pick the first non-per_page unit if any document uses one; otherwise default to per_page.
+                const nonPageDoc = documents.find((d: any) => d.calculation_unit && d.calculation_unit !== "per_page");
+                const unit = (nonPageDoc as any)?.calculation_unit;
+                if (unit && unit !== "flat") {
+                  const labels: Record<string, string> = {
+                    per_word: ["word", "words"],
+                    per_hour: ["hour", "hours"],
+                    per_minute: ["min", "min"],
+                  } as any;
+                  const totalQty = documents.reduce(
+                    (sum: number, d: any) => sum + Number(d.unit_quantity || 0),
+                    0,
+                  );
+                  const singular = (labels[unit] as any)?.[0] ?? unit;
+                  const plural = (labels[unit] as any)?.[1] ?? unit;
+                  const label = totalQty === 1 ? singular : plural;
+                  return `${totalQty} ${label} × $${effectiveRate.toFixed(2)}/${singular}`;
+                }
+                if (unit === "flat") {
+                  return `Flat rate × ${documents.length} document${documents.length !== 1 ? "s" : ""}`;
+                }
+                return `${documents.reduce((sum, doc) => sum + (doc.billable_pages || 0), 0).toFixed(1)} pages × $${effectiveRate.toFixed(2)}/page`;
+              })()}
             </span>
             <span className="text-sm font-semibold text-gray-900">
               ${totals.translationSubtotal.toFixed(2)}
