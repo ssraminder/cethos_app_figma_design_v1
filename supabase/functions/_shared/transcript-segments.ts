@@ -48,10 +48,13 @@ type RawWord = {
   word?: string;
   speaker?: string | number;
   speaker_id?: string | number;
+  speakerLabel?: string;          // Google STT v2
   start?: number;
   end?: number;
   start_time?: number;
   end_time?: number;
+  startOffset?: string;            // Google STT v2 — "1.500s"
+  endOffset?: string;              // Google STT v2 — "2.300s"
   type?: string;
 };
 
@@ -83,7 +86,7 @@ export type RawTranscriptJson = {
   [k: string]: unknown;
 };
 
-export type ProviderHint = "assemblyai" | "elevenlabs" | "openai" | "unknown";
+export type ProviderHint = "assemblyai" | "elevenlabs" | "openai" | "deepgram" | "google" | "unknown";
 
 // ── UUID helpers ─────────────────────────────────────────────────────────────
 
@@ -127,11 +130,18 @@ function coerceSpeaker(s: string | number | undefined | null): string | null {
 }
 
 // Pull a numeric ms timestamp from either ms-or-seconds-style fields.
-// AssemblyAI: ms. OpenAI verbose_json: seconds. ElevenLabs: seconds (float).
+// AssemblyAI: ms. OpenAI verbose_json: seconds. ElevenLabs / Deepgram: seconds (float).
 // We normalize everything to ms internally.
 function toMs(value: number | undefined, hint: "ms" | "s"): number {
   if (value === undefined || value === null || !Number.isFinite(value)) return 0;
   return hint === "ms" ? Math.round(value) : Math.round(value * 1000);
+}
+
+// Google STT v2 emits offsets as strings like "1.500s" or "12s" — convert to seconds.
+function parseOffsetString(s: string | undefined): number {
+  if (!s) return 0;
+  const m = s.match(/^(-?\d+(?:\.\d+)?)s?$/);
+  return m ? parseFloat(m[1]) : 0;
 }
 
 function detectProvider(raw: RawTranscriptJson, providedHint?: ProviderHint): ProviderHint {
@@ -143,8 +153,13 @@ function detectProvider(raw: RawTranscriptJson, providedHint?: ProviderHint): Pr
     raw.segments[0].speaker === undefined
   ) return "openai";
   if (Array.isArray(raw.words) && raw.words.length > 0) {
-    // ElevenLabs words have decimal start/end (seconds); AssemblyAI words have integer ms.
-    const sample = raw.words[0];
+    const sample = raw.words[0] as RawWord;
+    // Google STT v2 emits startOffset/endOffset as "1.500s" strings.
+    if (typeof (sample as { startOffset?: unknown }).startOffset === "string") return "google";
+    // ElevenLabs words have decimal start/end (seconds); AssemblyAI words have integer ms;
+    // Deepgram words have decimal start/end (seconds) too — both look the same here, so the
+    // explicit ProviderHint is what discriminates. With no hint, prefer "elevenlabs" for
+    // decimal seconds (Deepgram normalizes through the same Branch-2 path either way).
     const start = sample.start ?? sample.start_time;
     if (typeof start === "number" && start > 0 && start < 100 && !Number.isInteger(start)) {
       return "elevenlabs";
@@ -206,21 +221,28 @@ export async function normalizeToSegments(
     return segments;
   }
 
-  // Branch 2: ElevenLabs / AssemblyAI word stream — group by speaker change.
+  // Branch 2: ElevenLabs / AssemblyAI / Deepgram / Google word stream — group by speaker change.
   if (Array.isArray(raw.words) && raw.words.length > 0) {
-    const isSeconds = provider === "elevenlabs";
+    // Seconds vs ms detection: AssemblyAI words have integer ms; ElevenLabs / Deepgram have
+    // decimal seconds; Google STT v2 uses string offsets like "1.500s" handled separately.
+    const isSeconds = provider === "elevenlabs" || provider === "deepgram" || provider === "google";
     const hint = isSeconds ? "s" : "ms";
     let curSpeaker: string | null = null;
     let curWords: Word[] = [];
     let curStart = 0;
     let curEnd = 0;
+    let needsSpacing = false;
+
+    // Detect whether the provider supplies explicit "spacing" tokens (ElevenLabs does;
+    // Deepgram/Google don't). When they don't, we join words on a single space at flush time.
+    needsSpacing = !raw.words.some((w) => (w.type ?? "text") === "spacing");
 
     const flush = async () => {
-      const text = curWords
-        .filter((w) => (w.type ?? "text") !== "spacing")
-        .map((w) => w.text)
-        .join("")
-        .trim();
+      const filtered = curWords.filter((w) => (w.type ?? "text") !== "spacing");
+      const joined = needsSpacing
+        ? filtered.map((w) => w.text).join(" ")     // Deepgram/Google: insert spaces
+        : filtered.map((w) => w.text).join("");     // ElevenLabs: spacing tokens carry whitespace
+      const text = joined.replace(/\s+/g, " ").trim();
       if (!text) {
         curWords = [];
         return;
@@ -238,9 +260,13 @@ export async function normalizeToSegments(
     };
 
     for (const w of raw.words) {
-      const speaker = coerceSpeaker(w.speaker ?? w.speaker_id);
-      const wStart = toMs(w.start ?? w.start_time, hint);
-      const wEnd = toMs(w.end ?? w.end_time, hint);
+      const speaker = coerceSpeaker(w.speaker ?? w.speaker_id ?? w.speakerLabel);
+      const wStart = w.startOffset !== undefined
+        ? toMs(parseOffsetString(w.startOffset), "s")
+        : toMs(w.start ?? w.start_time, hint);
+      const wEnd = w.endOffset !== undefined
+        ? toMs(parseOffsetString(w.endOffset), "s")
+        : toMs(w.end ?? w.end_time, hint);
       const wText = w.text ?? w.word ?? "";
       const wType = w.type ?? "text";
 
