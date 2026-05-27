@@ -114,12 +114,24 @@ async function uploadResumable(
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     throw new Error("Supabase URL/key not configured");
   }
+
+  // The storage TUS endpoint requires a valid JWT in the Authorization
+  // header. The anon key technically IS a JWT, but Supabase's edge proxy
+  // rejects it for /upload/resumable with "Invalid Compact JWS" in some
+  // configurations (custom domain, RLS-gated bucket). Prefer the
+  // authenticated user's session token — admin users always have one here
+  // — and fall back to the anon key only if no session exists (e.g. the
+  // future anonymous customer-side upload flow).
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token ?? SUPABASE_ANON_KEY;
+
   return new Promise<void>((resolve, reject) => {
     const upload = new tus.Upload(file, {
       endpoint: `${SUPABASE_URL}/storage/v1/upload/resumable`,
       retryDelays: [0, 3000, 5000, 10000, 20000],
       headers: {
-        authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        authorization: `Bearer ${accessToken}`,
+        apikey: SUPABASE_ANON_KEY,    // some proxies require both
         "x-upsert": "false",
       },
       uploadDataDuringCreation: true,
