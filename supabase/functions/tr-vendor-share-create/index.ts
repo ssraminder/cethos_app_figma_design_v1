@@ -11,6 +11,24 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { CORS, json, serviceClient, actorFromRequest, writeAudit, tr } from "../_shared/tr.ts";
+import {
+  callout,
+  ctaButton,
+  emailShell,
+  esc as escShell,
+  eyebrow,
+  hint,
+  lead,
+  REPLY,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Translation Review — Share",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const ADMIN_PORTAL_URL = Deno.env.get("ADMIN_PORTAL_URL") || "https://portal.cethos.com";
 
@@ -101,33 +119,23 @@ serve(async (req) => {
 
     if (BREVO_API_KEY) {
       const subject = `Translation review: ${jobLabel}`;
-      const messageBlock = message
-        ? `<div style="margin-top:16px;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#374151;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(message)}</div>`
+      const firstName = (recipient_name || recipient_email || "there").trim().split(/\s+/)[0];
+      const messageCallout = message
+        ? callout({ tone: "info", title: "Message from the reviewer", body: escShell(message).replace(/\n/g, "<br />") })
         : "";
-      const htmlContent = `
-<!doctype html>
-<html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;"><tr><td align="center">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-      <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
-        <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
-        <div style="font-size:13px;opacity:0.9;margin-top:2px;">Translation review available for your input</div>
-      </td></tr>
-      <tr><td style="padding:24px;color:#111827;">
-        <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">Hello ${esc(recipient_name || recipient_email)},</p>
-        <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">${esc(staff.full_name ?? "Cethos")} has shared a translation review with you for <strong>${esc(jobLabel)}</strong>. You can read the reviewer's comments, reply, and upload a new version of the file using the link below.</p>
-        ${messageBlock}
-        <p style="margin:24px 0 0;text-align:center;">
-          <a href="${esc(share_url)}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">Open review</a>
-        </p>
-        <p style="margin:16px 0 0;font-size:11px;color:#6b7280;text-align:center;">Link expires in ${expires_in_days} day${expires_in_days === 1 ? "" : "s"}.</p>
-      </td></tr>
-      <tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-        You received this because a Cethos reviewer shared a QM job with you. If you didn't expect it, you can ignore the email.
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`.trim();
+      const htmlContent = emailShell(
+        [
+          eyebrow("Translation review"),
+          title(`${escShell(staff.full_name ?? "Cethos")} shared a translation review with you`),
+          lead(
+            `Hi ${escShell(firstName)}, this is a review request for <strong>${escShell(jobLabel)}</strong>. You can read the reviewer's comments, reply, and upload a new version of the file using the link below.`,
+          ),
+          messageCallout,
+          ctaButton({ label: "Open review", url: share_url }),
+          hint(`Link expires in ${expires_in_days} day${expires_in_days === 1 ? "" : "s"}. You received this because a Cethos reviewer shared a QM job with you — if you didn't expect it, you can ignore this email.`),
+        ].join(""),
+        { replyTo: REPLY.vendor, template: TEMPLATE, preheader: `Translation review for ${escShell(jobLabel)} — your input requested.` },
+      );
 
       try {
         const res = await fetch("https://api.brevo.com/v3/smtp/email", {

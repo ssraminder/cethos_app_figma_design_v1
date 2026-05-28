@@ -17,6 +17,30 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  callout,
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc as escShell,
+  hint,
+  lead,
+  REPLY,
+  statusBadge,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TPL_ACCEPTANCE_NORMAL: TemplateMeta = {
+  name: "Vendor — Acceptance Reminder (1h)",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
+const TPL_ACCEPTANCE_URGENT: TemplateMeta = {
+  name: "Vendor — Acceptance Reminder (Urgent 2h)",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const VENDOR_PORTAL_URL =
   Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com";
@@ -150,24 +174,32 @@ serve(async (req: Request) => {
           ? `URGENT: Please accept assignment — ${orderLabel} — ${escapeHtml(step.name)}`
           : `Reminder: Please accept assignment — ${orderLabel} — ${escapeHtml(step.name)}`;
 
-        const htmlBody = `
-          <p>Hi ${escapeHtml(vendor.full_name)},</p>
-          ${isUrgent
-            ? `<p style="color: #dc2626; font-weight: bold;">This assignment has been waiting for your acceptance for over 2 hours. Please respond as soon as possible.</p>`
-            : `<p>This is a reminder that you have a pending assignment waiting for your acceptance.</p>`
-          }
-          <table style="border-collapse:collapse; margin:16px 0;">
-            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">Order:</td><td style="padding:4px 0; font-weight:600;">${escapeHtml(orderLabel)}</td></tr>
-            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">Step:</td><td style="padding:4px 0; font-weight:600;">${escapeHtml(stepLabel)}</td></tr>
-            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">Deadline:</td><td style="padding:4px 0; font-weight:600;">${escapeHtml(deadlineStr)}</td></tr>
-          </table>
-          <p>
-            <a href="${VENDOR_PORTAL_URL}/jobs" style="display:inline-block;padding:10px 20px;background:#0d9488;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
-              Accept Assignment
-            </a>
-          </p>
-          <p style="color:#9ca3af; font-size:12px;">If you cannot complete this assignment, please contact the project manager at ${ADMIN_EMAIL}.</p>
-        `;
+        const firstName = (vendor.full_name || "").trim().split(/\s+/)[0] || "there";
+        const urgentCallout = isUrgent
+          ? callout({
+              tone: "error",
+              title: "Action needed within the hour",
+              body: "This assignment has been waiting for your acceptance for over 2 hours. Please respond as soon as possible — if you can't take it, decline so we can route it to another vendor.",
+            })
+          : "";
+        const htmlBody = emailShell(
+          [
+            statusBadge(isUrgent ? "error" : "warn", isUrgent ? "Urgent · 2h+" : "Awaiting acceptance"),
+            title(`Please accept your assignment for ${escShell(orderLabel)}`),
+            lead(
+              `Hi ${escShell(firstName)}, ${isUrgent ? "this assignment is overdue for your acceptance — please respond as soon as possible." : "this is a reminder that you have a pending assignment waiting for your acceptance."}`,
+            ),
+            detailsTable([
+              ["Order", orderLabel],
+              ["Step", stepLabel],
+              ["Deadline", deadlineStr],
+            ]),
+            urgentCallout,
+            ctaButton({ label: "Accept assignment", url: `${VENDOR_PORTAL_URL}/jobs`, align: "full" }),
+            hint(`If you cannot complete this assignment, please contact the project manager at <a href="mailto:${ADMIN_EMAIL}" style="color:#0E7490;">${escShell(ADMIN_EMAIL)}</a>.`),
+          ].join(""),
+          { replyTo: REPLY.vendor, template: isUrgent ? TPL_ACCEPTANCE_URGENT : TPL_ACCEPTANCE_NORMAL, preheader: `${isUrgent ? "URGENT" : "Reminder"}: pending assignment for ${orderLabel}` },
+        );
 
         // notification_log has NOT NULL constraints on event_type,
         // recipient_type, recipient_email, subject, status. The old INSERTs
@@ -188,7 +220,8 @@ serve(async (req: Request) => {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              sender: { name: "Cethos Portal", email: "noreply@cethos.com" },
+              sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
+              replyTo: { email: REPLY.vendor },
               to: recipients,
               subject,
               htmlContent: htmlBody,
