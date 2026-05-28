@@ -256,6 +256,29 @@ serve(async (req: Request) => {
     const intendedUse = quote.intended_use ?? {};
     const currency = quote.currency ?? "CAD";
 
+    // Re-project standard + rush delivery dates from "today" using the same
+    // business-day budget that was promised on the original issue date. The
+    // RPC locks once the quote has converted into an order. Holiday lookups
+    // are handled by the existing is_business_day() helper.
+    try {
+      const { data: shifted, error: shiftErr } = await supabase.rpc(
+        "shift_quote_delivery_dates",
+        { p_quote_id: quote.id, p_region: "CA-AB" },
+      );
+      if (shiftErr) {
+        console.warn("shift_quote_delivery_dates RPC failed:", shiftErr.message);
+      } else if (shifted && shifted.shifted === true) {
+        if (shifted.standard_delivery) {
+          quote.promised_delivery_date = shifted.standard_delivery;
+        }
+        if (shifted.rush_delivery) {
+          quote.promised_delivery_date_rush = shifted.rush_delivery;
+        }
+      }
+    } catch (err) {
+      console.warn("shift_quote_delivery_dates threw:", err);
+    }
+
     // Look up the PM (Cethos-side staff who created the quote) if any.
     let pm: { full_name: string | null; email: string | null } | null = null;
     if (quote.created_by_staff_id) {
