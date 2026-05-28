@@ -87,8 +87,14 @@ export const ALLOWED_STATUS_TRANSITIONS: Record<string, Set<string>> = {
   revision_needed: new Set(["processing"]),
   // Manual quotes from create-fast-quote / admin-create-order land in
   // quote_ready. Without this entry, any customer payment attempt 403s
-  // because pending_payment is not a reachable transition.
-  quote_ready: new Set(["pending_payment", "in_review", "checkout_started"]),
+  // because pending_payment is not a reachable transition. ar_approved is
+  // the AR-billed accept-without-paying path on the quote-review page.
+  quote_ready: new Set([
+    "pending_payment",
+    "in_review",
+    "checkout_started",
+    "ar_approved",
+  ]),
 };
 
 export function sanitizeQuotePatch(
