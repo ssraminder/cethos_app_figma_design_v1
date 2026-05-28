@@ -1568,20 +1568,29 @@ function FileDownloadsSection({ job, file, fileIndex, isSyntheticSingleFile }: {
     async function fetchLinks() {
       const outputs: Array<{ label: string; format: string; url: string }> = [];
 
-      // Per-file output format downloads (primary)
-      for (const fmt of (job.delivery_formats ?? [])) {
-        const outputPath = isSyntheticSingleFile
-          ? `${job.id}/output/transcript.${fmt}`
-          : `${job.id}/output/file-${fileIndex + 1}.${fmt}`;
-        const { data: outUrl } = await supabase.storage
-          .from("transcription-uploads")
-          .createSignedUrl(outputPath, 3600);
-        if (outUrl?.signedUrl) {
-          outputs.push({ label: fmt.toUpperCase(), format: fmt.toLowerCase(), url: outUrl.signedUrl });
+      // Per-file output format downloads — only try when the pipeline
+      // actually produced outputs. Failed / processing / pending / expired
+      // jobs never reach transcription-deliver, so the output files don't
+      // exist and Supabase storage 400s with "object not found" on every
+      // delivery_format. That floods the console and makes the actual
+      // upstream failure harder to spot.
+      const outputsExpected = job.status === "completed" || !!job.delivered_at;
+      if (outputsExpected) {
+        for (const fmt of (job.delivery_formats ?? [])) {
+          const outputPath = isSyntheticSingleFile
+            ? `${job.id}/output/transcript.${fmt}`
+            : `${job.id}/output/file-${fileIndex + 1}.${fmt}`;
+          const { data: outUrl } = await supabase.storage
+            .from("transcription-uploads")
+            .createSignedUrl(outputPath, 3600);
+          if (outUrl?.signedUrl) {
+            outputs.push({ label: fmt.toUpperCase(), format: fmt.toLowerCase(), url: outUrl.signedUrl });
+          }
         }
       }
 
-      // Source audio download (secondary)
+      // Source audio download (secondary) — always try; the source file
+      // always exists from the moment the upload completes.
       const { data: srcUrl } = await supabase.storage
         .from("transcription-uploads")
         .createSignedUrl(file.path, 3600);
@@ -1594,7 +1603,7 @@ function FileDownloadsSection({ job, file, fileIndex, isSyntheticSingleFile }: {
     }
     fetchLinks();
     return () => { cancelled = true; };
-  }, [job.id, file.path, fileIndex, isSyntheticSingleFile, job.delivery_formats]);
+  }, [job.id, job.status, job.delivered_at, file.path, fileIndex, isSyntheticSingleFile, job.delivery_formats]);
 
   return (
     <div>
