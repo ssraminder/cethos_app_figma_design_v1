@@ -11,6 +11,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { generateSignedUrl, getSttInputBucketName, ensureSttInputBucket } from "./google-storage.ts";
+import { getGoogleIdToken } from "./google-auth.ts";
 
 export type ExtractResult = {
   success: true;
@@ -142,17 +143,32 @@ export async function extractAudioViaCloudRun(opts: ExtractOptions): Promise<Ext
     sample_rate_hz: opts.sampleRateHz ?? 16000,
   };
 
+  // Cloud Run with --no-allow-unauthenticated demands a Google ID token in
+  // Authorization: Bearer. The audience MUST be the bare service URL (no path
+  // or query). The shared secret stays as a defense-in-depth check inside the
+  // container.
+  let idToken: string | null = null;
+  try {
+    const cleanedUrl = extractorUrl.replace(/\/+$/, "");
+    idToken = await getGoogleIdToken(cleanedUrl);
+  } catch (e) {
+    // ID-token failure is fatal — without it Cloud Run 403s before our
+    // container's secret check runs. Surface the underlying error so
+    // misconfigurations are visible.
+    return {
+      success: false,
+      error: `failed to mint Google ID token for extractor: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
   let resp: Response;
   try {
     resp = await fetch(extractEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${idToken}`,
         "x-cethos-secret": extractorSecret,
-        // When the Cloud Run service is deployed --no-allow-unauthenticated,
-        // the caller also needs an ID token. The Cloud Run service URL acts
-        // as the audience. If/when we tighten this, mint the ID token here
-        // via getGoogleAccessToken-style flow with aud = extractorUrl.
       },
       body: JSON.stringify(body),
     });

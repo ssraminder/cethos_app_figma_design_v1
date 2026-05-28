@@ -3,36 +3,38 @@
 // POST /extract
 //   Headers:
 //     Content-Type: application/json
-//     x-cethos-secret: <shared secret from EXTRACTOR_SECRET env var>
+//     Authorization: Bearer <Google ID token for this service URL>   (set by Cloud Run
+//                    --no-allow-unauthenticated invoker, Cethos's Supabase edge fn
+//                    mints it via the GOOGLE_APPLICATION_CREDENTIALS_JSON service account)
+//     x-cethos-secret: <shared secret from EXTRACTOR_SECRET env var>  (defense in depth)
 //   Body:
 //     {
-//       "input_url":         "https://...",        // any HTTP(S) URL (Supabase signed URL works)
-//       "output_upload_url": "https://...",        // signed PUT URL where audio goes
-//       "output_upload_method": "PUT" | "POST",    // optional, default PUT
-//       "output_content_type":  "audio/webm",      // optional, default audio/webm
-//       "bitrate_kbps":      32,                    // optional, default 32 (good for speech)
-//       "channels":          1,                     // optional, default 1
-//       "sample_rate_hz":    16000                  // optional, default 16000 (STT-friendly)
+//       "input_url":          "https://...",        // any HTTP(S) URL (GCS signed URL)
+//       "output_upload_url":  "https://...",        // signed PUT URL where audio goes
+//       "output_upload_method": "PUT" | "POST",     // optional, default PUT
+//       "output_content_type":  "audio/webm",       // optional, default audio/webm
+//       "bitrate_kbps":       32,                    // optional, default 32 (good for speech)
+//       "channels":           1,                     // optional, default 1
+//       "sample_rate_hz":     16000                  // optional, default 16000
 //     }
 //   Response (200):
 //     { "success": true, "duration_seconds": 7234, "output_size_bytes": 28934512 }
-//   Response (4xx/5xx):
-//     { "success": false, "error": "<message>" }
 //
-// Auth: shared secret header (x-cethos-secret). Cloud Run can also be deployed
-// with --no-allow-unauthenticated + IAM-based invoker permission for a stronger
-// guarantee; the shared secret is a belt-and-suspenders check inside the
-// container regardless.
-//
-// Architecture: streaming where possible. We pipe the input HTTP response into
-// ffmpeg via stdin, ffmpeg writes Opus/WebM to stdout, and we collect the
-// output into a buffer that we PUT to the upload URL at the end. For a 2hr
-// video at 32 kbps mono, the output is ~30 MB which fits in memory comfortably
-// at our 2 Gi memory ceiling. If we ever need 8hr+ files we can switch to
-// streaming-upload via a multipart PUT.
+// Implementation: download input to a temp file, run ffmpeg on the file path
+// (NOT stdin), upload the output temp file via streaming PUT. The previous
+// stdin-pipe approach via Readable.fromWeb produced empty Opus containers
+// because ffmpeg couldn't autodetect the input container format without a
+// seekable source. File-based input is reliable for any container ffmpeg
+// supports and handles arbitrarily large files within our memory budget
+// since neither file is loaded fully into RAM.
 
 const express = require("express");
 const ffmpeg = require("fluent-ffmpeg");
+const fs = require("fs");
+const fsp = require("fs/promises");
+const os = require("os");
+const path = require("path");
+const { pipeline } = require("stream/promises");
 const { Readable } = require("stream");
 
 const PORT = process.env.PORT || 8080;
@@ -66,31 +68,33 @@ app.post("/extract", async (req, res) => {
     return res.status(400).json({ success: false, error: "input_url and output_upload_url are required" });
   }
 
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "extract-"));
+  const inputPath = path.join(tmpDir, "input.bin");
+  const outputPath = path.join(tmpDir, "output.webm");
   const startMs = Date.now();
-  let inputResp;
-  try {
-    inputResp = await fetch(input_url);
-  } catch (e) {
-    return res.status(502).json({ success: false, error: `failed to reach input_url: ${e.message}` });
-  }
-  if (!inputResp.ok || !inputResp.body) {
-    return res.status(502).json({
-      success: false,
-      error: `input_url returned ${inputResp.status}`,
-    });
-  }
-
-  // Pipe the fetch Response body (Web stream) into a Node Readable for ffmpeg.
-  const inputStream = Readable.fromWeb(inputResp.body);
-
-  // Collect ffmpeg stdout into a buffer. For files > a few hundred MB we'd
-  // want to stream this through to the output upload — see comment at top.
-  const chunks = [];
-  let duration = 0;
 
   try {
+    // ── 1. Download input to a temp file ──
+    let inputResp;
+    try {
+      inputResp = await fetch(input_url);
+    } catch (e) {
+      return res.status(502).json({ success: false, error: `failed to reach input_url: ${e.message}` });
+    }
+    if (!inputResp.ok || !inputResp.body) {
+      return res.status(502).json({ success: false, error: `input_url returned ${inputResp.status}` });
+    }
+    const downloadStart = Date.now();
+    await pipeline(Readable.fromWeb(inputResp.body), fs.createWriteStream(inputPath));
+    const inputStat = await fsp.stat(inputPath);
+    const downloadMs = Date.now() - downloadStart;
+    console.log(`download: ${inputStat.size} bytes in ${downloadMs} ms`);
+
+    // ── 2. Run ffmpeg on the temp file (seekable, format auto-detection works) ──
+    let duration = 0;
+    const extractStart = Date.now();
     await new Promise((resolve, reject) => {
-      const command = ffmpeg(inputStream)
+      ffmpeg(inputPath)
         .noVideo()
         .audioCodec("libopus")
         .audioBitrate(`${bitrate_kbps}k`)
@@ -98,69 +102,84 @@ app.post("/extract", async (req, res) => {
         .audioFrequency(sample_rate_hz)
         .format("webm")
         .on("codecData", (data) => {
-          // data.duration looks like "01:23:45.67"
           const m = (data?.duration || "").match(/^(\d+):(\d+):(\d+(?:\.\d+)?)/);
           if (m) {
             duration = parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseFloat(m[3]);
           }
         })
         .on("stderr", (line) => {
-          // Quiet by default — Cloud Run logs ffmpeg's stderr if we don't.
-          // Uncomment for debugging.
-          // console.log("ffmpeg:", line);
+          // ffmpeg writes everything (including progress) to stderr; log so
+          // Cloud Run audit shows what happened on failure
+          console.log(`ffmpeg: ${line}`);
         })
         .on("error", (err) => reject(err))
-        .on("end", () => resolve());
+        .on("end", () => resolve())
+        .save(outputPath);
+    });
+    const extractMs = Date.now() - extractStart;
 
-      const out = command.pipe();
-      out.on("data", (chunk) => chunks.push(chunk));
-      out.on("error", (err) => reject(err));
+    const outputStat = await fsp.stat(outputPath);
+    console.log(`extract: ${outputStat.size} bytes in ${extractMs} ms`);
+
+    if (outputStat.size < 1024) {
+      // Sanity: under 1 KB is almost certainly a container-header-only output.
+      // Better to fail loud than silently send empty audio to STT.
+      return res.status(500).json({
+        success: false,
+        error: `extraction produced suspiciously small output (${outputStat.size} bytes) — input may have had no audio track or used a codec ffmpeg couldn't decode`,
+        duration_seconds: Math.ceil(duration),
+      });
+    }
+
+    // ── 3. Stream the temp file out via PUT ──
+    const uploadStart = Date.now();
+    const fileStream = fs.createReadStream(outputPath);
+    const uploadResp = await fetch(output_upload_url, {
+      method: output_upload_method,
+      headers: {
+        "Content-Type": output_content_type,
+        "Content-Length": String(outputStat.size),
+      },
+      // duplex needed when body is a stream (Node 18+ fetch)
+      duplex: "half",
+      body: fileStream,
+    });
+    const uploadMs = Date.now() - uploadStart;
+
+    if (!uploadResp.ok) {
+      const errText = await uploadResp.text().catch(() => "");
+      return res.status(502).json({
+        success: false,
+        error: `upload returned ${uploadResp.status}: ${errText.slice(0, 200)}`,
+        duration_seconds: Math.ceil(duration),
+        output_size_bytes: outputStat.size,
+      });
+    }
+
+    const totalMs = Date.now() - startMs;
+    return res.json({
+      success: true,
+      duration_seconds: Math.ceil(duration),
+      output_size_bytes: outputStat.size,
+      download_ms: downloadMs,
+      extract_ms: extractMs,
+      upload_ms: uploadMs,
+      total_ms: totalMs,
     });
   } catch (e) {
+    console.error("extract failed:", e);
     return res.status(500).json({
       success: false,
-      error: `ffmpeg failed: ${e.message || String(e)}`,
+      error: e?.message || String(e),
     });
+  } finally {
+    // Clean up temp dir regardless of outcome
+    try {
+      await fsp.rm(tmpDir, { recursive: true, force: true });
+    } catch (e) {
+      console.warn("temp cleanup failed:", e?.message || e);
+    }
   }
-
-  const outputBuffer = Buffer.concat(chunks);
-  const extractMs = Date.now() - startMs;
-
-  // Upload to the signed URL the caller provided.
-  let uploadResp;
-  try {
-    uploadResp = await fetch(output_upload_url, {
-      method: output_upload_method,
-      headers: { "Content-Type": output_content_type },
-      body: outputBuffer,
-    });
-  } catch (e) {
-    return res.status(502).json({
-      success: false,
-      error: `failed to reach output_upload_url: ${e.message}`,
-      duration_seconds: Math.ceil(duration),
-      output_size_bytes: outputBuffer.length,
-    });
-  }
-
-  if (!uploadResp.ok) {
-    const errText = await uploadResp.text().catch(() => "");
-    return res.status(502).json({
-      success: false,
-      error: `upload returned ${uploadResp.status}: ${errText.slice(0, 200)}`,
-      duration_seconds: Math.ceil(duration),
-      output_size_bytes: outputBuffer.length,
-    });
-  }
-
-  const totalMs = Date.now() - startMs;
-  return res.json({
-    success: true,
-    duration_seconds: Math.ceil(duration),
-    output_size_bytes: outputBuffer.length,
-    extract_ms: extractMs,
-    total_ms: totalMs,
-  });
 });
 
 app.listen(PORT, () => {

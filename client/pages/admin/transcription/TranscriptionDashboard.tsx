@@ -529,7 +529,13 @@ function AdminUploadModal({ open, onClose, onUploaded }: { open: boolean; onClos
           human_review_requested: humanReviewEnabled,
           human_review_tier: humanReviewEnabled ? humanReviewTier : null,
           expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          source_files: sourceFiles.length > 1 ? sourceFiles : null,
+          // Always persist source_files (even for single-file jobs) so the
+          // gcs_uri makes it to transcription-process. Previously we stored
+          // it only for multi-file jobs and synthesized a SourceFile from
+          // file_path for single-file jobs — which silently dropped the
+          // gcs_uri on the floor and made transcription-process fall back
+          // to a non-existent Supabase storage path.
+          source_files: sourceFiles.length > 0 ? sourceFiles : null,
         });
 
       if (jobErr) throw new Error(`Job insert failed: ${jobErr.message}`);

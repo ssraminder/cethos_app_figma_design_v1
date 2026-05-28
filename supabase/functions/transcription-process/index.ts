@@ -625,7 +625,7 @@ serve(async (req: Request) => {
 // arbitrarily long audio natively.
 const PROVIDER_DURATION_CAPS_SECONDS: Record<string, number> = {
   openai: 25 * 60,              // gpt-4o-transcribe: 25 min hard limit
-  google: 60,                   // v2 sync recognize: 60 s inline (batch async = Phase 2)
+  google: 8 * 60 * 60,          // v2 batchRecognize: 8 h. transcribeGoogle routes sync (<=60s, <=10MB) vs batch internally.
   elevenlabs: 4 * 60 * 60,      // scribe-v2: ~4 h soft cap
   deepgram: 10 * 60 * 60,       // nova-3 prerecorded via URL: comfortably 10 h+
   assemblyai: 10 * 60 * 60,     // universal-2 async: 10 h+
@@ -1080,7 +1080,13 @@ async function transcribeElevenLabs(
       .eq("id", job.source_language_id)
       .maybeSingle();
     if (lang?.code) {
-      form.append("language_code", lang.code);
+      // ElevenLabs accepts an allowlist of ISO 639-3 codes (afr, amh, ... kmr, ...).
+      // Cethos-internal codes sometimes carry a variant suffix (e.g. kmr-badini
+      // for Badini Kurdish). Strip the variant — ElevenLabs validates the base.
+      // If the base isn't in their allowlist either, omit entirely and let
+      // their model auto-detect rather than fail the entire request.
+      const elevenCode = mapToElevenLabsCode(lang.code);
+      if (elevenCode) form.append("language_code", elevenCode);
     }
   }
 
@@ -1216,6 +1222,50 @@ function mapToGoogleBCP47(code: string): string {
   // Indic short codes — leave as-is; Google accepts en, hi, pa, etc. and resolves.
   // Already-BCP-47 codes (en-US, fr-FR) — pass through.
   return code;
+}
+
+// ElevenLabs Scribe v2 supported language codes (ISO 639-3, May 2026 docs).
+// Cethos-internal codes that carry a variant suffix (kmr-badini) get stripped
+// to the base. Codes not in the allowlist return null so the caller omits
+// the language_code parameter and ElevenLabs auto-detects instead of 400ing.
+const ELEVENLABS_SUPPORTED_CODES = new Set([
+  "afr", "amh", "ara", "asm", "ast", "aze", "bak", "bas", "bel", "ben", "bhr",
+  "bod", "bos", "bre", "bul", "cat", "ceb", "ces", "chv", "cnh", "cre", "cym",
+  "dan", "dav", "deu", "div", "dyu", "ell", "eng", "epo", "est", "eus", "fao",
+  "fas", "fil", "fin", "fra", "fry", "ful", "gla", "gle", "glg", "guj", "hat",
+  "hau", "heb", "hin", "hrv", "hsb", "hun", "hye", "ibo", "ina", "ind", "isl",
+  "ita", "jav", "jpn", "kab", "kan", "kas", "kat", "kaz", "kea", "khm", "kin",
+  "kir", "kln", "kmr", "ckb", "kor", "kur", "lao", "lat", "lav", "lij", "lin",
+  "lit", "ltg", "ltz", "lug", "luo", "mal", "mar", "mdf", "mhr", "mkd", "mlg",
+  "mlt", "mon", "mri", "mrj", "msa", "mya", "myv", "nan", "nep", "nhi", "nld",
+  "nor", "nso", "nya", "oci", "ori", "orm", "oss", "pan", "pol", "por", "pus",
+  "quy", "roh", "ron", "rus", "sah", "san", "sat", "sin", "skr", "slk", "slv",
+  "smo", "sna", "snd", "som", "sot", "spa", "sqi", "srd", "srp", "sun", "swa",
+  "swe", "tam", "tat", "tel", "tgk", "tha", "tig", "tir", "tok", "ton", "tsn",
+  "tuk", "tur", "twi", "uig", "ukr", "umb", "urd", "uzb", "vie", "vot", "vro",
+  "wol", "xho", "yid", "yor", "yue", "zgh", "zho", "zul", "zza",
+]);
+function mapToElevenLabsCode(code: string): string | null {
+  const lower = code.toLowerCase();
+  // Try direct match first
+  if (ELEVENLABS_SUPPORTED_CODES.has(lower)) return lower;
+  // Strip variant suffix (kmr-badini → kmr, pt-br → pt? — but ElevenLabs uses
+  // 3-letter codes, so the leading segment should already be 3 letters).
+  const base = lower.split("-")[0];
+  if (ELEVENLABS_SUPPORTED_CODES.has(base)) return base;
+  // Common 2→3 letter mappings for codes the languages table stores as 2-letter
+  const TWO_TO_THREE: Record<string, string> = {
+    en: "eng", fr: "fra", es: "spa", de: "deu", it: "ita", pt: "por", nl: "nld",
+    ru: "rus", uk: "ukr", el: "ell", hi: "hin", ar: "ara", fa: "fas", ur: "urd",
+    bn: "ben", ta: "tam", te: "tel", ml: "mal", kn: "kan", mr: "mar", ne: "nep",
+    gu: "guj", si: "sin", pa: "pan", he: "heb", zh: "zho", ja: "jpn", ko: "kor",
+    th: "tha", vi: "vie", id: "ind", ms: "msa", tl: "fil", tr: "tur", pl: "pol",
+    cs: "ces", da: "dan", sv: "swe", no: "nor", fi: "fin", bg: "bul",
+  };
+  const threeLetter = TWO_TO_THREE[base];
+  if (threeLetter && ELEVENLABS_SUPPORTED_CODES.has(threeLetter)) return threeLetter;
+  // Give up — let ElevenLabs auto-detect rather than fail with 400
+  return null;
 }
 
 // ── Google Speech-to-Text v2 ─────────────────────────────────────────────────
