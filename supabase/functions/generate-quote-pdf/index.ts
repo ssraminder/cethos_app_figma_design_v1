@@ -21,6 +21,8 @@ import {
   PDFDocument,
   PDFImage,
   PDFFont,
+  PDFName,
+  PDFString,
   StandardFonts,
   rgb,
 } from "https://esm.sh/pdf-lib@1.17.1";
@@ -214,9 +216,11 @@ serve(async (req: Request) => {
           surcharge_total, calculated_totals, is_rush, turnaround_type,
           estimated_delivery_date, promised_delivery_date,
           promised_delivery_date_rush, expires_at, special_instructions,
-          created_at, created_by_staff_id,
+          created_at, created_by_staff_id, converted_to_order_id,
+          advance_percentage, advance_amount, advance_received_at,
+          payment_link, payment_link_created_at, payment_link_expires_at,
           customer:customers(id, full_name, email, phone, company_name,
-            is_ar_customer, payment_terms,
+            is_ar_customer, payment_terms, invoicing_branch_id,
             billing_address_line1, billing_address_line2,
             billing_city, billing_state, billing_postal_code, billing_country),
           source_language:languages!quotes_source_language_id_fkey(name, code),
@@ -299,6 +303,124 @@ serve(async (req: Request) => {
     const rushMultiplier = Number(rushSetting?.setting_value ?? 1.3);
     const rushPct = Math.round((rushMultiplier - 1) * 100);
 
+    // Look up the invoicing branch for tax label + tax number. Falls back to
+    // branches.is_default = true if the customer has no invoicing_branch_id.
+    let branch: {
+      tax_label: string | null;
+      tax_number: string | null;
+      legal_name: string | null;
+    } | null = null;
+    if (customer.invoicing_branch_id) {
+      const { data } = await supabase
+        .from("branches")
+        .select("tax_label, tax_number, legal_name")
+        .eq("id", customer.invoicing_branch_id)
+        .maybeSingle();
+      branch = data ?? null;
+    }
+    if (!branch || !branch.tax_number) {
+      const { data } = await supabase
+        .from("branches")
+        .select("tax_label, tax_number, legal_name")
+        .eq("is_default", true)
+        .maybeSingle();
+      branch = data ?? branch;
+    }
+
+    // Mint a Stripe payment link if the quote doesn't have one yet (and the
+    // amount due is positive, and the quote isn't already paid/converted).
+    // Re-uses an existing link if cached on the quote.
+    let paymentUrl: string | null = null;
+    const advancePct = Number(quote.advance_percentage ?? 0);
+    const hasAdvance = advancePct > 0;
+    const amountDue = hasAdvance
+      ? Number(quote.advance_amount ?? 0)
+      : Number(quote.total ?? 0);
+    const canPay =
+      !quote.converted_to_order_id &&
+      quote.status !== "paid" &&
+      amountDue > 0;
+    if (canPay) {
+      const linkExpired =
+        quote.payment_link_expires_at &&
+        new Date(quote.payment_link_expires_at).getTime() < Date.now();
+      if (quote.payment_link && !linkExpired) {
+        paymentUrl = quote.payment_link;
+      } else {
+        try {
+          const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY");
+          if (STRIPE_KEY) {
+            const body = new URLSearchParams();
+            body.append("line_items[0][price_data][currency]", String(currency).toLowerCase());
+            body.append(
+              "line_items[0][price_data][product_data][name]",
+              `Translation Quote ${quote.quote_number}`,
+            );
+            body.append(
+              "line_items[0][price_data][product_data][description]",
+              quote.advance_percentage
+                ? `Advance (${quote.advance_percentage}%) for quote ${quote.quote_number}`
+                : `Payment for translation quote ${quote.quote_number}`,
+            );
+            body.append(
+              "line_items[0][price_data][unit_amount]",
+              String(Math.round(amountDue * 100)),
+            );
+            body.append("line_items[0][quantity]", "1");
+            body.append("metadata[quote_id]", String(quote.id));
+            body.append("metadata[quote_number]", String(quote.quote_number ?? ""));
+            if (quote.advance_percentage) {
+              body.append("metadata[payment_type]", "advance");
+              body.append(
+                "metadata[advance_percentage]",
+                String(quote.advance_percentage),
+              );
+            }
+            body.append("after_completion[type]", "redirect");
+            body.append(
+              "after_completion[redirect][url]",
+              `https://portal.cethos.com/order/confirmation/${quote.id}`,
+            );
+            body.append("allow_promotion_codes", "true");
+
+            const stripeRes = await fetch(
+              "https://api.stripe.com/v1/payment_links",
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${STRIPE_KEY}`,
+                  "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: body.toString(),
+              },
+            );
+            if (stripeRes.ok) {
+              const link = await stripeRes.json();
+              paymentUrl = link.url ?? null;
+              if (paymentUrl) {
+                await supabase
+                  .from("quotes")
+                  .update({
+                    payment_link: paymentUrl,
+                    payment_link_created_at: new Date().toISOString(),
+                  })
+                  .eq("id", quote.id);
+              }
+            } else {
+              const errText = await stripeRes.text();
+              console.warn(
+                "Stripe payment_links create failed:",
+                stripeRes.status,
+                errText.slice(0, 200),
+              );
+            }
+          }
+        } catch (err) {
+          console.warn("Stripe payment link mint threw:", err);
+        }
+      }
+    }
+
     const pdf = await PDFDocument.create();
     pdf.registerFontkit(fontkit);
 
@@ -353,6 +475,10 @@ serve(async (req: Request) => {
         rushPct,
         logoImage,
         usingBrandFont,
+        branch,
+        paymentUrl,
+        amountDue,
+        hasAdvance,
       });
     } else {
       await renderClassicQuote({
@@ -409,6 +535,14 @@ type RenderCtx = {
   rushPct?: number;
   logoImage?: PDFImage | null;
   usingBrandFont?: boolean;
+  branch?: {
+    tax_label: string | null;
+    tax_number: string | null;
+    legal_name: string | null;
+  } | null;
+  paymentUrl?: string | null;
+  amountDue?: number;
+  hasAdvance?: boolean;
 };
 
 async function renderBusinessQuote(ctx: RenderCtx) {
@@ -426,6 +560,10 @@ async function renderBusinessQuote(ctx: RenderCtx) {
     pm,
     rushPct = 30,
     logoImage,
+    branch,
+    paymentUrl,
+    amountDue,
+    hasAdvance,
   } = ctx;
 
   // Page margins for the business layout — wider gutter than the classic one
@@ -512,12 +650,14 @@ async function renderBusinessQuote(ctx: RenderCtx) {
   let y = PAGE_H - 78 - 36;
 
   // ─── META ROW: Quote # / Date / Valid until ──────────────────────────
+  // Extra gap (10pt -> the number sits at y-22 instead of y-18) so the
+  // eyebrow doesn't crowd the wordmark.
   draw("Quote #", M, y, {
     size: 9,
     font: fontBold,
     color: CETHOS_TEAL,
   });
-  draw(quote.quote_number ?? "—", M, y - 18, {
+  draw(quote.quote_number ?? "—", M, y - 22, {
     size: 22,
     font: fontBold,
     color: CETHOS_NAVY,
@@ -556,7 +696,7 @@ async function renderBusinessQuote(ctx: RenderCtx) {
     color: CETHOS_NAVY,
   });
 
-  y -= 38;
+  y -= 42;
 
   // Divider under the meta row
   page.drawLine({
@@ -970,24 +1110,32 @@ async function renderBusinessQuote(ctx: RenderCtx) {
 
   const terms = paymentTermsLabel(customer.payment_terms);
 
-  // Left column rows
+  // Left column rows. "Advance requested" replaces the old Remit-to row —
+  // shows NIL by default, or "X% (CAD $YYY.YY)" when a percentage is set
+  // on quotes.advance_percentage.
   const arApproved = customer.is_ar_customer === true;
-  const accountValue = arApproved
-    ? terms.account
-    : terms.short;
+  const accountValue = arApproved ? terms.account : terms.short;
+  const advancePctInline = Number(quote.advance_percentage ?? 0);
+  const advanceLabel = advancePctInline > 0
+    ? `${advancePctInline % 1 === 0 ? advancePctInline.toFixed(0) : advancePctInline}% (${money(quote.advance_amount, currency)})`
+    : "NIL";
   const leftRows: Array<[string, string]> = [
     ["Account", accountValue],
     ["Methods", "e-Transfer · EFT · Cheque"],
-    ["Remit to", "payments@cethos.com"],
+    ["Advance requested", advanceLabel],
   ];
 
-  // Right column rows
+  // Right column rows. GST/HST label + number come from the branch the
+  // customer is billed under (customer.invoicing_branch_id → branches),
+  // falling back to the default branch.
   const pmName = pm?.full_name?.trim() || "Cethos PM team";
   const pmEmail = pm?.email?.trim() || "pm@cethoscorp.com";
+  const taxLabel = (branch?.tax_label || "GST/HST").toString();
+  const taxNumber = branch?.tax_number || "—";
   const rightRows: Array<[string, string]> = [
     ["Project manager", pmName],
     ["Contact", pmEmail],
-    ["GST/HST", "123456789 RT0001"],
+    [taxLabel, taxNumber],
   ];
 
   let leftRowY = innerTopY - 16;
@@ -1027,11 +1175,15 @@ async function renderBusinessQuote(ctx: RenderCtx) {
     color: TABLE_BORDER,
   });
 
+  const advanceClause = hasAdvance
+    ? `An advance of ${money(quote.advance_amount, currency)} (${advancePctInline}% of total) is required before work begins; balance due on ${terms.short} after delivery. `
+    : arApproved
+    ? `No deposit required — your account is approved for AR billing on ${terms.short} terms. `
+    : `Standard terms apply (${terms.short}). `;
+
   const paragraph =
     `Quote valid for ${terms.days || 30} days from issue date. ` +
-    (arApproved
-      ? `No deposit required — your account is approved for AR billing on ${terms.short} terms. `
-      : `Standard terms apply (${terms.short}). `) +
+    advanceClause +
     `One free revision round included; further changes billed at $0.18/word. ` +
     `ISO 17100 quality workflow with subject-matter linguists, independent ` +
     `editor pass, and final QA. Invoices issued upon delivery; late payments ` +
@@ -1059,9 +1211,10 @@ async function renderBusinessQuote(ctx: RenderCtx) {
   y = notesTop - notesH - 18;
 
   // ─── ACCEPT STRIP (bordered card) ────────────────────────────────────
-  // 90 fits a 3-line wrapped paragraph in Plus Jakarta Sans at 10pt;
-  // Helvetica fallback wraps tighter and leaves a touch of slack.
-  const acceptH = 90;
+  // Height grows with the Pay button so the text never collides with it.
+  // 90 fits a 3-line wrapped paragraph in Plus Jakarta Sans at 10pt; +45
+  // when a Pay button is below, leaving ~14pt breathing room.
+  const acceptH = paymentUrl ? 135 : 90;
   if (y - acceptH < 80) {
     page = pdf.addPage([PAGE_W, PAGE_H]);
     y = PAGE_H - 60;
@@ -1083,31 +1236,85 @@ async function renderBusinessQuote(ctx: RenderCtx) {
     font: fontBold,
     color: CETHOS_NAVY,
   });
+
   const pmEmailForAccept = pmEmail;
-  const acceptText =
-    `Reply to ${pmEmailForAccept} with "ACCEPT ${quote.quote_number ?? ""}" ` +
-    `from any authorized email on file. We will start work within 30 minutes of ` +
-    `confirmation` +
-    (arApproved
-      ? ` — no signature required for AR-approved accounts.`
-      : `.`);
+  const acceptText = hasAdvance
+    ? `Reply to ${pmEmailForAccept} with "ACCEPT ${quote.quote_number ?? ""}" from any authorized email on file. Work will begin once the advance of ${money(amountDue, currency)} is received — use the Pay online button or contact us for wire details.`
+    : `Reply to ${pmEmailForAccept} with "ACCEPT ${quote.quote_number ?? ""}" from any authorized email on file. We will start work within 30 minutes of confirmation` +
+      (arApproved ? ` — no signature required for AR-approved accounts.` : `.`);
+
   const acceptWords = safeText(acceptText).split(/\s+/);
   const acceptMaxW = RIGHT - M - 36;
   let acceptLine = "";
-  let acceptY = y - 38;
+  let acceptY = y - 40;
   for (const w of acceptWords) {
     const test = acceptLine ? acceptLine + " " + w : w;
     if (fontRegular.widthOfTextAtSize(test, 10) > acceptMaxW) {
       draw(acceptLine, M + 18, acceptY, { size: 10, color: TEXT_MUTED });
-      acceptY -= 12;
+      acceptY -= 13;
       acceptLine = w;
     } else {
       acceptLine = test;
     }
-    if (acceptY < y - acceptH + 10) break;
+    if (acceptY < y - acceptH + (paymentUrl ? 58 : 10)) break;
   }
-  if (acceptLine && acceptY >= y - acceptH + 10) {
+  if (acceptLine && acceptY >= y - acceptH + (paymentUrl ? 58 : 10)) {
     draw(acceptLine, M + 18, acceptY, { size: 10, color: TEXT_MUTED });
+  }
+
+  // ─── PAY ONLINE NOW BUTTON ────────────────────────────────────────────
+  if (paymentUrl) {
+    const buttonLabel = hasAdvance
+      ? `Pay advance ${money(amountDue, currency)} online ->`
+      : `Pay online now ->`;
+    const buttonTextSize = 11;
+    const buttonW =
+      fontBold.widthOfTextAtSize(buttonLabel, buttonTextSize) + 32;
+    const buttonH = 30;
+    const buttonX = M + 18;
+    const buttonY = y - acceptH + 14;
+
+    // Teal background, white text — matches the design-system primary CTA.
+    page.drawRectangle({
+      x: buttonX,
+      y: buttonY,
+      width: buttonW,
+      height: buttonH,
+      color: CETHOS_TEAL,
+      borderColor: CETHOS_TEAL,
+      borderWidth: 1,
+    });
+    draw(buttonLabel, buttonX + 16, buttonY + 10, {
+      size: buttonTextSize,
+      font: fontBold,
+      color: WHITE,
+    });
+
+    // PDF link annotation — makes the rect clickable in any PDF viewer.
+    try {
+      const linkRef = pdf.context.register(
+        pdf.context.obj({
+          Type: "Annot",
+          Subtype: "Link",
+          Rect: [buttonX, buttonY, buttonX + buttonW, buttonY + buttonH],
+          Border: [0, 0, 0],
+          A: pdf.context.obj({
+            Type: "Action",
+            S: "URI",
+            URI: PDFString.of(paymentUrl),
+          }),
+        }),
+      );
+      const annotsKey = PDFName.of("Annots");
+      const existing = page.node.lookup(annotsKey);
+      if (existing && (existing as any).push) {
+        (existing as any).push(linkRef);
+      } else {
+        page.node.set(annotsKey, pdf.context.obj([linkRef]));
+      }
+    } catch (err) {
+      console.warn("Pay-online link annotation failed:", err);
+    }
   }
 
   // ─── FOOTER ──────────────────────────────────────────────────────────
