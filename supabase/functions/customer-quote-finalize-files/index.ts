@@ -161,6 +161,32 @@ serve(async (req: Request) => {
       });
     }
 
+    // Fire the customer-facing "we've got your request" acknowledgment now
+    // that the upload is locked. Best-effort — never block the response on
+    // a Brevo hiccup. The function itself dedups per quote_id so re-invoking
+    // when the customer adds more files later is safe.
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (supabaseUrl && serviceRoleKey && quoteId) {
+        fetch(`${supabaseUrl}/functions/v1/notify-customer-quote-ack`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ quote_id: quoteId }),
+        }).catch((e) =>
+          console.warn("quote-ack notify failed (non-blocking):", e?.message ?? e),
+        );
+      }
+    } catch (e) {
+      console.warn(
+        "quote-ack notify invocation threw:",
+        (e as Error)?.message ?? e,
+      );
+    }
+
     return jsonResponse({
       success: errors.length === 0,
       files: finalized,
