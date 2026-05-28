@@ -12,6 +12,28 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import Stripe from "https://esm.sh/stripe@13.3.0?target=deno";
+import {
+  amountCard,
+  callout,
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc,
+  eyebrow,
+  hint,
+  lead,
+  REPLY,
+  strong,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+import { formatMoney } from "../_shared/rush-pricing.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Customer — Deposit Link",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,9 +42,6 @@ const corsHeaders = {
 };
 
 const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
-
-const LOGO_URL =
-  "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -207,102 +226,65 @@ serve(async (req) => {
     } else {
       try {
         const staffName = staff.full_name || "CETHOS Team";
-        const formattedAmount = new Intl.NumberFormat("en-CA", {
-          style: "currency",
-          currency: "CAD",
-        }).format(amount);
+        const formattedAmount = formatMoney(amount);
+        const customerFirstName =
+          (customer.full_name || "").trim().split(/\s+/)[0] || "there";
 
-        const translationDetailsBlock = hasTranslationDetails ? `
-          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px 24px; margin: 0 0 28px;">
-            <p style="color: #64748b; font-size: 11px; margin: 0 0 14px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700;">Translation Details</p>
-            <table style="width: 100%; border-collapse: collapse;">
-              ${sourceLanguageName || targetLanguageName ? `
-              <tr>
-                <td style="color: #94a3b8; font-size: 13px; padding: 5px 0; width: 40%;">Language Pair</td>
-                <td style="color: #0f172a; font-size: 13px; font-weight: 600; padding: 5px 0;">
-                  ${sourceLanguageName ?? "—"} → ${targetLanguageName ?? "—"}
-                </td>
-              </tr>` : ""}
-              ${document_type?.trim() ? `
-              <tr>
-                <td style="color: #94a3b8; font-size: 13px; padding: 5px 0; width: 40%;">Document Type</td>
-                <td style="color: #0f172a; font-size: 13px; font-weight: 600; padding: 5px 0;">${document_type.trim()}</td>
-              </tr>` : ""}
-            </table>
-          </div>` : "";
+        const detailRows: Array<[string, string]> = [];
+        if (sourceLanguageName || targetLanguageName) {
+          detailRows.push([
+            "Project",
+            `${sourceLanguageName ?? "—"} → ${targetLanguageName ?? "—"}`,
+          ]);
+        }
+        if (document_type?.trim()) {
+          detailRows.push(["Document type", document_type.trim()]);
+        }
+        // No delivery options on deposit emails per design spec — delivery
+        // dates are confirmed AFTER the deposit clears.
 
-        const descriptionText = notes?.trim() || "General translation deposit";
-        const descriptionBlock = `
-          <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px 20px; margin: 0 0 28px; border-radius: 0 10px 10px 0;">
-            <p style="color: #92400e; font-size: 11px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700;">Note from CETHOS</p>
-            <p style="color: #451a03; font-size: 14px; margin: 0; line-height: 1.6;">${descriptionText}</p>
-          </div>`;
+        const noteCallout = notes?.trim()
+          ? callout({
+              tone: "warn",
+              title: "Note from CETHOS",
+              body: esc(notes.trim()),
+            })
+          : "";
 
-        const emailHtml = `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #ffffff;">
+        const body = [
+          eyebrow("Deposit requested"),
+          title("Your deposit payment link is ready"),
+          lead(
+            `Hi ${esc(customerFirstName)}, ${esc(staffName)} has sent you a deposit payment link for your upcoming translation. Use the button below to complete your payment securely.`,
+          ),
+          amountCard({
+            amount: formattedAmount,
+            currency: "Canadian Dollars (CAD)",
+            label: "Deposit due",
+          }),
+          noteCallout,
+          detailRows.length > 0 ? detailsTable(detailRows) : "",
+          ctaButton({
+            label: "Pay deposit securely",
+            url: paymentLink.url,
+            variant: "navy",
+            align: "full",
+          }),
+          callout({
+            tone: "success",
+            title: "🔒 Secure payment",
+            body: "Payments are processed via Stripe. Card details are never stored on our servers.",
+          }),
+          hint(
+            `Once your deposit is received we'll confirm your delivery date and assign your linguist. ${strong("Delivery dates start counting from the day the deposit clears.")} Questions? Reply to this email or contact <a href="mailto:support@cethos.com" style="color:#0E7490;">support@cethos.com</a>.`,
+          ),
+        ].join("");
 
-            <!-- Header: white + teal accent -->
-            <div style="background-color: #ffffff; padding: 36px 32px 28px; text-align: center; border-bottom: 3px solid #0891b2;">
-              <img
-                src="${LOGO_URL}"
-                alt="CETHOS Translation Services"
-                style="height: 52px; width: auto; display: block; margin: 0 auto;"
-              />
-            </div>
-
-            <!-- Body -->
-            <div style="padding: 40px 36px;">
-
-              <p style="color: #0f172a; font-size: 16px; font-weight: 600; margin: 0 0 8px;">
-                Hi ${customer.full_name || "there"},
-              </p>
-              <p style="color: #475569; font-size: 14px; margin: 0 0 32px; line-height: 1.7;">
-                ${staffName} has sent you a deposit payment link for your upcoming translation.
-                Please use the button below to complete your payment securely.
-              </p>
-
-              <!-- Amount block -->
-              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-top: 4px solid #0891b2; border-radius: 10px; padding: 28px 24px; margin: 0 0 28px; text-align: center;">
-                <p style="color: #64748b; font-size: 11px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">Amount Due</p>
-                <p style="color: #0f172a; font-size: 40px; font-weight: 800; margin: 0; letter-spacing: -1px; line-height: 1.1;">${formattedAmount}</p>
-                <p style="color: #94a3b8; font-size: 12px; margin: 8px 0 0;">Canadian Dollars (CAD)</p>
-              </div>
-
-              ${descriptionBlock}
-              ${translationDetailsBlock}
-
-              <!-- CTA Button -->
-              <div style="text-align: center; margin: 32px 0;">
-                <a href="${paymentLink.url}"
-                   style="display: inline-block; padding: 16px 52px; background-color: #0f172a; color: #ffffff;
-                          text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px;
-                          letter-spacing: 0.3px;">
-                  Pay ${formattedAmount} Securely
-                </a>
-              </div>
-
-              <!-- Security note -->
-              <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 18px; margin: 0 0 28px;">
-                <p style="color: #166534; font-size: 12px; margin: 0; line-height: 1.6;">
-                  🔒 <strong>Secure payment powered by Stripe.</strong> Your payment information is encrypted and never stored on our servers.
-                </p>
-              </div>
-
-              <p style="color: #cbd5e1; font-size: 12px; margin: 0; text-align: center; line-height: 1.6;">
-                Questions? <a href="mailto:support@cethos.com" style="color: #0891b2; text-decoration: none;">support@cethos.com</a>
-              </p>
-
-            </div>
-
-            <!-- Footer -->
-            <div style="padding: 20px 36px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center;">
-              <p style="color: #94a3b8; font-size: 11px; margin: 0;">
-                CETHOS Translation Services ·
-                <a href="https://cethos.com" style="color: #0891b2; text-decoration: none;">cethos.com</a>
-              </p>
-            </div>
-
-          </div>`;
+        const emailHtml = emailShell(body, {
+          replyTo: REPLY.customer,
+          template: TEMPLATE,
+          preheader: `Your deposit ${formattedAmount} for your upcoming translation.`,
+        });
 
         const emailPayload = {
           sender: { name: "CETHOS Translation Services", email: "donotreply@cethos.com" },
