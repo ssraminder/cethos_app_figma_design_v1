@@ -21,7 +21,7 @@ export default function Checkout() {
         .select(
           `
           *,
-          customer:customers(*),
+          customer:customers!quotes_customer_id_fkey(*),
           files:quote_files(
             id,
             original_filename,

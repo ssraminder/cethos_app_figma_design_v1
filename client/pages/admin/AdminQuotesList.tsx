@@ -155,7 +155,7 @@ export default function AdminQuotesList() {
           expires_at,
           converted_to_order_id,
           entry_point,
-          customer:customers(id, full_name, email),
+          customer:customers!quotes_customer_id_fkey(id, full_name, email),
           source_language:languages!source_language_id(id, name, code),
           target_language:languages!target_language_id(id, name, code),
           quote_files(count)

@@ -874,7 +874,7 @@ export default function AdminQuoteDetail() {
 
   const QUOTE_SELECT = `
     *,
-    customer:customers(id, full_name, email, phone, customer_type),
+    customer:customers!quotes_customer_id_fkey(id, full_name, email, phone, customer_type),
     quote_source:quote_sources(id, code, name),
     source_language:languages!source_language_id(id, name, code, price_multiplier),
     target_language:languages!target_language_id(id, name, code),
