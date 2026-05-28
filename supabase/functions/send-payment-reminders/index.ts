@@ -6,6 +6,26 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  callout,
+  ctaButton,
+  emailShell,
+  esc,
+  hint,
+  lead,
+  REPLY,
+  statusBadge,
+  strong,
+  title,
+  C,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Customer — Invoice Overdue",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const THROTTLE_DAYS = 7;
 const PAGE_SIZE = 500;
@@ -75,28 +95,62 @@ function buildEmailHtml(
       ? `Reminder: invoice ${invoices[0].invoice_number || ""} is overdue`
       : `Reminder: ${invoices.length} invoices outstanding (${fmtMoney(total, ccy)})`;
 
-  const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#222;line-height:1.5">
-    <p>Hi ${contactName},</p>
-    <p>This is a friendly reminder that the following invoice${invoices.length > 1 ? "s remain" : " remains"} outstanding past the due date.</p>
-    <table style="border-collapse:collapse;margin:12px 0">
-      <thead>
-        <tr style="background:#f6f6f6">
-          <th style="padding:6px 12px;text-align:left">Invoice #</th>
-          <th style="padding:6px 12px;text-align:left">Due</th>
-          <th style="padding:6px 12px;text-align:right">Balance</th>
-          <th style="padding:6px 12px;text-align:right">Overdue</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-      <tfoot>
-        <tr><td colspan="2" style="padding:6px 12px;text-align:right;font-weight:600">Total outstanding</td>
-            <td style="padding:6px 12px;text-align:right;font-weight:600">${fmtMoney(total, ccy)}</td>
-            <td></td></tr>
-      </tfoot>
-    </table>
-    <p>If you've already arranged payment, please disregard this notice. Otherwise, please contact <a href="mailto:ar@cethos.com">ar@cethos.com</a> with any questions.</p>
-    <p>Thanks,<br/>Cethos Translation Services</p>
-  </body></html>`;
+  const maxDaysLate = Math.max(...invoices.map((i) => daysOverdue(i.due_date)));
+
+  // Invoice table in the shared visual language: muted header row, dividers,
+  // total grand row in navy.
+  const invoiceTable = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 22px;border:1px solid ${C.border};border-radius:8px;overflow:hidden;">
+    <thead><tr style="background:${C.slate50};">
+      <th style="padding:10px 14px;text-align:left;font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Invoice #</th>
+      <th style="padding:10px 14px;text-align:left;font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Due</th>
+      <th style="padding:10px 14px;text-align:right;font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Balance</th>
+      <th style="padding:10px 14px;text-align:right;font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Overdue</th>
+    </tr></thead>
+    <tbody>${invoices.map((i) => `<tr style="border-top:1px solid ${C.border};">
+      <td style="padding:10px 14px;font-size:13.5px;color:${C.navy};font-weight:500;">${esc(i.invoice_number || "—")}</td>
+      <td style="padding:10px 14px;font-size:13.5px;color:${C.navy};">${esc(i.due_date || "—")}</td>
+      <td style="padding:10px 14px;font-size:13.5px;color:${C.navy};text-align:right;font-weight:500;">${esc(fmtMoney(i.balance_due, i.currency))}</td>
+      <td style="padding:10px 14px;font-size:13.5px;color:${C.errorText};text-align:right;font-weight:600;">${daysOverdue(i.due_date)} d</td>
+    </tr>`).join("")}
+    <tr style="background:${C.navy};border-top:1px solid ${C.navy};">
+      <td colspan="2" style="padding:12px 14px;font-size:14px;color:${C.white};font-weight:700;">Total outstanding</td>
+      <td style="padding:12px 14px;font-size:16px;color:${C.white};text-align:right;font-weight:700;">${esc(fmtMoney(total, ccy))}</td>
+      <td style="padding:12px 14px;background:${C.navy};"></td>
+    </tr></tbody></table>`;
+
+  const html = emailShell(
+    [
+      statusBadge("warn", maxDaysLate > 30 ? `Overdue · ${maxDaysLate} days` : `Overdue · ${maxDaysLate} days`),
+      title(
+        invoices.length === 1
+          ? `Invoice ${esc(invoices[0].invoice_number || "")} is past due`
+          : `${invoices.length} invoices outstanding`,
+      ),
+      lead(
+        `Hi ${esc(contactName)}, this is a friendly reminder that the following invoice${invoices.length > 1 ? "s remain" : " remains"} outstanding past the due date.`,
+      ),
+      invoiceTable,
+      callout({
+        tone: "warn",
+        title: "Already paid?",
+        body: `If payment is in flight, please reply with the date sent and reference number and we'll match it on our end — no further action required.`,
+      }),
+      ctaButton({
+        label: `Pay ${esc(fmtMoney(total, ccy))} online`,
+        url: "https://portal.cethos.com/dashboard",
+        variant: "navy",
+        align: "full",
+      }),
+      hint(
+        `Questions about this invoice? Reply to this email and our AR team will pick it up within 2 business hours.`,
+      ),
+    ].join(""),
+    {
+      replyTo: REPLY.ar,
+      template: TEMPLATE,
+      preheader: `${invoices.length === 1 ? `Invoice ${invoices[0].invoice_number}` : `${invoices.length} invoices`} past due — ${fmtMoney(total, ccy)}.`,
+    },
+  );
 
   return { subject, html };
 }
