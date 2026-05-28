@@ -26,7 +26,7 @@ export default function UploadConfirmationPage() {
       try {
         const { data: quote } = await supabase
           .from("quotes")
-          .select("quote_number, customer:customers(full_name, email)")
+          .select("quote_number, customer:customers!quotes_customer_id_fkey(full_name, email)")
           .eq("id", quoteId)
           .single();
 
