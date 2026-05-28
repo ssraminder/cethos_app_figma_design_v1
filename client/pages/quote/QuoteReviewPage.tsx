@@ -60,9 +60,13 @@ interface QuoteData {
   expires_at: string;
   service_code: string | null;
   service_name: string | null;
+  advance_percentage: number | null;
+  advance_amount: number | null;
   customer: {
     full_name: string;
     email: string;
+    is_ar_customer?: boolean;
+    payment_terms?: string | null;
   };
   documents: QuoteDocument[];
 }
@@ -145,6 +149,18 @@ export default function QuoteReviewPage() {
   const [quote, setQuote] = useState<QuoteData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [approveLoading, setApproveLoading] = useState(false);
+  const [arApprovedConfirmation, setArApprovedConfirmation] = useState<{
+    order_number: string;
+  } | null>(null);
+
+  // Magic-link token pulled from the URL (?token=…). Required for the
+  // customer-approve-quote-ar edge function and reused by the Stripe path
+  // once the AR flow is live.
+  const magicLinkToken =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("token")
+      : null;
 
   useEffect(() => {
     if (quoteId) {
@@ -297,6 +313,38 @@ export default function QuoteReviewPage() {
     }
   };
 
+  const handleApproveAR = async () => {
+    if (!quote || !magicLinkToken) return;
+    setApproveLoading(true);
+    setError(null);
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke(
+        "customer-approve-quote-ar",
+        {
+          body: { quote_id: quote.id, token: magicLinkToken },
+        },
+      );
+
+      if (fnError) {
+        throw new Error(fnError.message || "Failed to approve quote");
+      }
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to approve quote");
+      }
+
+      setArApprovedConfirmation({ order_number: data.order_number });
+      toast.success(`Quote approved — order ${data.order_number} created`);
+    } catch (err: any) {
+      console.error("AR approve error:", err);
+      const msg = err.message || "An error occurred. Please try again.";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setApproveLoading(false);
+    }
+  };
+
   const handleStartNewQuote = () => {
     // Clear all quote-related localStorage
     localStorage.removeItem("cethos_quote_draft");
@@ -400,7 +448,10 @@ export default function QuoteReviewPage() {
   const isExpired =
     quote?.expires_at && new Date(quote.expires_at) < new Date();
   const isPaidOrConverted =
-    quote && (quote.status === "paid" || quote.status === "converted");
+    quote &&
+    (quote.status === "paid" ||
+      quote.status === "converted" ||
+      quote.status === "ar_approved");
 
   // Loading State
   if (loading) {
@@ -829,34 +880,130 @@ export default function QuoteReviewPage() {
           </div>
         )}
 
-        {/* Payment Button */}
-        {canPay && !isExpired && (
-          <div className="space-y-4">
-            <button
-              onClick={handlePayment}
-              disabled={paymentLoading}
-              className="w-full py-4 px-6 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {paymentLoading ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <>
-                  <CreditCard className="w-6 h-6" />
-                  <span>Pay ${quote.total.toFixed(2)} CAD</span>
-                </>
-              )}
-            </button>
-
-            {/* Security Badge */}
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-              <Lock className="w-4 h-4" />
-              <span>Secure payment powered by Stripe</span>
+        {/* AR-approved confirmation state */}
+        {arApprovedConfirmation && (
+          <div className="bg-green-50 rounded-xl p-6 text-center border border-green-200">
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <CheckCircle2 className="w-6 h-6 text-green-600" />
             </div>
+            <p className="font-semibold text-gray-900">
+              Quote approved — work has started
+            </p>
+            <p className="text-sm text-gray-600 mt-1">
+              Order{" "}
+              <span className="font-mono font-medium">
+                {arApprovedConfirmation.order_number}
+              </span>{" "}
+              is in production. We will invoice on delivery (Net 30).
+            </p>
           </div>
         )}
+
+        {/* Payment / Approve buttons */}
+        {canPay && !isExpired && !arApprovedConfirmation && (() => {
+          const isAR = quote.customer?.is_ar_customer === true;
+          const advancePct = Number(quote.advance_percentage ?? 0);
+          const hasAdvance = advancePct > 0;
+          const amountDue = hasAdvance
+            ? Number(quote.advance_amount ?? 0)
+            : quote.total;
+          const amountLabel = `$${amountDue.toFixed(2)} CAD`;
+
+          // AR + no advance: Approve primary (navy) + Pay-now secondary (teal)
+          if (isAR && !hasAdvance && magicLinkToken) {
+            return (
+              <div className="space-y-3">
+                <button
+                  onClick={handleApproveAR}
+                  disabled={approveLoading || paymentLoading}
+                  className="w-full py-4 px-6 bg-[#0C2340] text-white rounded-xl hover:bg-[#1A365D] transition-colors font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {approveLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>Approving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-6 h-6" />
+                      <div className="flex flex-col items-center leading-tight">
+                        <span>Approve & bill on AR (Net 30)</span>
+                        <span className="text-xs font-normal text-white/80">
+                          Work starts today · invoice on delivery
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={handlePayment}
+                  disabled={paymentLoading || approveLoading}
+                  className="w-full py-4 px-6 bg-[#0891B2] text-white rounded-xl hover:bg-[#06B6D4] transition-colors font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {paymentLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>Processing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="w-6 h-6" />
+                      <div className="flex flex-col items-center leading-tight">
+                        <span>Pay {amountLabel} now</span>
+                        <span className="text-xs font-normal text-white/80">
+                          Stripe Checkout · card / Apple Pay / Google Pay
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </button>
+
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                  <Lock className="w-4 h-4" />
+                  <span>Secure payment powered by Stripe</span>
+                </div>
+              </div>
+            );
+          }
+
+          // AR + advance OR non-AR: single Pay button (advance amount if set,
+          // otherwise full total). Approve is hidden when an advance is owed.
+          return (
+            <div className="space-y-4">
+              <button
+                onClick={handlePayment}
+                disabled={paymentLoading}
+                className="w-full py-4 px-6 bg-[#0891B2] text-white rounded-xl hover:bg-[#06B6D4] transition-colors font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {paymentLoading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-6 h-6" />
+                    <span>
+                      {hasAdvance ? `Pay advance ${amountLabel}` : `Pay ${amountLabel}`}
+                    </span>
+                  </>
+                )}
+              </button>
+
+              {hasAdvance && (
+                <p className="text-center text-xs text-gray-500">
+                  Work begins once the advance ({advancePct}% of total) is received.
+                </p>
+              )}
+
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                <Lock className="w-4 h-4" />
+                <span>Secure payment powered by Stripe</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Already Paid */}
         {isPaidOrConverted && (

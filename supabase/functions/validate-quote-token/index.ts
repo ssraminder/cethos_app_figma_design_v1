@@ -50,6 +50,54 @@ serve(async (req: Request) => {
     .maybeSingle();
 
   if (error) return json({ valid: false }, 500);
+  if (!data) return json({ valid: false });
 
-  return json({ valid: !!data });
+  // Token is valid — load enough quote/customer context for the review page
+  // to decide which CTAs to render (AR approve vs Stripe pay vs Pay advance).
+  // RLS would otherwise hide is_ar_customer / payment_terms from the anon
+  // role; we return only the flags the UI needs, no PII beyond what the
+  // review page already shows.
+  const { data: quoteCtx, error: ctxErr } = await supabase
+    .from("quotes")
+    .select("status, advance_percentage, advance_amount, customer_id")
+    .eq("id", quoteId)
+    .maybeSingle();
+
+  if (ctxErr) {
+    console.warn("validate-quote-token quote ctx fetch failed:", ctxErr.message);
+    return json({ valid: true, quote: null });
+  }
+  if (!quoteCtx) {
+    return json({ valid: true, quote: null });
+  }
+
+  let customer: {
+    is_ar_customer?: boolean;
+    payment_terms?: string | null;
+    company_name?: string | null;
+  } = {};
+  if (quoteCtx.customer_id) {
+    const { data: customerRow, error: cErr } = await supabase
+      .from("customers")
+      .select("is_ar_customer, payment_terms, company_name")
+      .eq("id", quoteCtx.customer_id)
+      .maybeSingle();
+    if (cErr) {
+      console.warn("validate-quote-token customer fetch failed:", cErr.message);
+    } else if (customerRow) {
+      customer = customerRow;
+    }
+  }
+
+  return json({
+    valid: true,
+    quote: {
+      status: quoteCtx.status,
+      advance_percentage: Number(quoteCtx.advance_percentage ?? 0) || 0,
+      advance_amount: quoteCtx.advance_amount ?? null,
+      is_ar_customer: Boolean(customer.is_ar_customer),
+      payment_terms: customer.payment_terms ?? null,
+      is_business: Boolean(customer.company_name),
+    },
+  });
 });
