@@ -17,6 +17,22 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  callout,
+  emailShell,
+  esc as escShell,
+  hint,
+  lead,
+  REPLY,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Customer — Step Draft (PDF attached)",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -122,26 +138,25 @@ serve(async (req) => {
     }
     const pdfBase64 = btoa(bin);
 
+    // Staff can override with body_html (eg. from a template editor). Otherwise
+    // we render the default shell with optional body_text in an info Callout.
+    const firstName = (recipient_name || recipient_email || "").trim().split(/\s+/)[0] || "there";
+    const noteCallout = body_text
+      ? callout({ tone: "info", title: "Note from our team", body: escShell(body_text).replace(/\n/g, "<br />") })
+      : "";
     const htmlContent = body_html
       ? body_html
-      : `<!doctype html><html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;"><tr><td align="center">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-      <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
-        <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
-        <div style="font-size:13px;opacity:0.9;margin-top:2px;">Draft translation for your review</div>
-      </td></tr>
-      <tr><td style="padding:24px;color:#111827;">
-        <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">Hello ${esc(recipient_name || recipient_email)},</p>
-        <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">Please find the draft translation attached for your review. The watermark on each page indicates it is a draft pending your sign-off — once approved we will finalize and remove the watermark.</p>
-        ${body_text ? `<div style="margin-top:16px;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#374151;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(body_text)}</div>` : ""}
-      </td></tr>
-      <tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-        Reply to this email with any corrections, or confirm to proceed.
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`;
+      : emailShell(
+        [
+          title("Draft translation for your review"),
+          lead(
+            `Hi ${escShell(firstName)}, please find the draft translation attached. The watermark on each page indicates it is a draft pending your sign-off — once approved we will finalize and remove the watermark.`,
+          ),
+          noteCallout,
+          hint(`Reply to this email with any corrections, or confirm to proceed.`),
+        ].join(""),
+        { replyTo: REPLY.customer, template: TEMPLATE, preheader: `Draft translation attached — please review.` },
+      );
 
     const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
     let emailStatus: "sent" | "failed" = "failed";

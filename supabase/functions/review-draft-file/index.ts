@@ -17,6 +17,44 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  brevoPayload,
+  callout,
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc,
+  eyebrow,
+  hint,
+  lead,
+  REPLY,
+  statusBadge,
+  strong,
+  title,
+  type TemplateMeta,
+  C,
+} from "../_shared/email-shell.ts";
+
+const TPL_CUSTOMER_DRAFT: TemplateMeta = {
+  name: "Customer — Draft for Review",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
+const TPL_CUSTOMER_DELIVERY: TemplateMeta = {
+  name: "Customer — Order Delivered",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
+const TPL_STAFF_APPROVED: TemplateMeta = {
+  name: "Staff — Customer Approved Draft",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
+const TPL_STAFF_CHANGES: TemplateMeta = {
+  name: "Staff — Customer Requested Changes",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -909,54 +947,66 @@ async function notifyCustomerDraftReady(
 
     const reviewUrl = `${siteUrl}/dashboard/orders/${orderId}`;
 
-    // Build file list HTML if we have files with URLs
+    // Build file list as a small bordered card.
     let fileListHtml = "";
     if (filesWithUrls && filesWithUrls.length > 0) {
-      const fileRows = filesWithUrls.map(f => {
+      const fileRows = filesWithUrls.map((f) => {
         const sizeStr = f.size > 0
           ? f.size > 1024 * 1024
             ? `${(f.size / 1024 / 1024).toFixed(1)} MB`
             : `${(f.size / 1024).toFixed(0)} KB`
           : "";
         const downloadBtn = f.url
-          ? `<a href="${f.url}" style="display:inline-block;padding:6px 14px;background-color:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;">Download</a>`
+          ? `<a href="${esc(f.url)}" target="_blank" style="display:inline-block;padding:6px 14px;background-color:${C.teal};color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Download</a>`
           : "";
         return `<tr>
-          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">
-            <span style="font-size:14px;color:#374151;font-weight:500;">${f.name}</span>
-            ${sizeStr ? `<span style="font-size:12px;color:#9ca3af;margin-left:8px;">(${sizeStr})</span>` : ""}
+          <td style="padding:10px 12px;border-bottom:1px solid ${C.border};">
+            <span style="font-size:14px;color:${C.navy};font-weight:500;">${esc(f.name)}</span>
+            ${sizeStr ? `<span style="font-size:12px;color:${C.muted};margin-left:8px;">(${sizeStr})</span>` : ""}
           </td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">
-            ${downloadBtn}
-          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid ${C.border};text-align:right;">${downloadBtn}</td>
         </tr>`;
       }).join("");
 
-      fileListHtml = `
-        <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-          <tr style="background-color:#f9fafb;">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">File</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Action</th>
-          </tr>
-          ${fileRows}
-        </table>
-        <p style="margin:0 0 8px;color:#9ca3af;font-size:12px;">Download links expire in 7 days.</p>`;
+      fileListHtml = `<table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;border:1px solid ${C.border};border-radius:8px;overflow:hidden;background:${C.white};">${fileRows}</table>
+        <p style="margin:0 0 18px;color:${C.muted};font-size:12px;">Download links expire in 7 days.</p>`;
     }
 
-    // Build staff notes section
-    let staffNotesHtml = "";
-    if (staffNotes) {
-      staffNotesHtml = `
-        <div style="margin:20px 0;padding:16px;background-color:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;">
-          <p style="margin:0 0 6px;color:#0f766e;font-size:13px;font-weight:600;">Note from our team:</p>
-          <p style="margin:0;color:#374151;font-size:14px;line-height:1.5;">${staffNotes}</p>
-        </div>`;
-    }
+    const staffNotesCallout = staffNotes
+      ? callout({ tone: "info", title: "Note from our team", body: esc(staffNotes).replace(/\n/g, "<br />") })
+      : "";
 
     const fileCount = filesWithUrls?.length || 1;
     const introText = fileCount > 1
-      ? `Your draft translations (${fileCount} files) are ready for review. Please review the drafts and either approve them or request changes.`
-      : `Your draft translation <strong>${fileName || filesWithUrls?.[0]?.name || "file"}</strong> is ready for review. Please review the draft and either approve it or request changes.`;
+      ? `Your draft translations (${fileCount} files) are ready for review. Please look them over and either approve or request changes — one revision pass is included.`
+      : `Your draft translation ${strong(esc(fileName || filesWithUrls?.[0]?.name || "file"))} is ready for review. Please look it over and either approve or request changes — one revision pass is included.`;
+
+    const subject = fileCount > 1
+      ? `Your draft translations (${fileCount} files) are ready for review`
+      : "Your draft translation is ready for review";
+
+    const customerFirstName = (toName || customer?.full_name || "").trim().split(/\s+/)[0] || "there";
+
+    const html = emailShell(
+      [
+        eyebrow("Ready for your review"),
+        title(fileCount > 1 ? "Your draft translations are ready" : "Your draft translation is ready"),
+        lead(`Hi ${esc(customerFirstName)}, ${introText}`),
+        fileListHtml,
+        staffNotesCallout,
+        callout({
+          tone: "info",
+          title: "Watermarked draft",
+          body: "Each page is marked DRAFT — once you approve, we'll finalize and remove the watermark. One free revision round is included.",
+        }),
+        ctaButton({
+          label: fileCount > 1 ? "Review drafts" : "Review draft",
+          url: reviewUrl,
+          align: "left",
+        }),
+      ].join(""),
+      { replyTo: REPLY.customer, template: TPL_CUSTOMER_DRAFT, preheader: `Your draft for order ${esc(orderId)} is ready for review.` },
+    );
 
     await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -965,54 +1015,14 @@ async function notifyCustomerDraftReady(
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({
+      body: JSON.stringify(brevoPayload({
         to: [{ email: toEmail, name: toName || toEmail }],
-        sender: {
-          name: "CETHOS Translation Services",
-          email: "donotreply@cethos.com",
-        },
-        subject: fileCount > 1
-          ? `Your draft translations (${fileCount} files) are ready for review`
-          : "Your draft translation is ready for review",
-        htmlContent: `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:40px 20px;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr><td style="background-color:#0f766e;padding:24px 32px;">
-          <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">CETHOS Translation Services</h1>
-        </td></tr>
-        <tr><td style="padding:32px;">
-          <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">
-            Hi ${customer.full_name || "there"},
-          </p>
-          <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">
-            ${introText}
-          </p>
-          ${fileListHtml}
-          ${staffNotesHtml}
-          <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
-            <tr><td style="background-color:#0f766e;border-radius:8px;">
-              <a href="${reviewUrl}" style="display:inline-block;padding:14px 28px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;">
-                Review Draft${fileCount > 1 ? "s" : ""}
-              </a>
-            </td></tr>
-          </table>
-        </td></tr>
-        <tr><td style="padding:20px 32px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
-          <p style="margin:0;color:#9ca3af;font-size:12px;text-align:center;">
-            CETHOS Translation Services &bull; Professional Document Translation
-          </p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
-      }),
+        subject,
+        html,
+        replyTo: REPLY.customer,
+        senderName: "Cethos Translation Services",
+        tags: ["customer-draft-review"],
+      })),
     });
 
     console.log("Draft review notification sent to:", toEmail, recipientOverride ? "(override)" : "");
@@ -1049,6 +1059,17 @@ async function notifyStaffDraftApproved(
       : `${siteUrl}/admin/orders`;
 
     for (const staff of staffList) {
+      const html = emailShell(
+        [
+          statusBadge("success", "Customer approved"),
+          title("Draft approved — ready to finalize"),
+          lead(
+            `${strong(esc(customer?.full_name || "A customer"))} has approved the draft translation. You can now run the affidavit / finalize step and ship the final deliverable.`,
+          ),
+          ctaButton({ label: "Open order", url: orderUrl }),
+        ].join(""),
+        { replyTo: REPLY.ops, template: TPL_STAFF_APPROVED, preheader: `Draft approved by ${esc(customer?.full_name || "customer")}` },
+      );
       await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
@@ -1056,15 +1077,13 @@ async function notifyStaffDraftApproved(
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({
+        body: JSON.stringify(brevoPayload({
           to: [{ email: staff.email, name: staff.full_name }],
-          sender: {
-            name: "CETHOS Translation Services",
-            email: "donotreply@cethos.com",
-          },
           subject: `Draft approved by ${customer?.full_name || "customer"}`,
-          htmlContent: `<p>${customer?.full_name || "A customer"} has approved the draft translation.</p><p><a href="${orderUrl}">View Order</a></p>`,
-        }),
+          html,
+          replyTo: REPLY.ops,
+          tags: ["staff-draft-approved"],
+        })),
       });
     }
   } catch (err) {
@@ -1100,6 +1119,21 @@ async function notifyStaffChangesRequested(
       : `${siteUrl}/admin/orders`;
 
     for (const staff of staffList) {
+      const feedbackCallout = feedback
+        ? callout({ tone: "warn", title: "Customer feedback", body: esc(feedback).replace(/\n/g, "<br />") })
+        : "";
+      const html = emailShell(
+        [
+          statusBadge("warn", "Changes requested"),
+          title(`Changes requested by ${esc(customer?.full_name || "customer")}`),
+          lead(
+            `The customer has reviewed the draft translation and requested changes. Open the order to see their feedback and route the revision back to the translator.`,
+          ),
+          feedbackCallout,
+          ctaButton({ label: "Open order", url: orderUrl }),
+        ].join(""),
+        { replyTo: REPLY.ops, template: TPL_STAFF_CHANGES, preheader: `Changes requested by ${esc(customer?.full_name || "customer")}` },
+      );
       await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
@@ -1107,15 +1141,13 @@ async function notifyStaffChangesRequested(
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({
+        body: JSON.stringify(brevoPayload({
           to: [{ email: staff.email, name: staff.full_name }],
-          sender: {
-            name: "CETHOS Translation Services",
-            email: "donotreply@cethos.com",
-          },
           subject: `Changes requested by ${customer?.full_name || "customer"}`,
-          htmlContent: `<p>${customer?.full_name || "A customer"} has requested changes on the draft translation.</p>${feedback ? `<blockquote style="border-left:4px solid #14b8a6;padding:12px;margin:16px 0;background:#f0fdfa;">${feedback}</blockquote>` : ""}<p><a href="${orderUrl}">View Order</a></p>`,
-        }),
+          html,
+          replyTo: REPLY.ops,
+          tags: ["staff-changes-requested"],
+        })),
       });
     }
   } catch (err) {
@@ -1144,39 +1176,52 @@ async function notifyCustomerDelivery(
 
     const orderUrl = `${siteUrl}/dashboard/orders/${orderId}`;
 
-    // Build file download list HTML if we have files with URLs
+    // File download list — bordered card with per-file Download buttons.
     let fileListHtml = "";
     if (filesWithUrls && filesWithUrls.length > 0) {
-      const fileRows = filesWithUrls.map(f => {
+      const fileRows = filesWithUrls.map((f) => {
         const sizeStr = f.size > 0
           ? f.size > 1024 * 1024
             ? `${(f.size / 1024 / 1024).toFixed(1)} MB`
             : `${(f.size / 1024).toFixed(0)} KB`
           : "";
         const downloadBtn = f.url
-          ? `<a href="${f.url}" style="display:inline-block;padding:6px 14px;background-color:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;">Download</a>`
+          ? `<a href="${esc(f.url)}" target="_blank" style="display:inline-block;padding:6px 14px;background-color:${C.teal};color:#ffffff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Download</a>`
           : "";
         return `<tr>
-          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">
-            <span style="font-size:14px;color:#374151;font-weight:500;">${f.name}</span>
-            ${sizeStr ? `<span style="font-size:12px;color:#9ca3af;margin-left:8px;">(${sizeStr})</span>` : ""}
+          <td style="padding:10px 12px;border-bottom:1px solid ${C.border};">
+            <span style="font-size:14px;color:${C.navy};font-weight:500;">${esc(f.name)}</span>
+            ${sizeStr ? `<span style="font-size:12px;color:${C.muted};margin-left:8px;">(${sizeStr})</span>` : ""}
           </td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">
-            ${downloadBtn}
-          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid ${C.border};text-align:right;">${downloadBtn}</td>
         </tr>`;
       }).join("");
-
-      fileListHtml = `
-        <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-          <tr style="background-color:#f9fafb;">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">File</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Action</th>
-          </tr>
-          ${fileRows}
-        </table>
-        <p style="margin:0 0 8px;color:#9ca3af;font-size:12px;">Download links expire in 7 days.</p>`;
+      fileListHtml = `<table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;border:1px solid ${C.border};border-radius:8px;overflow:hidden;background:${C.white};">${fileRows}</table>
+        <p style="margin:0 0 18px;color:${C.muted};font-size:12px;">Download links expire in 7 days.</p>`;
     }
+
+    const invoiceLine = invoiceNumber
+      ? `<p style="margin:0 0 16px;color:${C.gray};font-size:14.5px;">Invoice ${strong(esc(invoiceNumber))} has been generated and is available in your dashboard.</p>`
+      : "";
+
+    const customerFirstName = (customer.full_name || "").trim().split(/\s+/)[0] || "there";
+
+    const html = emailShell(
+      [
+        statusBadge("success", "Delivered"),
+        title(`Your translation for ${esc(orderNumber)} is ready`),
+        lead(
+          `Hi ${esc(customerFirstName)}, your final translation has been delivered. Download below — ${strong("links expire in 7 days")}, so save copies locally if you need long-term access.`,
+        ),
+        fileListHtml,
+        invoiceLine,
+        ctaButton({ label: "View order & download files", url: orderUrl }),
+        hint(
+          `Need a revision? Reply to this email within the included revision window — one free pass is included with every order.`,
+        ),
+      ].join(""),
+      { replyTo: REPLY.customer, template: TPL_CUSTOMER_DELIVERY, preheader: `Order ${orderNumber} delivered — download files below (valid 7 days).` },
+    );
 
     await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -1185,52 +1230,14 @@ async function notifyCustomerDelivery(
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({
+      body: JSON.stringify(brevoPayload({
         to: [{ email: customer.email, name: customer.full_name || customer.email }],
-        sender: {
-          name: "CETHOS Translation Services",
-          email: "donotreply@cethos.com",
-        },
         subject: `Your translation for order ${orderNumber} has been delivered`,
-        htmlContent: `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:40px 20px;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr><td style="background-color:#0f766e;padding:24px 32px;">
-          <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">CETHOS Translation Services</h1>
-        </td></tr>
-        <tr><td style="padding:32px;">
-          <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">
-            Hi ${customer.full_name || "there"},
-          </p>
-          <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">
-            Your final translation for order <strong>${orderNumber}</strong> has been delivered!
-          </p>
-          ${fileListHtml}
-          ${invoiceNumber ? `<p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">Invoice <strong>${invoiceNumber}</strong> has been generated and is available in your dashboard.</p>` : ""}
-          <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
-            <tr><td style="background-color:#0f766e;border-radius:8px;">
-              <a href="${orderUrl}" style="display:inline-block;padding:14px 28px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;">
-                View Order & Download Files
-              </a>
-            </td></tr>
-          </table>
-        </td></tr>
-        <tr><td style="padding:20px 32px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
-          <p style="margin:0;color:#9ca3af;font-size:12px;text-align:center;">
-            CETHOS Translation Services &bull; Professional Document Translation
-          </p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
-      }),
+        html,
+        replyTo: REPLY.customer,
+        senderName: "Cethos Translation Services",
+        tags: ["customer-order-delivered"],
+      })),
     });
 
     console.log("Delivery notification sent to:", customer.email);
