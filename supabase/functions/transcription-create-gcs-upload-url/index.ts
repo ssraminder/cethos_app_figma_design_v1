@@ -34,7 +34,7 @@ import {
 } from "../_shared/transcription.ts";
 import {
   ensureSttInputBucket,
-  ensureSttBucketCors,
+  assertSttBucketExists,
   generateSignedUrl,
 } from "../_shared/google-storage.ts";
 
@@ -76,9 +76,12 @@ serve(async (req: Request) => {
   const objectName = `uploads/${jobId}/raw_${fileIndex}.${ext}`;
 
   try {
-    // First-call setup: bucket + CORS. Both idempotent — cheap on repeat calls.
+    // Bucket name resolution (no remote call). The bucket itself is one-time
+    // infrastructure — see scripts/setup-gcs.sh. assertSttBucketExists() probes
+    // on first call (per cold start) and caches; if missing, it throws a clear
+    // setup-pointing error rather than attempting auto-create at runtime.
     const bucketName = await ensureSttInputBucket();
-    await ensureSttBucketCors();
+    await assertSttBucketExists(bucketName);
 
     const signedUrl = await generateSignedUrl(bucketName, objectName, {
       method: "PUT",

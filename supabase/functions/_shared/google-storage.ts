@@ -2,84 +2,73 @@
 // for Google STT v2 batchRecognize (which only accepts gs:// URIs as input).
 //
 // All operations authenticate via the service-account access token from
-// _shared/google-auth.ts. The service account needs Storage Admin or
-// Storage Object Admin on the bucket (auto-granted when it creates the
-// bucket itself, since the service account becomes owner).
+// _shared/google-auth.ts. The service account needs roles/storage.objectAdmin
+// (NOT bucket-admin) on the bucket. Bucket creation + CORS + lifecycle are
+// one-time setup performed via scripts/setup-gcs.sh by an operator with
+// project-level permissions — this keeps the edge-function service account
+// scoped narrowly to object-level read/write.
 
 import { getGoogleAccessToken, getGoogleProjectId } from "./google-auth.ts";
 
-// Derive a project-scoped, deterministic bucket name. GCS bucket names must be
-// 3-63 chars, lowercase, no spaces. The project ID is already lowercase and
-// safe; we suffix with "-stt-input" to make the bucket purpose obvious.
+// Resolve the STT input bucket name.
+//
+// Priority order:
+//   1. CETHOS_STT_BUCKET secret (override for non-default deployments)
+//   2. Derived from project ID: `${projectId}-stt-input`
+//
+// The bucket itself must already exist — see scripts/setup-gcs.sh for the
+// one-time creation recipe. If the bucket is missing, the first signed-URL
+// or upload call will fail with a clear "bucket not found" error that points
+// at the setup script.
 export function getSttInputBucketName(): string {
+  const override = Deno.env.get("CETHOS_STT_BUCKET");
+  if (override && override.trim()) return override.trim();
   const projectId = getGoogleProjectId();
   return `${projectId.replace(/[^a-z0-9-]/g, "-").slice(0, 50)}-stt-input`;
 }
 
-// Ensure the STT input bucket exists. Idempotent: GET to check, POST to create
-// if 404. Applies a 1-day lifecycle so audio files auto-delete after a day even
-// if the poll-and-cleanup misses one. Returns the bucket name.
-export async function ensureSttInputBucket(): Promise<string> {
-  const bucketName = getSttInputBucketName();
+// Returns the bucket name. Kept as an async function for source-compatibility
+// with callers that awaited the previous create-if-missing implementation.
+// No remote calls; no permissions required.
+//
+// If you need to verify the bucket exists at runtime, call assertSttBucketExists()
+// — that's a separate, optional check used by the edge function on first call.
+export function ensureSttInputBucket(): Promise<string> {
+  return Promise.resolve(getSttInputBucketName());
+}
+
+// Probes the bucket once and throws a clear setup-pointing error if it's missing.
+// Cached in-memory so we don't HEAD on every request.
+const bucketExistsCache = new Map<string, boolean>();
+export async function assertSttBucketExists(bucketName?: string): Promise<void> {
+  const name = bucketName ?? getSttInputBucketName();
+  if (bucketExistsCache.get(name)) return;
+
   const accessToken = await getGoogleAccessToken();
-
-  // Check first — if it exists, we're done.
-  const checkResp = await fetch(`https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-
-  if (checkResp.status === 200) return bucketName;
-  if (checkResp.status !== 404) {
-    const errText = await checkResp.text();
-    throw new Error(`GCS bucket check failed: ${checkResp.status} — ${errText.slice(0, 300)}`);
-  }
-
-  // Create the bucket with a sensible default region + 1-day lifecycle.
-  const projectId = getGoogleProjectId();
-  const createBody = {
-    name: bucketName,
-    location: "US",                       // multi-region; cheap egress, low latency for STT
-    storageClass: "STANDARD",
-    lifecycle: {
-      rule: [{
-        action: { type: "Delete" },
-        condition: { age: 1 },             // delete objects 1 day after creation
-      }],
-    },
-    iamConfiguration: {
-      uniformBucketLevelAccess: { enabled: true },
-      publicAccessPrevention: "enforced",
-    },
-  };
-
-  const createResp = await fetch(
-    `https://storage.googleapis.com/storage/v1/b?project=${encodeURIComponent(projectId)}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(createBody),
-    },
+  const checkResp = await fetch(
+    `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(name)}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
   );
 
-  if (createResp.status === 409) {
-    // Someone else created it between our check and POST — that's fine.
-    return bucketName;
-  }
-  if (!createResp.ok) {
-    const errText = await createResp.text();
-    // Common first-run cause: Cloud Storage API not enabled.
-    if (createResp.status === 403 && /storage\.googleapis\.com|SERVICE_DISABLED/i.test(errText)) {
-      throw new Error(
-        `GCS bucket creation failed: Cloud Storage API is not enabled on project ${projectId}. Enable it at https://console.cloud.google.com/apis/library/storage.googleapis.com — original error: ${errText.slice(0, 300)}`,
-      );
-    }
-    throw new Error(`GCS bucket creation failed: ${createResp.status} — ${errText.slice(0, 300)}`);
+  if (checkResp.status === 200) {
+    bucketExistsCache.set(name, true);
+    return;
   }
 
-  return bucketName;
+  if (checkResp.status === 404) {
+    throw new Error(
+      `STT input bucket "${name}" does not exist. Run scripts/setup-gcs.sh on a machine with project-level gcloud access to create it. (Setup is a one-time operation; the edge-function service account only needs object-level permissions.)`,
+    );
+  }
+
+  if (checkResp.status === 403) {
+    throw new Error(
+      `STT input bucket "${name}" exists but the edge-function service account can't read it. Grant roles/storage.objectAdmin on the bucket — see scripts/setup-gcs.sh.`,
+    );
+  }
+
+  const errText = await checkResp.text();
+  throw new Error(`STT input bucket check failed: ${checkResp.status} — ${errText.slice(0, 200)}`);
 }
 
 // Upload an audio blob to GCS. Returns the gs:// URI.
@@ -312,57 +301,10 @@ export async function generateSignedUrl(
 }
 
 /**
- * Ensure the bucket allows CORS preflight + actual cross-origin PUT/GET
- * from the cethos web origins. Called from edge functions so the user
- * doesn't have to run a separate gsutil command.
- *
- * Idempotent: GCS PATCH on the bucket overwrites the cors config wholesale;
- * we pass our canonical config every time.
+ * @deprecated CORS is one-time bucket setup performed via scripts/setup-gcs.sh.
+ * Edge functions assume CORS is already in place. Leaving this as a no-op
+ * stub so existing imports don't break — call sites should be removed.
  */
-export async function ensureSttBucketCors(): Promise<void> {
-  const bucketName = getSttInputBucketName();
-  const accessToken = await getGoogleAccessToken();
-
-  // Canonical CORS: origins are the cethos surfaces that initiate browser
-  // uploads. methods include PUT (signed-URL upload) + GET (signed-URL
-  // download if the browser ever needs it). responseHeaders cover the ones
-  // GCS returns that the browser needs to read.
-  const corsConfig = [
-    {
-      origin: [
-        "https://portal.cethos.com",
-        "https://cethos.com",
-        "https://www.cethos.com",
-        "http://localhost:5173",
-        "http://localhost:3000",
-      ],
-      method: ["PUT", "GET", "HEAD", "OPTIONS"],
-      responseHeader: [
-        "Content-Type",
-        "Content-Length",
-        "Content-Range",
-        "ETag",
-        "X-Goog-*",
-        "Access-Control-Allow-Origin",
-      ],
-      maxAgeSeconds: 3600,
-    },
-  ];
-
-  const resp = await fetch(
-    `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}?fields=cors`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ cors: corsConfig }),
-    },
-  );
-
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`GCS bucket CORS patch failed: ${resp.status} — ${errText.slice(0, 300)}`);
-  }
+export function ensureSttBucketCors(): Promise<void> {
+  return Promise.resolve();
 }
