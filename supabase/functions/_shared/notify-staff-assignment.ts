@@ -1,10 +1,30 @@
 // ============================================================================
 // notify-staff-assignment
 // Mirrors notify-vendor-assignment but for internal staff assigned to a
-// workflow step (actor_type = internal_work or internal_review). Writes
-// to notification_log with recipient_type='staff'. Failures are swallowed
-// so the staff-assign DB write never rolls back on a Brevo hiccup.
+// workflow step (actor_type = internal_work or internal_review).
+//
+// Renders through `_shared/email-shell.ts`.
 // ============================================================================
+
+import {
+  brevoPayload,
+  callout,
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc,
+  eyebrow,
+  lead,
+  REPLY,
+  title,
+  type TemplateMeta,
+} from "./email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Staff — Internal Assignment",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 interface NotifyArgs {
   supabase: any;
@@ -52,18 +72,6 @@ async function logNotification(
 const ADMIN_PORTAL_URL =
   Deno.env.get("ADMIN_PORTAL_URL") || "https://portal.cethos.com";
 
-const escapeHtml = (s: string | null | undefined): string =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => {
-    switch (c) {
-      case "&": return "&amp;";
-      case "<": return "&lt;";
-      case ">": return "&gt;";
-      case '"': return "&quot;";
-      case "'": return "&#39;";
-      default: return c;
-    }
-  });
-
 const fmtDate = (iso: string | null | undefined): string => {
   if (!iso) return "—";
   try {
@@ -76,6 +84,13 @@ const fmtDate = (iso: string | null | undefined): string => {
     return iso;
   }
 };
+
+function firstName(full: string | null | undefined): string {
+  if (!full) return "team";
+  const trimmed = full.trim();
+  if (!trimmed) return "team";
+  return trimmed.split(/\s+/)[0];
+}
 
 export async function notifyStaffAssignment(args: NotifyArgs): Promise<void> {
   try {
@@ -110,59 +125,40 @@ export async function notifyStaffAssignment(args: NotifyArgs): Promise<void> {
       ? `${ADMIN_PORTAL_URL}/admin/orders/${order.id}`
       : `${ADMIN_PORTAL_URL}/admin`;
 
-    const detailRows: Array<[string, string]> = [
+    const rows: Array<[string, string]> = [
       ["Order", order?.order_number ?? "—"],
       ["Step", step?.name ?? `Step ${step?.step_number ?? ""}`],
       ["Role", step?.actor_type === "internal_review" ? "Internal review" : "Internal work"],
     ];
-    if (args.deadline) detailRows.push(["Deadline", fmtDate(args.deadline)]);
+    if (args.deadline) rows.push(["Deadline", fmtDate(args.deadline)]);
 
-    const detailsHtml = detailRows
-      .map(
-        ([k, v]) =>
-          `<tr><td style="padding:4px 12px 4px 0;color:#6b7280;font-size:13px;vertical-align:top;">${escapeHtml(k)}</td><td style="padding:4px 0;color:#111827;font-size:14px;">${escapeHtml(v)}</td></tr>`,
-      )
-      .join("");
-
-    const instructionsBlock = args.instructions
-      ? `<div style="margin-top:16px;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#374151;font-size:13px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(args.instructions)}</div>`
+    const instructionsCallout = args.instructions
+      ? callout({
+          tone: "info",
+          title: "Instructions",
+          body: esc(args.instructions).replace(/\n/g, "<br />"),
+        })
       : "";
 
-    const htmlContent = `
-<!doctype html>
-<html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-        <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
-          <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
-          <div style="font-size:13px;opacity:0.9;margin-top:2px;">Internal step assigned to you</div>
-        </td></tr>
-        <tr><td style="padding:24px;color:#111827;">
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">Hello ${escapeHtml(staff.full_name || "team")},</p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">You have been assigned to <strong>${escapeHtml(order?.order_number ?? "an order")}</strong>. Open it in the admin portal to start work, upload deliverables, and mark the step as delivered.</p>
-          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;">${detailsHtml}</table>
-          ${instructionsBlock}
-          <p style="margin:24px 0 0;text-align:center;">
-            <a href="${escapeHtml(adminLink)}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">Open in admin portal</a>
-          </p>
-        </td></tr>
-        <tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-          You're receiving this because you were assigned to an internal step on this order.
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`.trim();
+    const body = [
+      eyebrow("Internal assignment", "teal"),
+      title("Internal step assigned to you"),
+      lead(
+        `Hi ${esc(firstName(staff.full_name))}, you have been assigned to <strong>${esc(order?.order_number ?? "an order")}</strong>. Open it in the admin portal to start work, upload deliverables, and mark the step as delivered.`,
+      ),
+      detailsTable(rows),
+      instructionsCallout,
+      ctaButton({ label: "Open in admin portal", url: adminLink }),
+    ].join("");
 
-    const payload: Record<string, unknown> = {
+    const htmlContent = emailShell(body, { replyTo: REPLY.ops, template: TEMPLATE });
+    const payload = brevoPayload({
       to: [{ email: staff.email, name: staff.full_name || staff.email }],
-      sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
-      replyTo: { email: "ops@cethos.com", name: "Cethos Ops" },
       subject,
-      htmlContent,
+      html: htmlContent,
+      replyTo: REPLY.ops,
       tags: ["staff-assignment", `order-${order?.order_number ?? "unknown"}`],
-    };
+    });
 
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
