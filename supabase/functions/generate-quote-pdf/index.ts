@@ -1,12 +1,19 @@
 // generate-quote-pdf
 //
-// POST { quote_id }  → returns PDF bytes (application/pdf)
-// GET  ?quote_id=…   → same
+// POST { quote_id }  -> returns PDF bytes (application/pdf)
+// GET  ?quote_id=... -> same
 //
 // On-demand: nothing is stored. The PDF is built fresh from the latest
 // quote/analysis/adjustments rows so totals always match what the customer
-// sees in the portal. Layout mirrors the invoice PDF's branded header
-// (CETHOS blue bar) for visual consistency.
+// sees in the portal.
+//
+// Two layouts:
+//   - Business / AR customers (customer.company_name IS NOT NULL) get the
+//     "Cethos Design System" business quote layout: white header band with
+//     QUOTE wordmark + teal underline, slate notes panel with payment terms
+//     and project details, bordered Accept card. Pulls payment terms from
+//     customers.payment_terms (default 'net_30').
+//   - Individual customers stay on the original branded-header layout.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -26,14 +33,19 @@ function jsonError(message: string, status = 400) {
   });
 }
 
-// CETHOS brand palette (from tailwind.config.ts).
+// CETHOS brand palette (Cethos Design System colors_and_type.css).
 const CETHOS_NAVY = rgb(0x0c / 255, 0x23 / 255, 0x40 / 255); // #0C2340
 const CETHOS_TEAL = rgb(0x08 / 255, 0x91 / 255, 0xb2 / 255); // #0891B2
+const CETHOS_TEAL_DEEP = rgb(0x0e / 255, 0x74 / 255, 0x90 / 255); // #0E7490
 const CETHOS_TEAL_LIGHT = rgb(0xec / 255, 0xfe / 255, 0xff / 255); // #ECFEFF
+const CETHOS_BG_BLUE = rgb(0xe0 / 255, 0xf2 / 255, 0xfe / 255); // #E0F2FE
 const TEXT_DARK = rgb(0x1f / 255, 0x29 / 255, 0x37 / 255); // slate-800
-const TEXT_MUTED = rgb(0x64 / 255, 0x74 / 255, 0x8b / 255); // #64748B
-const TABLE_HEADER_BG = rgb(0xf8 / 255, 0xfa / 255, 0xfc / 255); // slate-50
+const TEXT_MUTED = rgb(0x64 / 255, 0x74 / 255, 0x8b / 255); // slate-500
+const SLATE_50 = rgb(0xf8 / 255, 0xfa / 255, 0xfc / 255); // #F8FAFC
 const TABLE_BORDER = rgb(0xe5 / 255, 0xe7 / 255, 0xeb / 255); // #E5E7EB
+const RUSH_PILL_BG = rgb(0xff / 255, 0xf7 / 255, 0xed / 255); // #FFF7ED
+const RUSH_PILL_FG = rgb(0x9a / 255, 0x34 / 255, 0x12 / 255); // #9A3412
+const RUSH_PILL_DOT = rgb(0xf5 / 255, 0x9e / 255, 0x0b / 255); // #F59E0B
 const WHITE = rgb(1, 1, 1);
 
 const PAGE_W = 612;
@@ -62,16 +74,51 @@ function money(n: number | null | undefined, currency = "CAD"): string {
 }
 
 function safeText(s: unknown): string {
+  // WinAnsi can encode 0x20-0xFF (Latin-1) — anything outside must be
+  // transliterated or stripped before drawText() throws. Order matters:
+  // the punctuation/dash substitutions run before the catch-all stripper.
+  // Unicode whitespace uses explicit escapes — embedding literal NBSP/ZWSP
+  // in the character class triggered a `space-to-ZWSP` range that ate every
+  // ASCII codepoint and silently turned drawn text into rows of spaces.
   return String(s ?? "")
-    .replace(/[‘’‚‛]/g, "\'")
+    .replace(/[‘’‚‛]/g, "'")
     .replace(/[“”„‟]/g, '"')
     .replace(/[–—]/g, "-")
     .replace(/[→➔➜➤]/g, "->")
     .replace(/[←]/g, "<-")
     .replace(/[…]/g, "...")
-    .replace(/[  -​  　]/g, " ")
+    .replace(/[   ​　]/g, " ")
     .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, "")
     .slice(0, 500);
+}
+
+function fmtDate(d: string | Date | null | undefined): string {
+  if (!d) return "—";
+  const dt = typeof d === "string" ? new Date(d) : d;
+  if (Number.isNaN(dt.getTime())) return "—";
+  return dt.toLocaleDateString("en-CA", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function paymentTermsLabel(terms: string | null | undefined): {
+  short: string; // e.g. "Net 30"
+  account: string; // e.g. "AR approved · Net 30"
+  days: number;
+} {
+  const raw = (terms ?? "net_30").toLowerCase();
+  if (raw === "due_on_receipt" || raw === "upon_receipt") {
+    return { short: "Due on receipt", account: "Due on receipt", days: 0 };
+  }
+  const match = raw.match(/net[_\s-]?(\d{1,3})/);
+  const days = match ? parseInt(match[1], 10) : 30;
+  return {
+    short: `Net ${days}`,
+    account: `AR approved · Net ${days}`,
+    days,
+  };
 }
 
 serve(async (req: Request) => {
@@ -109,8 +156,11 @@ serve(async (req: Request) => {
           surcharge_total, calculated_totals, is_rush, turnaround_type,
           estimated_delivery_date, promised_delivery_date,
           promised_delivery_date_rush, expires_at, special_instructions,
-          created_at,
-          customer:customers(id, full_name, email, phone, company_name),
+          created_at, created_by_staff_id,
+          customer:customers(id, full_name, email, phone, company_name,
+            is_ar_customer, payment_terms,
+            billing_address_line1, billing_address_line2,
+            billing_city, billing_state, billing_postal_code, billing_country),
           source_language:languages!quotes_source_language_id_fkey(name, code),
           target_language:languages!quotes_target_language_id_fkey(name, code),
           intended_use:intended_uses(name)
@@ -148,421 +198,63 @@ serve(async (req: Request) => {
     const intendedUse = quote.intended_use ?? {};
     const currency = quote.currency ?? "CAD";
 
-    // ────────────────────────────────────────────────────────────────────
-    // Build PDF
-    // ────────────────────────────────────────────────────────────────────
+    // Look up the PM (Cethos-side staff who created the quote) if any.
+    let pm: { full_name: string | null; email: string | null } | null = null;
+    if (quote.created_by_staff_id) {
+      const { data } = await supabase
+        .from("staff_users")
+        .select("full_name, email")
+        .eq("id", quote.created_by_staff_id)
+        .maybeSingle();
+      pm = data ?? null;
+    }
+
+    // Look up the rush surcharge percentage from app_settings (default 30%).
+    const { data: rushSetting } = await supabase
+      .from("app_settings")
+      .select("setting_value")
+      .eq("setting_key", "rush_multiplier")
+      .maybeSingle();
+    const rushMultiplier = Number(rushSetting?.setting_value ?? 1.3);
+    const rushPct = Math.round((rushMultiplier - 1) * 100);
+
     const pdf = await PDFDocument.create();
-    let page = pdf.addPage([PAGE_W, PAGE_H]);
     const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-    const draw = (
-      text: string,
-      x: number,
-      y: number,
-      opts: {
-        size?: number;
-        font?: typeof fontRegular;
-        color?: ReturnType<typeof rgb>;
-        maxWidth?: number;
-      } = {},
-    ) => {
-      const size = opts.size ?? 10;
-      const font = opts.font ?? fontRegular;
-      const color = opts.color ?? TEXT_DARK;
-      let s = safeText(text);
-      if (opts.maxWidth) {
-        // Truncate with ellipsis if too long for the column.
-        while (font.widthOfTextAtSize(s, size) > opts.maxWidth && s.length > 1) {
-          s = s.slice(0, -2) + "…";
-        }
-      }
-      page.drawText(s, { x, y, size, font, color });
-    };
-
-    // ─── Branded header ────────────────────────────────────────────────
-    // Navy band (full width) with the CETHOS wordmark + tagline on the
-    // left and a teal accent stripe below for brand emphasis. The
-    // marketing wordmark is rendered as text — the app's logo_url
-    // app_settings row is currently empty, and the in-app sidebar falls
-    // back to the same "CETHOS" wordmark when no image is uploaded.
-    page.drawRectangle({
-      x: 0,
-      y: PAGE_H - HEADER_H,
-      width: PAGE_W,
-      height: HEADER_H,
-      color: CETHOS_NAVY,
-    });
-    // Teal accent stripe along the bottom edge of the header
-    page.drawRectangle({
-      x: 0,
-      y: PAGE_H - HEADER_H - 4,
-      width: PAGE_W,
-      height: 4,
-      color: CETHOS_TEAL,
-    });
-    // Wordmark
-    draw("CETHOS", MARGIN, PAGE_H - 42, {
-      size: 28,
-      font: fontBold,
-      color: WHITE,
-    });
-    draw("Translation Services", MARGIN, PAGE_H - 60, {
-      size: 11,
-      color: rgb(0.78, 0.85, 0.92),
-    });
-    // "QUOTE" tag on the right
-    const tagWidth = 80;
-    const tagX = PAGE_W - MARGIN - tagWidth;
-    page.drawRectangle({
-      x: tagX,
-      y: PAGE_H - 50,
-      width: tagWidth,
-      height: 24,
-      color: CETHOS_TEAL,
-    });
-    const tagLabel = "QUOTE";
-    const tagLabelWidth = fontBold.widthOfTextAtSize(tagLabel, 13);
-    draw(tagLabel, tagX + (tagWidth - tagLabelWidth) / 2, PAGE_H - 43, {
-      size: 13,
-      font: fontBold,
-      color: WHITE,
-    });
-    draw("portal.cethos.com", PAGE_W - MARGIN - 110, PAGE_H - 72, {
-      size: 9,
-      color: rgb(0.78, 0.85, 0.92),
-    });
-
-    let y = PAGE_H - HEADER_H - 30;
-
-    // Quote meta row
-    draw(`Quote #: ${quote.quote_number ?? "—"}`, MARGIN, y, {
-      size: 12,
-      font: fontBold,
-      color: CETHOS_NAVY,
-    });
-    draw(
-      `Date: ${new Date(quote.created_at).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}`,
-      PAGE_W - MARGIN - 160,
-      y,
-      { size: 10 },
-    );
-    y -= 16;
-    if (quote.expires_at) {
-      draw(
-        `Valid until: ${new Date(quote.expires_at).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}`,
-        PAGE_W - MARGIN - 160,
-        y,
-        { size: 10, color: TEXT_MUTED },
-      );
-    }
-    draw(`Status: ${(quote.status ?? "").toUpperCase().replace(/_/g, " ")}`, MARGIN, y, {
-      size: 10,
-      color: TEXT_MUTED,
-    });
-    y -= 24;
-
-    // Divider
-    page.drawLine({
-      start: { x: MARGIN, y },
-      end: { x: PAGE_W - MARGIN, y },
-      thickness: 0.5,
-      color: TABLE_BORDER,
-    });
-    y -= 18;
-
-    // Bill-to + project blocks side by side
-    const blockTop = y;
-    draw("Bill To", MARGIN, blockTop, { size: 10, font: fontBold });
-    let leftY = blockTop - 14;
-    if (customer.company_name) {
-      draw(customer.company_name, MARGIN, leftY, { size: 10, font: fontBold });
-      leftY -= 13;
-    }
-    if (customer.full_name) {
-      draw(customer.full_name, MARGIN, leftY, { size: 10 });
-      leftY -= 13;
-    }
-    if (customer.email) {
-      draw(customer.email, MARGIN, leftY, { size: 10, color: TEXT_MUTED });
-      leftY -= 13;
-    }
-    if (customer.phone) {
-      draw(customer.phone, MARGIN, leftY, { size: 10, color: TEXT_MUTED });
-      leftY -= 13;
-    }
-
-    const projectX = PAGE_W / 2 + 20;
-    draw("Project", projectX, blockTop, { size: 10, font: fontBold });
-    let rightY = blockTop - 14;
-    draw(
-      `${sourceLang.name ?? "—"}  →  ${targetLang.name ?? "—"}`,
-      projectX,
-      rightY,
-      { size: 10 },
-    );
-    rightY -= 13;
-    if (intendedUse.name) {
-      draw(`Use: ${intendedUse.name}`, projectX, rightY, {
-        size: 10,
-        color: TEXT_MUTED,
+    // Branch: business customer → new Design System layout; else original.
+    const isBusiness = Boolean(customer.company_name);
+    if (isBusiness) {
+      await renderBusinessQuote({
+        pdf,
+        fontRegular,
+        fontBold,
+        quote,
+        customer,
+        analysis,
+        adjustments,
+        sourceLang,
+        targetLang,
+        intendedUse,
+        currency,
+        pm,
+        rushPct,
       });
-      rightY -= 13;
-    }
-    if (quote.promised_delivery_date) {
-      draw(
-        `Standard delivery: ${new Date(quote.promised_delivery_date).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}`,
-        projectX,
-        rightY,
-        { size: 10, color: TEXT_MUTED },
-      );
-      rightY -= 13;
-    }
-    if (quote.promised_delivery_date_rush) {
-      draw(
-        `Rush delivery: ${new Date(quote.promised_delivery_date_rush).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}`,
-        projectX,
-        rightY,
-        { size: 10, color: TEXT_MUTED },
-      );
-      rightY -= 13;
-    }
-
-    y = Math.min(leftY, rightY) - 12;
-
-    // Line items table
-    const colDescX = MARGIN;
-    const colQtyX = 320;
-    const colRateX = 410;
-    const colTotalX = 490;
-    const colRightEdge = PAGE_W - MARGIN;
-
-    page.drawRectangle({
-      x: MARGIN - 4,
-      y: y - 4,
-      width: colRightEdge - MARGIN + 8,
-      height: 22,
-      color: TABLE_HEADER_BG,
-    });
-    draw("Description", colDescX, y + 4, { size: 10, font: fontBold });
-    draw("Qty", colQtyX, y + 4, { size: 10, font: fontBold });
-    draw("Rate", colRateX, y + 4, { size: 10, font: fontBold });
-    draw("Amount", colTotalX, y + 4, { size: 10, font: fontBold });
-    y -= 14;
-
-    page.drawLine({
-      start: { x: MARGIN - 4, y },
-      end: { x: colRightEdge + 4, y },
-      thickness: 0.4,
-      color: TABLE_BORDER,
-    });
-    y -= 16;
-
-    if (analysis.length === 0) {
-      draw("No line items.", colDescX, y, {
-        size: 10,
-        color: TEXT_MUTED,
-      });
-      y -= 14;
     } else {
-      for (const item of analysis) {
-        if (y < 100) {
-          page = pdf.addPage([PAGE_W, PAGE_H]);
-          y = PAGE_H - MARGIN;
-        }
-        const filename =
-          item.manual_filename ||
-          item.document_type_other ||
-          item.detected_document_type ||
-          "Document";
-        draw(filename, colDescX, y, {
-          size: 10,
-          font: fontBold,
-          maxWidth: colQtyX - colDescX - 8,
-        });
-
-        const unit = item.calculation_unit as string | null;
-        const qty = Number(item.unit_quantity ?? item.billable_pages ?? 0);
-        const rate = Number(item.base_rate ?? 0);
-        const qtyLabel =
-          unit === "flat"
-            ? "Flat"
-            : `${qty} ${unitLabel(unit, qty)}`;
-        draw(qtyLabel, colQtyX, y, { size: 10, color: TEXT_MUTED });
-        draw(
-          unit === "flat"
-            ? money(rate, currency)
-            : `${money(rate, currency)} / ${unitLabel(unit, 1)}`,
-          colRateX,
-          y,
-          { size: 10, color: TEXT_MUTED },
-        );
-        draw(money(item.line_total, currency), colTotalX, y, {
-          size: 10,
-          font: fontBold,
-        });
-        y -= 14;
-
-        if (item.detected_document_type) {
-          draw(
-            String(item.detected_document_type).replace(/_/g, " "),
-            colDescX,
-            y,
-            { size: 9, color: TEXT_MUTED },
-          );
-          y -= 12;
-        }
-
-        if (Number(item.certification_price) > 0) {
-          draw("Certification", colDescX + 12, y, {
-            size: 9,
-            color: TEXT_MUTED,
-          });
-          draw(money(item.certification_price, currency), colTotalX, y, {
-            size: 9,
-            color: TEXT_MUTED,
-          });
-          y -= 12;
-        }
-        y -= 4;
-      }
-    }
-
-    y -= 10;
-    page.drawLine({
-      start: { x: MARGIN - 4, y },
-      end: { x: colRightEdge + 4, y },
-      thickness: 0.4,
-      color: TABLE_BORDER,
-    });
-    y -= 16;
-
-    // Totals (right-aligned column)
-    const labelX = 380;
-    const valueX = 510;
-    const totalsRow = (label: string, value: string, bold = false) => {
-      draw(label, labelX, y, {
-        size: 10,
-        font: bold ? fontBold : fontRegular,
-        color: bold ? TEXT_DARK : TEXT_MUTED,
+      await renderClassicQuote({
+        pdf,
+        fontRegular,
+        fontBold,
+        quote,
+        customer,
+        analysis,
+        adjustments,
+        sourceLang,
+        targetLang,
+        intendedUse,
+        currency,
       });
-      draw(value, valueX, y, {
-        size: 10,
-        font: bold ? fontBold : fontRegular,
-      });
-      y -= 14;
-    };
-
-    totalsRow("Subtotal", money(quote.subtotal, currency));
-    if (Number(quote.certification_total) > 0) {
-      totalsRow("Certification", money(quote.certification_total, currency));
     }
-    for (const adj of adjustments) {
-      const amt = Number(adj.calculated_amount ?? 0);
-      const label =
-        adj.adjustment_type === "discount"
-          ? `Discount${adj.reason ? ` (${adj.reason})` : ""}`
-          : `Surcharge${adj.reason ? ` (${adj.reason})` : ""}`;
-      const signed =
-        adj.adjustment_type === "discount"
-          ? `-${money(Math.abs(amt), currency)}`
-          : money(Math.abs(amt), currency);
-      totalsRow(label, signed);
-    }
-    if (Number(quote.rush_fee) > 0) {
-      totalsRow("Rush fee", money(quote.rush_fee, currency));
-    }
-    if (Number(quote.delivery_fee) > 0) {
-      totalsRow("Delivery", money(quote.delivery_fee, currency));
-    }
-    const taxPct = Number(quote.tax_rate ?? 0) * 100;
-    totalsRow(
-      `Tax (${taxPct.toFixed(taxPct % 1 === 0 ? 0 : 2)}%)`,
-      money(quote.tax_amount, currency),
-    );
-    y -= 4;
-    page.drawLine({
-      start: { x: labelX - 6, y: y + 8 },
-      end: { x: colRightEdge + 4, y: y + 8 },
-      thickness: 0.6,
-      color: TABLE_BORDER,
-    });
-    totalsRow(`Total (${currency})`, money(quote.total, currency), true);
-
-    y -= 18;
-    // ─── Payment terms block ───────────────────────────────────────────
-    // Enterprise-billing default: Invoice — Net 45. Per-customer override
-    // can come later via a customers.payment_terms column.
-    const dueDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
-    const dueDateLabel = dueDate.toLocaleDateString("en-CA", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-    const blockH = 56;
-    page.drawRectangle({
-      x: MARGIN - 6,
-      y: y - blockH + 8,
-      width: PAGE_W - 2 * MARGIN + 12,
-      height: blockH,
-      color: CETHOS_TEAL_LIGHT,
-    });
-    page.drawRectangle({
-      x: MARGIN - 6,
-      y: y - blockH + 8,
-      width: 3,
-      height: blockH,
-      color: CETHOS_TEAL,
-    });
-    draw("Payment Terms", MARGIN + 4, y - 4, {
-      size: 10,
-      font: fontBold,
-      color: CETHOS_NAVY,
-    });
-    draw("Invoice — Net 45", MARGIN + 4, y - 20, {
-      size: 11,
-      font: fontBold,
-      color: CETHOS_TEAL,
-    });
-    draw(
-      `Payment is due ${dueDateLabel} (45 days from invoice date). Invoice will be issued upon project completion.`,
-      MARGIN + 4,
-      y - 36,
-      { size: 9, color: TEXT_DARK },
-    );
-    y -= blockH + 12;
-
-    if (quote.special_instructions) {
-      draw("Notes", MARGIN, y, { size: 10, font: fontBold });
-      y -= 14;
-      // Simple word-wrap to MARGIN..PAGE_W-MARGIN
-      const words = safeText(quote.special_instructions).split(/\s+/);
-      const maxWidth = PAGE_W - 2 * MARGIN;
-      let line = "";
-      for (const w of words) {
-        const test = line ? line + " " + w : w;
-        if (fontRegular.widthOfTextAtSize(test, 10) > maxWidth) {
-          draw(line, MARGIN, y, { size: 10, color: TEXT_MUTED });
-          y -= 12;
-          line = w;
-        } else {
-          line = test;
-        }
-        if (y < 60) break;
-      }
-      if (line && y >= 60) {
-        draw(line, MARGIN, y, { size: 10, color: TEXT_MUTED });
-        y -= 12;
-      }
-    }
-
-    // Footer
-    draw(
-      "Cethos Translation Services  ·  support@cethos.com  ·  portal.cethos.com",
-      MARGIN,
-      40,
-      { size: 9, color: TEXT_MUTED },
-    );
 
     const pdfBytes = await pdf.save();
     const filename = `${(quote.quote_number || "quote").replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
@@ -582,3 +274,1118 @@ serve(async (req: Request) => {
     return jsonError(message, 500);
   }
 });
+
+// ════════════════════════════════════════════════════════════════════
+// Business / AR customer layout — Cethos Design System "Quote Template"
+// ════════════════════════════════════════════════════════════════════
+
+type RenderCtx = {
+  pdf: PDFDocument;
+  fontRegular: any;
+  fontBold: any;
+  quote: any;
+  customer: any;
+  analysis: any[];
+  adjustments: any[];
+  sourceLang: any;
+  targetLang: any;
+  intendedUse: any;
+  currency: string;
+  pm?: { full_name: string | null; email: string | null } | null;
+  rushPct?: number;
+};
+
+async function renderBusinessQuote(ctx: RenderCtx) {
+  const {
+    pdf,
+    fontRegular,
+    fontBold,
+    quote,
+    customer,
+    analysis,
+    adjustments,
+    sourceLang,
+    targetLang,
+    currency,
+    pm,
+    rushPct = 30,
+  } = ctx;
+
+  // Page margins for the business layout — wider gutter than the classic one
+  // to match the 56px padding in the HTML template.
+  const M = 56;
+  const RIGHT = PAGE_W - M;
+
+  let page = pdf.addPage([PAGE_W, PAGE_H]);
+
+  const draw = (
+    text: string,
+    x: number,
+    y: number,
+    opts: {
+      size?: number;
+      font?: any;
+      color?: ReturnType<typeof rgb>;
+      maxWidth?: number;
+    } = {},
+  ) => {
+    const size = opts.size ?? 10;
+    const font = opts.font ?? fontRegular;
+    const color = opts.color ?? TEXT_DARK;
+    let s = safeText(text);
+    if (opts.maxWidth) {
+      while (font.widthOfTextAtSize(s, size) > opts.maxWidth && s.length > 1) {
+        s = s.slice(0, -2) + "..";
+      }
+    }
+    page.drawText(s, { x, y, size, font, color });
+  };
+
+  // ─── HEADER BAND (white with teal underline) ─────────────────────────
+  // Wordmark on the left, "QUOTE" tagline on the right.
+  page.drawRectangle({
+    x: 0,
+    y: PAGE_H - 78,
+    width: PAGE_W,
+    height: 78,
+    color: WHITE,
+  });
+  // 3px teal underline
+  page.drawRectangle({
+    x: 0,
+    y: PAGE_H - 81,
+    width: PAGE_W,
+    height: 3,
+    color: CETHOS_TEAL,
+  });
+  // Left: CETHOS wordmark + Translation Services tagline
+  draw("CETHOS", M, PAGE_H - 38, {
+    size: 26,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  draw("Translation Services", M, PAGE_H - 54, {
+    size: 9,
+    color: TEXT_MUTED,
+  });
+  // Right: large QUOTE wordmark
+  const quoteLabel = "QUOTE";
+  const quoteLabelWidth = fontBold.widthOfTextAtSize(quoteLabel, 28);
+  draw(quoteLabel, RIGHT - quoteLabelWidth, PAGE_H - 40, {
+    size: 28,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+
+  // Body starts below the header + breathing room
+  let y = PAGE_H - 78 - 36;
+
+  // ─── META ROW: Quote # / Date / Valid until ──────────────────────────
+  draw("Quote #", M, y, {
+    size: 9,
+    font: fontBold,
+    color: CETHOS_TEAL,
+  });
+  draw(quote.quote_number ?? "—", M, y - 18, {
+    size: 22,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+
+  const dateText = fmtDate(quote.created_at);
+  const validText = fmtDate(quote.expires_at);
+  // Right side: "Date: ..." and "Valid until: ..." each as a labelled row
+  const dateLabel = "Date:";
+  const validLabel = "Valid until:";
+  const dateLabelW = fontBold.widthOfTextAtSize(dateLabel, 10);
+  const validLabelW = fontBold.widthOfTextAtSize(validLabel, 10);
+  const dateValueW = fontRegular.widthOfTextAtSize(dateText, 10);
+  const validValueW = fontRegular.widthOfTextAtSize(validText, 10);
+  const dateRowW = dateLabelW + 6 + dateValueW;
+  const validRowW = validLabelW + 6 + validValueW;
+
+  // top row (date) aligned with quote # label
+  draw(dateLabel, RIGHT - dateRowW, y, {
+    size: 10,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  draw(dateText, RIGHT - dateValueW, y, {
+    size: 10,
+    color: CETHOS_NAVY,
+  });
+  // valid-until row sits just below
+  draw(validLabel, RIGHT - validRowW, y - 16, {
+    size: 10,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  draw(validText, RIGHT - validValueW, y - 16, {
+    size: 10,
+    color: CETHOS_NAVY,
+  });
+
+  y -= 38;
+
+  // Divider under the meta row
+  page.drawLine({
+    start: { x: M, y },
+    end: { x: RIGHT, y },
+    thickness: 0.5,
+    color: TABLE_BORDER,
+  });
+
+  y -= 22;
+
+  // ─── BILL TO / PROJECT ───────────────────────────────────────────────
+  const blockTopY = y;
+  const colW = (RIGHT - M - 32) / 2;
+  const projectX = M + colW + 32;
+
+  draw("BILL TO", M, blockTopY, {
+    size: 9,
+    font: fontBold,
+    color: TEXT_MUTED,
+  });
+  draw("PROJECT", projectX, blockTopY, {
+    size: 9,
+    font: fontBold,
+    color: TEXT_MUTED,
+  });
+
+  let leftY = blockTopY - 16;
+  // Bill-to: company name (bold), contact name, then email
+  draw(customer.company_name ?? "—", M, leftY, {
+    size: 11,
+    font: fontBold,
+    color: CETHOS_NAVY,
+    maxWidth: colW,
+  });
+  leftY -= 14;
+  if (customer.full_name) {
+    draw(customer.full_name, M, leftY, {
+      size: 11,
+      color: CETHOS_NAVY,
+      maxWidth: colW,
+    });
+    leftY -= 14;
+  }
+  if (customer.email) {
+    draw(customer.email, M, leftY, {
+      size: 10,
+      color: TEXT_MUTED,
+      maxWidth: colW,
+    });
+    leftY -= 13;
+  }
+  if (customer.phone) {
+    draw(customer.phone, M, leftY, {
+      size: 10,
+      color: TEXT_MUTED,
+      maxWidth: colW,
+    });
+    leftY -= 13;
+  }
+
+  // Project block — language pair with teal arrow, delivery dates.
+  // Use ASCII "->" because StandardFonts.Helvetica is WinAnsi-only and
+  // Unicode U+2192 throws on widthOfTextAtSize.
+  let rightY = blockTopY - 16;
+  const src = safeText(sourceLang.name) || "-";
+  const tgt = safeText(targetLang.name) || "-";
+  const srcW = fontBold.widthOfTextAtSize(src, 11);
+  draw(src, projectX, rightY, {
+    size: 11,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  const arrowGlyph = "->";
+  draw(arrowGlyph, projectX + srcW + 6, rightY, {
+    size: 12,
+    font: fontBold,
+    color: CETHOS_TEAL,
+  });
+  const arrowW = fontBold.widthOfTextAtSize(arrowGlyph, 12);
+  draw(tgt, projectX + srcW + 6 + arrowW + 6, rightY, {
+    size: 11,
+    font: fontBold,
+    color: CETHOS_NAVY,
+    maxWidth:
+      colW - (srcW + 6 + arrowW + 6) > 0 ? colW - (srcW + 6 + arrowW + 6) : 80,
+  });
+  rightY -= 14;
+
+  if (quote.promised_delivery_date) {
+    const lab = "Standard delivery:";
+    const labW = fontRegular.widthOfTextAtSize(lab, 10);
+    draw(lab, projectX, rightY, { size: 10, color: TEXT_MUTED });
+    draw(fmtDate(quote.promised_delivery_date), projectX + labW + 6, rightY, {
+      size: 10,
+      color: CETHOS_NAVY,
+    });
+    rightY -= 14;
+  }
+  if (quote.promised_delivery_date_rush) {
+    const lab = "Rush delivery:";
+    const labW = fontRegular.widthOfTextAtSize(lab, 10);
+    draw(lab, projectX, rightY, { size: 10, color: TEXT_MUTED });
+    const dateStr = fmtDate(quote.promised_delivery_date_rush);
+    draw(dateStr, projectX + labW + 6, rightY, {
+      size: 10,
+      color: CETHOS_NAVY,
+    });
+    const dateW = fontRegular.widthOfTextAtSize(dateStr, 10);
+    // Rush pill: dot + "+XX%"
+    const pillText = `+${rushPct}%`;
+    const pillTextW = fontBold.widthOfTextAtSize(pillText, 8);
+    const pillW = 10 + pillTextW + 10;
+    const pillX = projectX + labW + 6 + dateW + 8;
+    page.drawRectangle({
+      x: pillX,
+      y: rightY - 3,
+      width: pillW,
+      height: 13,
+      color: RUSH_PILL_BG,
+      borderColor: RUSH_PILL_BG,
+    });
+    // dot
+    page.drawCircle({
+      x: pillX + 5,
+      y: rightY + 3,
+      size: 2.5,
+      color: RUSH_PILL_DOT,
+    });
+    draw(pillText, pillX + 10, rightY, {
+      size: 8,
+      font: fontBold,
+      color: RUSH_PILL_FG,
+    });
+    rightY -= 14;
+  }
+
+  y = Math.min(leftY, rightY) - 14;
+
+  // ─── ITEMS TABLE ─────────────────────────────────────────────────────
+  // Column layout: Description (56%) | Qty (12%) | Rate (15%) | Amount (17%)
+  const tableW = RIGHT - M;
+  const colDescX = M;
+  const colQtyR = M + tableW * 0.68; // right edge of Qty column
+  const colRateR = M + tableW * 0.83;
+  const colAmtR = RIGHT;
+
+  // Header row background (slate-50)
+  const headerH = 28;
+  page.drawRectangle({
+    x: M,
+    y: y - headerH + 14,
+    width: tableW,
+    height: headerH,
+    color: SLATE_50,
+  });
+  // Header labels
+  draw("Description", colDescX + 8, y, {
+    size: 10,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  const qtyLabelW = fontBold.widthOfTextAtSize("Qty", 10);
+  const rateLabelW = fontBold.widthOfTextAtSize("Rate", 10);
+  const amtLabelW = fontBold.widthOfTextAtSize("Amount", 10);
+  draw("Qty", colQtyR - qtyLabelW - 8, y, {
+    size: 10,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  draw("Rate", colRateR - rateLabelW - 8, y, {
+    size: 10,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  draw("Amount", colAmtR - amtLabelW - 8, y, {
+    size: 10,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+
+  y -= headerH;
+  // Bottom border of header row
+  page.drawLine({
+    start: { x: M, y: y + 14 },
+    end: { x: RIGHT, y: y + 14 },
+    thickness: 0.4,
+    color: TABLE_BORDER,
+  });
+
+  if (analysis.length === 0) {
+    draw("No line items.", colDescX + 8, y, {
+      size: 10,
+      color: TEXT_MUTED,
+    });
+    y -= 18;
+  } else {
+    for (const item of analysis) {
+      // Page-break guard — leave room for totals + payment block at bottom
+      if (y < 280) {
+        page = pdf.addPage([PAGE_W, PAGE_H]);
+        y = PAGE_H - 60;
+      }
+      const filename =
+        item.manual_filename ||
+        item.document_type_other ||
+        item.detected_document_type ||
+        "Document";
+
+      // Title row
+      draw(filename, colDescX + 8, y, {
+        size: 11,
+        font: fontBold,
+        color: CETHOS_NAVY,
+        maxWidth: colQtyR - colDescX - 24,
+      });
+
+      const unit = item.calculation_unit as string | null;
+      const qty = Number(item.unit_quantity ?? item.billable_pages ?? 0);
+      const rate = Number(item.base_rate ?? 0);
+      const qtyText =
+        unit === "flat"
+          ? "Flat"
+          : `${qty} ${unitLabel(unit, qty)}`;
+      const rateText =
+        unit === "flat"
+          ? money(rate, currency)
+          : `${money(rate, currency)} / ${unitLabel(unit, 1)}`;
+      const amtText = money(item.line_total, currency);
+
+      const qtyTextW = fontRegular.widthOfTextAtSize(qtyText, 10);
+      const rateTextW = fontRegular.widthOfTextAtSize(rateText, 10);
+      const amtTextW = fontBold.widthOfTextAtSize(amtText, 11);
+      draw(qtyText, colQtyR - qtyTextW - 8, y, {
+        size: 10,
+        color: TEXT_MUTED,
+      });
+      draw(rateText, colRateR - rateTextW - 8, y, {
+        size: 10,
+        color: TEXT_MUTED,
+      });
+      draw(amtText, colAmtR - amtTextW - 8, y, {
+        size: 11,
+        font: fontBold,
+        color: CETHOS_NAVY,
+      });
+      y -= 14;
+
+      // Description / detected doc type as muted small line
+      if (item.detected_document_type) {
+        draw(
+          String(item.detected_document_type).replace(/_/g, " "),
+          colDescX + 8,
+          y,
+          {
+            size: 9,
+            color: TEXT_MUTED,
+            maxWidth: colQtyR - colDescX - 24,
+          },
+        );
+        y -= 12;
+      }
+
+      if (Number(item.certification_price) > 0) {
+        const certLab = "Certification";
+        const certLabW = fontRegular.widthOfTextAtSize(certLab, 9);
+        const certVal = money(item.certification_price, currency);
+        const certValW = fontRegular.widthOfTextAtSize(certVal, 9);
+        draw(certLab, colDescX + 8, y, {
+          size: 9,
+          color: TEXT_MUTED,
+        });
+        // dotted leader implied; just align value to amount column
+        draw(certVal, colAmtR - certValW - 8, y, {
+          size: 9,
+          color: TEXT_MUTED,
+        });
+        y -= 12;
+      }
+
+      // Row bottom border
+      y -= 6;
+      page.drawLine({
+        start: { x: M, y },
+        end: { x: RIGHT, y },
+        thickness: 0.4,
+        color: TABLE_BORDER,
+      });
+      y -= 12;
+    }
+  }
+
+  // ─── TOTALS (right-aligned column) ───────────────────────────────────
+  y -= 6;
+  const totalsW = 240;
+  const totalsX = RIGHT - totalsW;
+  const totalsLabelX = totalsX;
+  const totalsValueR = RIGHT;
+
+  const totalsLine = (
+    label: string,
+    value: string,
+    opts: { bold?: boolean; muted?: boolean } = {},
+  ) => {
+    const size = opts.bold ? 12 : 10;
+    const font = opts.bold ? fontBold : fontRegular;
+    const labelColor = opts.bold ? CETHOS_NAVY : TEXT_MUTED;
+    const valueColor = CETHOS_NAVY;
+    draw(label, totalsLabelX, y, { size, font, color: labelColor });
+    const valW = font.widthOfTextAtSize(value, size);
+    draw(value, totalsValueR - valW, y, { size, font, color: valueColor });
+    y -= opts.bold ? 18 : 14;
+  };
+
+  totalsLine("Subtotal", money(quote.subtotal, currency));
+  if (Number(quote.certification_total) > 0) {
+    totalsLine("Certification", money(quote.certification_total, currency));
+  }
+  for (const adj of adjustments) {
+    const amt = Number(adj.calculated_amount ?? 0);
+    const label =
+      adj.adjustment_type === "discount"
+        ? `Discount${adj.reason ? ` (${safeText(adj.reason).slice(0, 30)})` : ""}`
+        : `Surcharge${adj.reason ? ` (${safeText(adj.reason).slice(0, 30)})` : ""}`;
+    const signed =
+      adj.adjustment_type === "discount"
+        ? `-${money(Math.abs(amt), currency)}`
+        : money(Math.abs(amt), currency);
+    totalsLine(label, signed);
+  }
+  if (Number(quote.rush_fee) > 0) {
+    totalsLine("Rush fee", money(quote.rush_fee, currency));
+  }
+  if (Number(quote.delivery_fee) > 0) {
+    totalsLine("Delivery", money(quote.delivery_fee, currency));
+  }
+  const taxPct = Number(quote.tax_rate ?? 0) * 100;
+  totalsLine(
+    `Tax (${taxPct.toFixed(taxPct % 1 === 0 ? 0 : 2)}% GST)`,
+    money(quote.tax_amount, currency),
+  );
+
+  // 2px navy line above grand total
+  y -= 2;
+  page.drawLine({
+    start: { x: totalsX, y: y + 6 },
+    end: { x: totalsValueR, y: y + 6 },
+    thickness: 1.5,
+    color: CETHOS_NAVY,
+  });
+  y -= 10;
+
+  // Grand total: bold navy label + (CAD) muted + bold value
+  const grandLabel = "Total";
+  const grandCur = `(${currency})`;
+  const grandValue = money(quote.total, currency);
+  draw(grandLabel, totalsLabelX, y, {
+    size: 13,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  const grandLabelW = fontBold.widthOfTextAtSize(grandLabel, 13);
+  draw(grandCur, totalsLabelX + grandLabelW + 6, y, {
+    size: 10,
+    color: TEXT_MUTED,
+  });
+  const grandValueW = fontBold.widthOfTextAtSize(grandValue, 13);
+  draw(grandValue, totalsValueR - grandValueW, y, {
+    size: 13,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  y -= 28;
+
+  // ─── NOTES / PAYMENT TERMS BLOCK (slate panel) ───────────────────────
+  // Sized for the longest paragraph variant (AR-approved Net 45) at the
+  // current font size. If the paragraph grows, bump this.
+  const notesH = 175;
+  if (y - notesH < 100) {
+    page = pdf.addPage([PAGE_W, PAGE_H]);
+    y = PAGE_H - 60;
+  }
+
+  const notesTop = y;
+  page.drawRectangle({
+    x: M,
+    y: y - notesH,
+    width: RIGHT - M,
+    height: notesH,
+    color: SLATE_50,
+    borderColor: SLATE_50,
+  });
+
+  // 2-column inner grid
+  const innerPad = 18;
+  const innerLeftX = M + innerPad;
+  const innerRightX = M + (RIGHT - M) / 2 + 4;
+  const innerColW = (RIGHT - M) / 2 - innerPad - 8;
+  let innerTopY = notesTop - 22;
+
+  draw("PAYMENT TERMS", innerLeftX, innerTopY, {
+    size: 9,
+    font: fontBold,
+    color: TEXT_MUTED,
+  });
+  draw("PROJECT DETAILS", innerRightX, innerTopY, {
+    size: 9,
+    font: fontBold,
+    color: TEXT_MUTED,
+  });
+
+  const terms = paymentTermsLabel(customer.payment_terms);
+
+  // Left column rows
+  const arApproved = customer.is_ar_customer === true;
+  const accountValue = arApproved
+    ? terms.account
+    : terms.short;
+  const leftRows: Array<[string, string]> = [
+    ["Account", accountValue],
+    ["Methods", "e-Transfer · EFT · Cheque"],
+    ["Remit to", "payments@cethos.com"],
+  ];
+
+  // Right column rows
+  const pmName = pm?.full_name?.trim() || "Cethos PM team";
+  const pmEmail = pm?.email?.trim() || "pm@cethoscorp.com";
+  const rightRows: Array<[string, string]> = [
+    ["Project manager", pmName],
+    ["Contact", pmEmail],
+    ["GST/HST", "123456789 RT0001"],
+  ];
+
+  let leftRowY = innerTopY - 16;
+  for (const [k, v] of leftRows) {
+    draw(k, innerLeftX, leftRowY, { size: 10, color: TEXT_MUTED });
+    const vW = fontBold.widthOfTextAtSize(safeText(v), 10);
+    const rightEdge = innerLeftX + innerColW;
+    draw(v, Math.max(innerLeftX + 90, rightEdge - vW), leftRowY, {
+      size: 10,
+      font: fontBold,
+      color: CETHOS_NAVY,
+      maxWidth: innerColW - 90,
+    });
+    leftRowY -= 16;
+  }
+
+  let rightRowY = innerTopY - 16;
+  for (const [k, v] of rightRows) {
+    draw(k, innerRightX, rightRowY, { size: 10, color: TEXT_MUTED });
+    const vW = fontBold.widthOfTextAtSize(safeText(v), 10);
+    const rightEdge = innerRightX + innerColW;
+    draw(v, Math.max(innerRightX + 90, rightEdge - vW), rightRowY, {
+      size: 10,
+      font: fontBold,
+      color: CETHOS_NAVY,
+      maxWidth: innerColW - 90,
+    });
+    rightRowY -= 16;
+  }
+
+  // Divider then paragraph
+  const paraDividerY = Math.min(leftRowY, rightRowY) - 2;
+  page.drawLine({
+    start: { x: innerLeftX, y: paraDividerY },
+    end: { x: RIGHT - innerPad, y: paraDividerY },
+    thickness: 0.4,
+    color: TABLE_BORDER,
+  });
+
+  const paragraph =
+    `Quote valid for ${terms.days || 30} days from issue date. ` +
+    (arApproved
+      ? `No deposit required — your account is approved for AR billing on ${terms.short} terms. `
+      : `Standard terms apply (${terms.short}). `) +
+    `One free revision round included; further changes billed at $0.18/word. ` +
+    `ISO 17100 quality workflow with subject-matter linguists, independent ` +
+    `editor pass, and final QA. Invoices issued upon delivery; late payments ` +
+    `accrue 1.5% per month past ${terms.short}.`;
+
+  let paraY = paraDividerY - 14;
+  const words = safeText(paragraph).split(/\s+/);
+  const maxParaW = RIGHT - innerPad - innerLeftX;
+  let line = "";
+  for (const w of words) {
+    const test = line ? line + " " + w : w;
+    if (fontRegular.widthOfTextAtSize(test, 10) > maxParaW) {
+      draw(line, innerLeftX, paraY, { size: 10, color: TEXT_MUTED });
+      paraY -= 13;
+      line = w;
+    } else {
+      line = test;
+    }
+    if (paraY < notesTop - notesH + 6) break;
+  }
+  if (line && paraY >= notesTop - notesH + 6) {
+    draw(line, innerLeftX, paraY, { size: 10, color: TEXT_MUTED });
+  }
+
+  y = notesTop - notesH - 18;
+
+  // ─── ACCEPT STRIP (bordered card) ────────────────────────────────────
+  const acceptH = 70;
+  if (y - acceptH < 80) {
+    page = pdf.addPage([PAGE_W, PAGE_H]);
+    y = PAGE_H - 60;
+  }
+
+  // Draw bordered rectangle (1px border)
+  page.drawRectangle({
+    x: M,
+    y: y - acceptH,
+    width: RIGHT - M,
+    height: acceptH,
+    color: WHITE,
+    borderColor: TABLE_BORDER,
+    borderWidth: 1,
+  });
+
+  draw("Accept this quote to start work", M + 18, y - 22, {
+    size: 12,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  const pmEmailForAccept = pmEmail;
+  const acceptText =
+    `Reply to ${pmEmailForAccept} with "ACCEPT ${quote.quote_number ?? ""}" ` +
+    `from any authorized email on file. We will start work within 30 minutes of ` +
+    `confirmation` +
+    (arApproved
+      ? ` — no signature required for AR-approved accounts.`
+      : `.`);
+  const acceptWords = safeText(acceptText).split(/\s+/);
+  const acceptMaxW = RIGHT - M - 36;
+  let acceptLine = "";
+  let acceptY = y - 38;
+  for (const w of acceptWords) {
+    const test = acceptLine ? acceptLine + " " + w : w;
+    if (fontRegular.widthOfTextAtSize(test, 10) > acceptMaxW) {
+      draw(acceptLine, M + 18, acceptY, { size: 10, color: TEXT_MUTED });
+      acceptY -= 12;
+      acceptLine = w;
+    } else {
+      acceptLine = test;
+    }
+    if (acceptY < y - acceptH + 10) break;
+  }
+  if (acceptLine && acceptY >= y - acceptH + 10) {
+    draw(acceptLine, M + 18, acceptY, { size: 10, color: TEXT_MUTED });
+  }
+
+  // ─── FOOTER ──────────────────────────────────────────────────────────
+  const footerY = 36;
+  page.drawLine({
+    start: { x: M, y: footerY + 14 },
+    end: { x: RIGHT, y: footerY + 14 },
+    thickness: 0.4,
+    color: TABLE_BORDER,
+  });
+  draw(
+    "Cethos Solutions Inc. · 421 7 Avenue SW, Floor 30, Calgary, AB T2P 4K9",
+    M,
+    footerY,
+    { size: 9, font: fontBold, color: CETHOS_NAVY },
+  );
+  const pageLabel = "Page 1 of 1";
+  const pageLabelW = fontRegular.widthOfTextAtSize(pageLabel, 9);
+  draw(pageLabel, RIGHT - pageLabelW, footerY, {
+    size: 9,
+    color: TEXT_MUTED,
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Classic layout — preserved for individual customers (no company_name)
+// ════════════════════════════════════════════════════════════════════
+
+async function renderClassicQuote(ctx: RenderCtx) {
+  const {
+    pdf,
+    fontRegular,
+    fontBold,
+    quote,
+    customer,
+    analysis,
+    adjustments,
+    sourceLang,
+    targetLang,
+    intendedUse,
+    currency,
+  } = ctx;
+
+  let page = pdf.addPage([PAGE_W, PAGE_H]);
+
+  const draw = (
+    text: string,
+    x: number,
+    y: number,
+    opts: {
+      size?: number;
+      font?: any;
+      color?: ReturnType<typeof rgb>;
+      maxWidth?: number;
+    } = {},
+  ) => {
+    const size = opts.size ?? 10;
+    const font = opts.font ?? fontRegular;
+    const color = opts.color ?? TEXT_DARK;
+    let s = safeText(text);
+    if (opts.maxWidth) {
+      while (font.widthOfTextAtSize(s, size) > opts.maxWidth && s.length > 1) {
+        s = s.slice(0, -2) + "..";
+      }
+    }
+    page.drawText(s, { x, y, size, font, color });
+  };
+
+  // Navy header band + teal accent
+  page.drawRectangle({
+    x: 0,
+    y: PAGE_H - HEADER_H,
+    width: PAGE_W,
+    height: HEADER_H,
+    color: CETHOS_NAVY,
+  });
+  page.drawRectangle({
+    x: 0,
+    y: PAGE_H - HEADER_H - 4,
+    width: PAGE_W,
+    height: 4,
+    color: CETHOS_TEAL,
+  });
+  draw("CETHOS", MARGIN, PAGE_H - 42, {
+    size: 28,
+    font: fontBold,
+    color: WHITE,
+  });
+  draw("Translation Services", MARGIN, PAGE_H - 60, {
+    size: 11,
+    color: rgb(0.78, 0.85, 0.92),
+  });
+  const tagWidth = 80;
+  const tagX = PAGE_W - MARGIN - tagWidth;
+  page.drawRectangle({
+    x: tagX,
+    y: PAGE_H - 50,
+    width: tagWidth,
+    height: 24,
+    color: CETHOS_TEAL,
+  });
+  const tagLabel = "QUOTE";
+  const tagLabelWidth = fontBold.widthOfTextAtSize(tagLabel, 13);
+  draw(tagLabel, tagX + (tagWidth - tagLabelWidth) / 2, PAGE_H - 43, {
+    size: 13,
+    font: fontBold,
+    color: WHITE,
+  });
+  draw("portal.cethos.com", PAGE_W - MARGIN - 110, PAGE_H - 72, {
+    size: 9,
+    color: rgb(0.78, 0.85, 0.92),
+  });
+
+  let y = PAGE_H - HEADER_H - 30;
+
+  draw(`Quote #: ${quote.quote_number ?? "—"}`, MARGIN, y, {
+    size: 12,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  draw(`Date: ${fmtDate(quote.created_at)}`, PAGE_W - MARGIN - 160, y, {
+    size: 10,
+  });
+  y -= 16;
+  if (quote.expires_at) {
+    draw(`Valid until: ${fmtDate(quote.expires_at)}`, PAGE_W - MARGIN - 160, y, {
+      size: 10,
+      color: TEXT_MUTED,
+    });
+  }
+  draw(`Status: ${(quote.status ?? "").toUpperCase().replace(/_/g, " ")}`, MARGIN, y, {
+    size: 10,
+    color: TEXT_MUTED,
+  });
+  y -= 24;
+
+  page.drawLine({
+    start: { x: MARGIN, y },
+    end: { x: PAGE_W - MARGIN, y },
+    thickness: 0.5,
+    color: TABLE_BORDER,
+  });
+  y -= 18;
+
+  const blockTop = y;
+  draw("Bill To", MARGIN, blockTop, { size: 10, font: fontBold });
+  let leftY = blockTop - 14;
+  if (customer.full_name) {
+    draw(customer.full_name, MARGIN, leftY, { size: 10 });
+    leftY -= 13;
+  }
+  if (customer.email) {
+    draw(customer.email, MARGIN, leftY, { size: 10, color: TEXT_MUTED });
+    leftY -= 13;
+  }
+  if (customer.phone) {
+    draw(customer.phone, MARGIN, leftY, { size: 10, color: TEXT_MUTED });
+    leftY -= 13;
+  }
+
+  const projectX = PAGE_W / 2 + 20;
+  draw("Project", projectX, blockTop, { size: 10, font: fontBold });
+  let rightY = blockTop - 14;
+  draw(
+    `${sourceLang.name ?? "—"}  →  ${targetLang.name ?? "—"}`,
+    projectX,
+    rightY,
+    { size: 10 },
+  );
+  rightY -= 13;
+  if (intendedUse.name) {
+    draw(`Use: ${intendedUse.name}`, projectX, rightY, {
+      size: 10,
+      color: TEXT_MUTED,
+    });
+    rightY -= 13;
+  }
+  if (quote.promised_delivery_date) {
+    draw(
+      `Standard delivery: ${fmtDate(quote.promised_delivery_date)}`,
+      projectX,
+      rightY,
+      { size: 10, color: TEXT_MUTED },
+    );
+    rightY -= 13;
+  }
+  if (quote.promised_delivery_date_rush) {
+    draw(
+      `Rush delivery: ${fmtDate(quote.promised_delivery_date_rush)}`,
+      projectX,
+      rightY,
+      { size: 10, color: TEXT_MUTED },
+    );
+    rightY -= 13;
+  }
+
+  y = Math.min(leftY, rightY) - 12;
+
+  const colDescX = MARGIN;
+  const colQtyX = 320;
+  const colRateX = 410;
+  const colTotalX = 490;
+  const colRightEdge = PAGE_W - MARGIN;
+
+  page.drawRectangle({
+    x: MARGIN - 4,
+    y: y - 4,
+    width: colRightEdge - MARGIN + 8,
+    height: 22,
+    color: SLATE_50,
+  });
+  draw("Description", colDescX, y + 4, { size: 10, font: fontBold });
+  draw("Qty", colQtyX, y + 4, { size: 10, font: fontBold });
+  draw("Rate", colRateX, y + 4, { size: 10, font: fontBold });
+  draw("Amount", colTotalX, y + 4, { size: 10, font: fontBold });
+  y -= 14;
+
+  page.drawLine({
+    start: { x: MARGIN - 4, y },
+    end: { x: colRightEdge + 4, y },
+    thickness: 0.4,
+    color: TABLE_BORDER,
+  });
+  y -= 16;
+
+  if (analysis.length === 0) {
+    draw("No line items.", colDescX, y, { size: 10, color: TEXT_MUTED });
+    y -= 14;
+  } else {
+    for (const item of analysis) {
+      if (y < 100) {
+        page = pdf.addPage([PAGE_W, PAGE_H]);
+        y = PAGE_H - MARGIN;
+      }
+      const filename =
+        item.manual_filename ||
+        item.document_type_other ||
+        item.detected_document_type ||
+        "Document";
+      draw(filename, colDescX, y, {
+        size: 10,
+        font: fontBold,
+        maxWidth: colQtyX - colDescX - 8,
+      });
+
+      const unit = item.calculation_unit as string | null;
+      const qty = Number(item.unit_quantity ?? item.billable_pages ?? 0);
+      const rate = Number(item.base_rate ?? 0);
+      const qtyLabelText =
+        unit === "flat" ? "Flat" : `${qty} ${unitLabel(unit, qty)}`;
+      draw(qtyLabelText, colQtyX, y, { size: 10, color: TEXT_MUTED });
+      draw(
+        unit === "flat"
+          ? money(rate, currency)
+          : `${money(rate, currency)} / ${unitLabel(unit, 1)}`,
+        colRateX,
+        y,
+        { size: 10, color: TEXT_MUTED },
+      );
+      draw(money(item.line_total, currency), colTotalX, y, {
+        size: 10,
+        font: fontBold,
+      });
+      y -= 14;
+
+      if (item.detected_document_type) {
+        draw(
+          String(item.detected_document_type).replace(/_/g, " "),
+          colDescX,
+          y,
+          { size: 9, color: TEXT_MUTED },
+        );
+        y -= 12;
+      }
+
+      if (Number(item.certification_price) > 0) {
+        draw("Certification", colDescX + 12, y, {
+          size: 9,
+          color: TEXT_MUTED,
+        });
+        draw(money(item.certification_price, currency), colTotalX, y, {
+          size: 9,
+          color: TEXT_MUTED,
+        });
+        y -= 12;
+      }
+      y -= 4;
+    }
+  }
+
+  y -= 10;
+  page.drawLine({
+    start: { x: MARGIN - 4, y },
+    end: { x: colRightEdge + 4, y },
+    thickness: 0.4,
+    color: TABLE_BORDER,
+  });
+  y -= 16;
+
+  const labelX = 380;
+  const valueX = 510;
+  const totalsRow = (label: string, value: string, bold = false) => {
+    draw(label, labelX, y, {
+      size: 10,
+      font: bold ? fontBold : fontRegular,
+      color: bold ? TEXT_DARK : TEXT_MUTED,
+    });
+    draw(value, valueX, y, {
+      size: 10,
+      font: bold ? fontBold : fontRegular,
+    });
+    y -= 14;
+  };
+
+  totalsRow("Subtotal", money(quote.subtotal, currency));
+  if (Number(quote.certification_total) > 0) {
+    totalsRow("Certification", money(quote.certification_total, currency));
+  }
+  for (const adj of adjustments) {
+    const amt = Number(adj.calculated_amount ?? 0);
+    const label =
+      adj.adjustment_type === "discount"
+        ? `Discount${adj.reason ? ` (${adj.reason})` : ""}`
+        : `Surcharge${adj.reason ? ` (${adj.reason})` : ""}`;
+    const signed =
+      adj.adjustment_type === "discount"
+        ? `-${money(Math.abs(amt), currency)}`
+        : money(Math.abs(amt), currency);
+    totalsRow(label, signed);
+  }
+  if (Number(quote.rush_fee) > 0) {
+    totalsRow("Rush fee", money(quote.rush_fee, currency));
+  }
+  if (Number(quote.delivery_fee) > 0) {
+    totalsRow("Delivery", money(quote.delivery_fee, currency));
+  }
+  const taxPct = Number(quote.tax_rate ?? 0) * 100;
+  totalsRow(
+    `Tax (${taxPct.toFixed(taxPct % 1 === 0 ? 0 : 2)}%)`,
+    money(quote.tax_amount, currency),
+  );
+  y -= 4;
+  page.drawLine({
+    start: { x: labelX - 6, y: y + 8 },
+    end: { x: colRightEdge + 4, y: y + 8 },
+    thickness: 0.6,
+    color: TABLE_BORDER,
+  });
+  totalsRow(`Total (${currency})`, money(quote.total, currency), true);
+
+  y -= 18;
+  const blockH = 56;
+  page.drawRectangle({
+    x: MARGIN - 6,
+    y: y - blockH + 8,
+    width: PAGE_W - 2 * MARGIN + 12,
+    height: blockH,
+    color: CETHOS_TEAL_LIGHT,
+  });
+  page.drawRectangle({
+    x: MARGIN - 6,
+    y: y - blockH + 8,
+    width: 3,
+    height: blockH,
+    color: CETHOS_TEAL,
+  });
+  draw("Payment Terms", MARGIN + 4, y - 4, {
+    size: 10,
+    font: fontBold,
+    color: CETHOS_NAVY,
+  });
+  draw("Due upon acceptance", MARGIN + 4, y - 20, {
+    size: 11,
+    font: fontBold,
+    color: CETHOS_TEAL,
+  });
+  draw(
+    "Payment by e-Transfer, Visa, or Mastercard. We will start work within 30 minutes of confirmation.",
+    MARGIN + 4,
+    y - 36,
+    { size: 9, color: TEXT_DARK },
+  );
+  y -= blockH + 12;
+
+  if (quote.special_instructions) {
+    draw("Notes", MARGIN, y, { size: 10, font: fontBold });
+    y -= 14;
+    const words = safeText(quote.special_instructions).split(/\s+/);
+    const maxWidth = PAGE_W - 2 * MARGIN;
+    let line = "";
+    for (const w of words) {
+      const test = line ? line + " " + w : w;
+      if (fontRegular.widthOfTextAtSize(test, 10) > maxWidth) {
+        draw(line, MARGIN, y, { size: 10, color: TEXT_MUTED });
+        y -= 12;
+        line = w;
+      } else {
+        line = test;
+      }
+      if (y < 60) break;
+    }
+    if (line && y >= 60) {
+      draw(line, MARGIN, y, { size: 10, color: TEXT_MUTED });
+      y -= 12;
+    }
+  }
+
+  draw(
+    "Cethos Translation Services  ·  support@cethos.com  ·  portal.cethos.com",
+    MARGIN,
+    40,
+    { size: 9, color: TEXT_MUTED },
+  );
+}
