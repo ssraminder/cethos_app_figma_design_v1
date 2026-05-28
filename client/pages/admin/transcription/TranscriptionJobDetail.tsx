@@ -35,6 +35,11 @@ import { useDropdownOptions } from "@/hooks/useDropdownOptions";
 interface SourceFile {
   name: string;
   path: string;
+  // When the upload went directly to GCS (modal post-PR #798), source_files[i]
+  // carries a gcs_uri. The Supabase storage `path` field is still populated
+  // for legacy compatibility but the object never gets written there — so the
+  // download UI must check gcs_uri first to avoid 400ing on Supabase.
+  gcs_uri?: string;
   size: number;
   duration: number;
   format: string;
@@ -1589,15 +1594,24 @@ function FileDownloadsSection({ job, file, fileIndex, isSyntheticSingleFile }: {
         }
       }
 
-      // Source audio download (secondary) — always try; the source file
-      // always exists from the moment the upload completes.
-      const { data: srcUrl } = await supabase.storage
-        .from("transcription-uploads")
-        .createSignedUrl(file.path, 3600);
+      // Source audio download (secondary). Two paths:
+      // - File in GCS (modal post-PR #798): the object lives at gcs_uri, not
+      //   at file.path. We don't yet expose a GCS download URL endpoint, so
+      //   surface that as null for now (TODO: extend
+      //   transcription-create-gcs-upload-url with method=GET).
+      // - Legacy Supabase upload (file.gcs_uri unset): try createSignedUrl as
+      //   before.
+      let srcSignedUrl: string | null = null;
+      if (!file.gcs_uri) {
+        const { data: srcUrl } = await supabase.storage
+          .from("transcription-uploads")
+          .createSignedUrl(file.path, 3600);
+        srcSignedUrl = srcUrl?.signedUrl ?? null;
+      }
 
       if (!cancelled) {
         setOutputLinks(outputs);
-        setSourceUrl(srcUrl?.signedUrl ?? null);
+        setSourceUrl(srcSignedUrl);
         setLoading(false);
       }
     }
