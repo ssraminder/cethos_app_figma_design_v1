@@ -1,5 +1,22 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  detailsTable,
+  emailShell,
+  esc as escShell,
+  lead,
+  REPLY,
+  statusBadge,
+  title as titleHelper,
+  C,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Admin — Bug Report",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -100,23 +117,26 @@ serve(async (req: Request) => {
             .map((e) => `[${e.level}] ${e.ts} — ${String(e.message).slice(0, 300)}`)
             .join("\n")
         : "(none)";
-      const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;padding:20px;">
-<div style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;">
-  <h1 style="font-size:16px;color:#0f766e;margin:0 0 12px;">Admin Bug Report — ${escapeHtml(title)}</h1>
-  <p style="margin:0 0 8px;font-size:13px;color:#374151;">
-    From: <strong>${escapeHtml(staff.full_name ?? staff.email)}</strong>
-    &lt;${escapeHtml(staff.email)}&gt; (${escapeHtml(staff.role)})
-  </p>
-  <p style="margin:0 0 12px;font-size:12px;color:#6b7280;">
-    ${url ? `Page: ${escapeHtml(url)}<br/>` : ""}
-    Bug ID: <code>${inserted.id}</code> · ${new Date(inserted.created_at).toLocaleString()}
-  </p>
-  <hr/>
-  <h2 style="font-size:13px;color:#111827;">Description</h2>
-  <pre style="white-space:pre-wrap;font-family:inherit;color:#1f2937;font-size:13px;">${escapeHtml(description)}</pre>
-  <h2 style="font-size:13px;color:#111827;">Recent console output (last 15)</h2>
-  <pre style="white-space:pre-wrap;font-family:Consolas,monospace;font-size:11px;color:#374151;background:#f9fafb;padding:8px;border:1px solid #e5e7eb;border-radius:4px;">${escapeHtml(consolePreview)}</pre>
-</div></body></html>`;
+      const detailRows: Array<[string, string]> = [
+        ["From", `${escShell(staff.full_name ?? staff.email)} <${escShell(staff.email)}> (${escShell(staff.role)})`],
+        ["Bug ID", String(inserted.id)],
+        ["Submitted", new Date(inserted.created_at).toLocaleString()],
+      ];
+      if (url) detailRows.push(["Page", String(url)]);
+
+      const html = emailShell(
+        [
+          statusBadge("warn", "Admin bug report"),
+          titleHelper(escShell(title)),
+          lead(`A staff member submitted a bug report from the admin portal.`),
+          detailsTable(detailRows),
+          `<p style="margin:0 0 8px;font-size:13px;font-weight:600;color:${C.navy};">Description</p>`,
+          `<pre style="margin:0 0 22px;white-space:pre-wrap;font-family:inherit;color:${C.gray};font-size:13px;line-height:1.55;background:${C.slate50};border:1px solid ${C.border};border-radius:8px;padding:14px 16px;">${escShell(description)}</pre>`,
+          `<p style="margin:0 0 8px;font-size:13px;font-weight:600;color:${C.navy};">Recent console output (last 15)</p>`,
+          `<pre style="margin:0 0 22px;white-space:pre-wrap;font-family:'SF Mono',Menlo,Monaco,'Courier New',monospace;font-size:11px;color:${C.gray};background:${C.slate50};padding:12px 14px;border:1px solid ${C.border};border-radius:8px;">${escShell(consolePreview)}</pre>`,
+        ].join(""),
+        { replyTo: staff.email, template: TEMPLATE, preheader: `Bug report from ${escShell(staff.full_name ?? staff.email)}: ${escShell(title)}` },
+      );
       await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json", Accept: "application/json" },
