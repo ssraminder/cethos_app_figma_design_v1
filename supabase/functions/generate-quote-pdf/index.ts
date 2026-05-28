@@ -17,7 +17,65 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
+import {
+  PDFDocument,
+  PDFImage,
+  PDFFont,
+  StandardFonts,
+  rgb,
+} from "https://esm.sh/pdf-lib@1.17.1";
+import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
+
+// Brand assets — fetched once per warm Deno isolate and cached in module
+// scope. Plus Jakarta Sans is the Cethos design-system body face; the logo
+// is the Supabase-hosted light-bg variant (used everywhere else in the app).
+const LOGO_URL =
+  "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png";
+const FONT_REGULAR_URL =
+  "https://cdn.jsdelivr.net/gh/tokotype/PlusJakartaSans/fonts/ttf/PlusJakartaSans-Regular.ttf";
+const FONT_BOLD_URL =
+  "https://cdn.jsdelivr.net/gh/tokotype/PlusJakartaSans/fonts/ttf/PlusJakartaSans-Bold.ttf";
+
+let _logoBytes: Uint8Array | null = null;
+let _regularFontBytes: Uint8Array | null = null;
+let _boldFontBytes: Uint8Array | null = null;
+
+async function fetchBytes(url: string): Promise<Uint8Array | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`brand asset fetch ${url} -> HTTP ${res.status}`);
+      return null;
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  } catch (err) {
+    console.warn(`brand asset fetch ${url} threw:`, err);
+    return null;
+  }
+}
+
+async function ensureBrandAssets() {
+  // Each missing asset is re-fetched; once cached, this is a no-op.
+  const tasks: Array<Promise<void>> = [];
+  if (!_logoBytes) {
+    tasks.push(fetchBytes(LOGO_URL).then((b) => { if (b) _logoBytes = b; }));
+  }
+  if (!_regularFontBytes) {
+    tasks.push(
+      fetchBytes(FONT_REGULAR_URL).then((b) => {
+        if (b) _regularFontBytes = b;
+      }),
+    );
+  }
+  if (!_boldFontBytes) {
+    tasks.push(
+      fetchBytes(FONT_BOLD_URL).then((b) => {
+        if (b) _boldFontBytes = b;
+      }),
+    );
+  }
+  if (tasks.length) await Promise.all(tasks);
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -219,8 +277,39 @@ serve(async (req: Request) => {
     const rushPct = Math.round((rushMultiplier - 1) * 100);
 
     const pdf = await PDFDocument.create();
-    const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+    pdf.registerFontkit(fontkit);
+
+    // Warm the brand-asset cache (logo PNG + Plus Jakarta Sans TTFs). If any
+    // fetch fails we fall back to Helvetica + a text wordmark so the PDF
+    // still ships rather than 500'ing.
+    await ensureBrandAssets();
+
+    let fontRegular: PDFFont;
+    let fontBold: PDFFont;
+    let usingBrandFont = false;
+    if (_regularFontBytes && _boldFontBytes) {
+      try {
+        fontRegular = await pdf.embedFont(_regularFontBytes, { subset: true });
+        fontBold = await pdf.embedFont(_boldFontBytes, { subset: true });
+        usingBrandFont = true;
+      } catch (err) {
+        console.warn("Plus Jakarta Sans embedFont failed:", err);
+        fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
+        fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+      }
+    } else {
+      fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
+      fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+    }
+
+    let logoImage: PDFImage | null = null;
+    if (_logoBytes) {
+      try {
+        logoImage = await pdf.embedPng(_logoBytes);
+      } catch (err) {
+        console.warn("logo embedPng failed:", err);
+      }
+    }
 
     // Branch: business customer → new Design System layout; else original.
     const isBusiness = Boolean(customer.company_name);
@@ -239,6 +328,8 @@ serve(async (req: Request) => {
         currency,
         pm,
         rushPct,
+        logoImage,
+        usingBrandFont,
       });
     } else {
       await renderClassicQuote({
@@ -281,8 +372,8 @@ serve(async (req: Request) => {
 
 type RenderCtx = {
   pdf: PDFDocument;
-  fontRegular: any;
-  fontBold: any;
+  fontRegular: PDFFont;
+  fontBold: PDFFont;
   quote: any;
   customer: any;
   analysis: any[];
@@ -293,6 +384,8 @@ type RenderCtx = {
   currency: string;
   pm?: { full_name: string | null; email: string | null } | null;
   rushPct?: number;
+  logoImage?: PDFImage | null;
+  usingBrandFont?: boolean;
 };
 
 async function renderBusinessQuote(ctx: RenderCtx) {
@@ -309,6 +402,7 @@ async function renderBusinessQuote(ctx: RenderCtx) {
     currency,
     pm,
     rushPct = 30,
+    logoImage,
   } = ctx;
 
   // Page margins for the business layout — wider gutter than the classic one
@@ -342,7 +436,7 @@ async function renderBusinessQuote(ctx: RenderCtx) {
   };
 
   // ─── HEADER BAND (white with teal underline) ─────────────────────────
-  // Wordmark on the left, "QUOTE" tagline on the right.
+  // Logo on the left, "QUOTE" tagline on the right.
   page.drawRectangle({
     x: 0,
     y: PAGE_H - 78,
@@ -358,16 +452,30 @@ async function renderBusinessQuote(ctx: RenderCtx) {
     height: 3,
     color: CETHOS_TEAL,
   });
-  // Left: CETHOS wordmark + Translation Services tagline
-  draw("CETHOS", M, PAGE_H - 38, {
-    size: 26,
-    font: fontBold,
-    color: CETHOS_NAVY,
-  });
-  draw("Translation Services", M, PAGE_H - 54, {
-    size: 9,
-    color: TEXT_MUTED,
-  });
+  // Left: brand logo image. The Supabase-hosted PNG is ~6:1; sizing by
+  // page-width fraction matches the HTML template (~29% of page width)
+  // and keeps the wordmark legible without dominating the band.
+  if (logoImage) {
+    const targetW = 180;
+    const scale = targetW / logoImage.width;
+    const h = logoImage.height * scale;
+    page.drawImage(logoImage, {
+      x: M,
+      y: PAGE_H - 12 - h - (44 - h) / 2,
+      width: targetW,
+      height: h,
+    });
+  } else {
+    draw("CETHOS", M, PAGE_H - 38, {
+      size: 26,
+      font: fontBold,
+      color: CETHOS_NAVY,
+    });
+    draw("Translation Services", M, PAGE_H - 54, {
+      size: 9,
+      color: TEXT_MUTED,
+    });
+  }
   // Right: large QUOTE wordmark
   const quoteLabel = "QUOTE";
   const quoteLabelWidth = fontBold.widthOfTextAtSize(quoteLabel, 28);
@@ -928,7 +1036,9 @@ async function renderBusinessQuote(ctx: RenderCtx) {
   y = notesTop - notesH - 18;
 
   // ─── ACCEPT STRIP (bordered card) ────────────────────────────────────
-  const acceptH = 70;
+  // 90 fits a 3-line wrapped paragraph in Plus Jakarta Sans at 10pt;
+  // Helvetica fallback wraps tighter and leaves a touch of slack.
+  const acceptH = 90;
   if (y - acceptH < 80) {
     page = pdf.addPage([PAGE_W, PAGE_H]);
     y = PAGE_H - 60;
