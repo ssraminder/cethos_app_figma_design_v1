@@ -1,6 +1,29 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "https://esm.sh/stripe@14.14.0";
+import {
+  brevoPayload,
+  callout,
+  detailsTable,
+  emailShell,
+  esc,
+  hint,
+  lead,
+  REPLY,
+  statusBadge,
+  strong,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+// v2.0 (2026-05-28): email body migrated in-repo. Previously read template
+// content from `public.email_templates` row template_code='order_cancellation';
+// now renders inline HTML through the shared shell.
+const TEMPLATE: TemplateMeta = {
+  name: "Order Cancellation",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,30 +52,91 @@ const REFUND_METHOD_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-// Helper function to replace template variables
-function replaceTemplateVariables(
-  template: string,
-  variables: Record<string, string | boolean | number | null>
-): string {
-  let result = template;
+// ────────────────────────────────────────────────────────────────────────────
+// Cancellation email — inline HTML, shared shell.
+// Refund block renders only when a refund exists; tone reflects status.
+// ────────────────────────────────────────────────────────────────────────────
+function buildCancellationEmailHtml(args: {
+  customerName: string;
+  orderNumber: string;
+  orderTotalFormatted: string;
+  reasonLabel: string;
+  cancellationNotes?: string | null;
+  hasRefund: boolean;
+  refundAmountFormatted?: string;
+  refundMethodLabel?: string;
+  refundStatus?: "completed" | "pending" | "processing" | "none";
+}): string {
+  const firstName =
+    (args.customerName || "").trim().split(/\s+/)[0] || "there";
 
-  // Handle conditional blocks: {{#if variable}}...{{/if}}
-  const conditionalRegex = /\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
-  result = result.replace(conditionalRegex, (match, varName, content) => {
-    const value = variables[varName];
-    if (value && value !== "false" && value !== "0") {
-      return content;
+  const detailRows: Array<[string, string]> = [
+    ["Order #", args.orderNumber],
+    ["Original total", args.orderTotalFormatted],
+    ["Reason", args.reasonLabel],
+    ["Cancelled", new Date().toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    })],
+  ];
+
+  // Refund callout. Three branches based on refund status — kept distinct
+  // because the customer reads "issued vs. pending vs. processing" very
+  // differently when their money is involved.
+  let refundCallout = "";
+  if (args.hasRefund && args.refundAmountFormatted) {
+    if (args.refundStatus === "completed") {
+      const method = args.refundMethodLabel?.toLowerCase().includes("stripe")
+        ? "to your card; allow 5–10 business days for it to appear on your statement"
+        : `via ${esc(args.refundMethodLabel ?? "your original payment method")}`;
+      refundCallout = callout({
+        tone: "success",
+        title: "Refund issued",
+        body: `A refund of ${strong(esc(args.refundAmountFormatted))} has been issued ${method}.`,
+      });
+    } else if (args.refundStatus === "pending") {
+      refundCallout = callout({
+        tone: "info",
+        title: "Refund in progress",
+        body: `A refund of ${strong(esc(args.refundAmountFormatted))} will be processed via ${esc(args.refundMethodLabel ?? "your original payment method")}. We'll email again once it's complete.`,
+      });
+    } else if (args.refundStatus === "processing") {
+      refundCallout = callout({
+        tone: "info",
+        title: "Refund being processed",
+        body: `Your refund of ${strong(esc(args.refundAmountFormatted))} is in the queue and will be completed shortly.`,
+      });
     }
-    return "";
-  });
-
-  // Replace simple variables: {{variable}}
-  for (const [key, value] of Object.entries(variables)) {
-    const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
-    result = result.replace(regex, value?.toString() || "");
   }
 
-  return result;
+  const notesBlock = args.cancellationNotes?.trim()
+    ? callout({
+        tone: "info",
+        title: "Note from our team",
+        body: esc(args.cancellationNotes.trim()),
+      })
+    : "";
+
+  const body = [
+    statusBadge("warn", "Order cancelled"),
+    title(`Your order ${esc(args.orderNumber)} has been cancelled`),
+    lead(
+      `Hi ${esc(firstName)}, we've cancelled order ${strong(esc(args.orderNumber))} as requested. A summary is below for your records.`,
+    ),
+    detailsTable(detailRows),
+    refundCallout,
+    notesBlock,
+    hint(
+      `Reach out any time if you'd like to restart this project or have questions — reply to this email and our team will pick it up within 2 business hours.`,
+    ),
+  ].join("");
+
+  return emailShell(body, {
+    replyTo: REPLY.customer,
+    template: TEMPLATE,
+    preheader: `Order ${args.orderNumber} cancelled${args.hasRefund ? ` — refund ${args.refundAmountFormatted}` : ""}.`,
+  });
 }
 
 serve(async (req) => {
@@ -286,120 +370,75 @@ serve(async (req) => {
 
     if (sendEmail && order.customer?.email && brevoApiKey) {
       try {
-        // Fetch email template from database
-        const { data: template, error: templateError } = await supabase
-          .from("email_templates")
-          .select("*")
-          .eq("template_code", "order_cancellation")
-          .eq("is_active", true)
-          .single();
+        const html = buildCancellationEmailHtml({
+          customerName: order.customer.full_name || "Valued Customer",
+          orderNumber: order.order_number,
+          orderTotalFormatted: `$${(order.total_amount || 0).toFixed(2)} CAD`,
+          reasonLabel: REASON_LABELS[reasonCode] || reasonCode,
+          cancellationNotes: additionalNotes,
+          hasRefund: finalRefundAmount > 0,
+          refundAmountFormatted:
+            finalRefundAmount > 0
+              ? `$${finalRefundAmount.toFixed(2)} CAD`
+              : undefined,
+          refundMethodLabel:
+            REFUND_METHOD_LABELS[refundMethod] || refundMethod || undefined,
+          refundStatus: (refundStatus as
+            | "completed"
+            | "pending"
+            | "processing"
+            | "none") ?? "none",
+        });
 
-        if (templateError || !template) {
-          console.error("Email template not found:", templateError);
-          emailError = "Email template not found";
-        } else {
-          // Build refund message
-          let refundMessage = "";
-          if (refundStatus === "completed") {
-            if (refundMethod === "stripe") {
-              refundMessage =
-                "Your refund has been processed and should appear on your card within 5-10 business days.";
-            } else {
-              refundMessage = `Your refund has been processed via ${
-                REFUND_METHOD_LABELS[refundMethod] || refundMethod
-              }.`;
-            }
-          } else if (refundStatus === "pending") {
-            refundMessage = `Your refund will be processed via ${
-              REFUND_METHOD_LABELS[refundMethod] || refundMethod
-            }. We will notify you once it's complete.`;
-          } else if (refundStatus === "processing") {
-            refundMessage = "Your refund is being processed.";
-          }
+        const subject = `Your order ${order.order_number} has been cancelled`;
 
-          // Prepare template variables
-          const templateVariables: Record<
-            string,
-            string | boolean | number | null
-          > = {
-            customer_name: order.customer?.full_name || "Valued Customer",
-            customer_email: order.customer?.email || "",
-            order_number: order.order_number,
-            order_total: `$${(order.total_amount || 0).toFixed(2)} CAD`,
-            cancellation_reason: REASON_LABELS[reasonCode],
-            cancellation_notes: additionalNotes || "",
-            has_refund: finalRefundAmount > 0,
-            refund_amount: `$${finalRefundAmount.toFixed(2)} CAD`,
-            refund_method:
-              REFUND_METHOD_LABELS[refundMethod] || refundMethod || "",
-            refund_message: refundMessage,
-            company_name: template.sender_name || "CETHOS Translations",
-            company_address: "Calgary, Alberta, Canada",
-            support_email: template.reply_to_email || "support@cethos.com",
-          };
-
-          // Replace variables in template
-          const htmlContent = replaceTemplateVariables(
-            template.html_content,
-            templateVariables
-          );
-          const subject = replaceTemplateVariables(
-            template.subject,
-            templateVariables
-          );
-
-          // Send email via Brevo
-          const emailResponse = await fetch(
-            "https://api.brevo.com/v3/smtp/email",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "api-key": brevoApiKey,
-              },
-              body: JSON.stringify({
-                sender: {
-                  name: template.sender_name,
-                  email: template.sender_email,
-                },
-                replyTo: template.reply_to_email
-                  ? { email: template.reply_to_email }
-                  : undefined,
+        const emailResponse = await fetch(
+          "https://api.brevo.com/v3/smtp/email",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "api-key": brevoApiKey,
+            },
+            body: JSON.stringify(
+              brevoPayload({
                 to: [
                   {
                     email: order.customer.email,
                     name: order.customer.full_name || "Customer",
                   },
                 ],
-                subject: subject,
-                htmlContent: htmlContent,
+                subject,
+                html,
+                replyTo: REPLY.customer,
+                senderName: "Cethos Translation Services",
+                senderEmail: "donotreply@cethos.com",
+                tags: ["order-cancellation"],
               }),
-            }
-          );
+            ),
+          },
+        );
 
-          if (emailResponse.ok) {
-            emailSent = true;
+        if (emailResponse.ok) {
+          emailSent = true;
+          await supabase
+            .from("order_cancellations")
+            .update({
+              email_sent: true,
+              email_sent_at: new Date().toISOString(),
+            })
+            .eq("id", cancellation.id);
+        } else {
+          const errorData = await emailResponse.text();
+          console.error("Brevo email error:", errorData);
+          emailError = "Failed to send email";
 
-            // Update cancellation record with email status
-            await supabase
-              .from("order_cancellations")
-              .update({
-                email_sent: true,
-                email_sent_at: new Date().toISOString(),
-              })
-              .eq("id", cancellation.id);
-          } else {
-            const errorData = await emailResponse.text();
-            console.error("Brevo email error:", errorData);
-            emailError = "Failed to send email";
-
-            await supabase
-              .from("order_cancellations")
-              .update({
-                email_error: errorData.substring(0, 500),
-              })
-              .eq("id", cancellation.id);
-          }
+          await supabase
+            .from("order_cancellations")
+            .update({
+              email_error: errorData.substring(0, 500),
+            })
+            .eq("id", cancellation.id);
         }
       } catch (err: unknown) {
         console.error("Email send error:", err);
