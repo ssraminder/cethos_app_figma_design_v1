@@ -637,10 +637,12 @@ async function renderBusinessQuote(ctx: RenderCtx) {
       color: TEXT_MUTED,
     });
   }
-  // Right: large QUOTE wordmark
+  // Right: large QUOTE wordmark — baseline drops to the logo's bottom edge
+  // so the glyphs visually bottom-align with the brand mark instead of
+  // hanging from the top of the band.
   const quoteLabel = "QUOTE";
   const quoteLabelWidth = fontBold.widthOfTextAtSize(quoteLabel, 28);
-  draw(quoteLabel, RIGHT - quoteLabelWidth, PAGE_H - 40, {
+  draw(quoteLabel, RIGHT - quoteLabelWidth, PAGE_H - 47, {
     size: 28,
     font: fontBold,
     color: CETHOS_NAVY,
@@ -1211,10 +1213,10 @@ async function renderBusinessQuote(ctx: RenderCtx) {
   y = notesTop - notesH - 18;
 
   // ─── ACCEPT STRIP (bordered card) ────────────────────────────────────
-  // Height grows with the Pay button so the text never collides with it.
-  // 90 fits a 3-line wrapped paragraph in Plus Jakarta Sans at 10pt; +45
-  // when a Pay button is below, leaving ~14pt breathing room.
-  const acceptH = paymentUrl ? 135 : 90;
+  // Approve-via-email button is always drawn; Pay-online sits to its right
+  // when a Stripe link is available. 135 leaves the paragraph 3 wrapped
+  // lines + ~14pt breathing room above the button row.
+  const acceptH = 135;
   if (y - acceptH < 80) {
     page = pdf.addPage([PAGE_W, PAGE_H]);
     y = PAGE_H - 60;
@@ -1237,10 +1239,13 @@ async function renderBusinessQuote(ctx: RenderCtx) {
     color: CETHOS_NAVY,
   });
 
+  // The "Approve" mailto button addresses the PM with info@ on CC, so the
+  // staff inbox always gets a copy even if the PM is away.
+  const CC_EMAIL = "info@cethos.com";
   const pmEmailForAccept = pmEmail;
   const acceptText = hasAdvance
-    ? `Reply to ${pmEmailForAccept} with "ACCEPT ${quote.quote_number ?? ""}" from any authorized email on file. Work will begin once the advance of ${money(amountDue, currency)} is received — use the Pay online button or contact us for wire details.`
-    : `Reply to ${pmEmailForAccept} with "ACCEPT ${quote.quote_number ?? ""}" from any authorized email on file. We will start work within 30 minutes of confirmation` +
+    ? `Reply to ${pmEmailForAccept} (with ${CC_EMAIL} on CC) with "ACCEPT ${quote.quote_number ?? ""}" from any authorized email on file. Work will begin once the advance of ${money(amountDue, currency)} is received — use the Pay online button or contact us for wire details.`
+    : `Reply to ${pmEmailForAccept} (with ${CC_EMAIL} on CC) with "ACCEPT ${quote.quote_number ?? ""}" from any authorized email on file. We will start work within 30 minutes of confirmation` +
       (arApproved ? ` — no signature required for AR-approved accounts.` : `.`);
 
   const acceptWords = safeText(acceptText).split(/\s+/);
@@ -1256,25 +1261,92 @@ async function renderBusinessQuote(ctx: RenderCtx) {
     } else {
       acceptLine = test;
     }
-    if (acceptY < y - acceptH + (paymentUrl ? 58 : 10)) break;
+    if (acceptY < y - acceptH + 58) break;
   }
-  if (acceptLine && acceptY >= y - acceptH + (paymentUrl ? 58 : 10)) {
+  if (acceptLine && acceptY >= y - acceptH + 58) {
     draw(acceptLine, M + 18, acceptY, { size: 10, color: TEXT_MUTED });
   }
 
-  // ─── PAY ONLINE NOW BUTTON ────────────────────────────────────────────
+  // ─── APPROVE + PAY ONLINE BUTTONS (side by side at card bottom) ───────
+  // Approve = navy primary, opens a pre-filled mailto: with the PM + info@
+  // on CC. Pay-online = teal secondary, opens the Stripe payment link.
+  const buttonH = 30;
+  const buttonY = y - acceptH + 14;
+  const buttonTextSize = 11;
+
+  // Approve mailto link is always present.
+  const subject = `ACCEPT ${quote.quote_number ?? ""}`;
+  const mailBody =
+    `Hello,\n\nWe accept quote ${quote.quote_number ?? ""}.\n\nThank you,\n`;
+  const mailtoUrl =
+    `mailto:${pmEmailForAccept}` +
+    `?cc=${encodeURIComponent(CC_EMAIL)}` +
+    `&subject=${encodeURIComponent(subject)}` +
+    `&body=${encodeURIComponent(mailBody)}`;
+  const approveLabel = "Approve via email";
+  const approveW =
+    fontBold.widthOfTextAtSize(approveLabel, buttonTextSize) + 32;
+  const approveX = M + 18;
+
+  page.drawRectangle({
+    x: approveX,
+    y: buttonY,
+    width: approveW,
+    height: buttonH,
+    color: CETHOS_NAVY,
+    borderColor: CETHOS_NAVY,
+    borderWidth: 1,
+  });
+  draw(approveLabel, approveX + 16, buttonY + 10, {
+    size: buttonTextSize,
+    font: fontBold,
+    color: WHITE,
+  });
+
+  const addLinkAnnotation = (
+    rect: [number, number, number, number],
+    uri: string,
+  ) => {
+    try {
+      const linkRef = pdf.context.register(
+        pdf.context.obj({
+          Type: "Annot",
+          Subtype: "Link",
+          Rect: rect,
+          Border: [0, 0, 0],
+          A: pdf.context.obj({
+            Type: "Action",
+            S: "URI",
+            URI: PDFString.of(uri),
+          }),
+        }),
+      );
+      const annotsKey = PDFName.of("Annots");
+      const existing = page.node.lookup(annotsKey);
+      if (existing && (existing as any).push) {
+        (existing as any).push(linkRef);
+      } else {
+        page.node.set(annotsKey, pdf.context.obj([linkRef]));
+      }
+    } catch (err) {
+      console.warn("link annotation failed:", err);
+    }
+  };
+
+  addLinkAnnotation(
+    [approveX, buttonY, approveX + approveW, buttonY + buttonH],
+    mailtoUrl,
+  );
+
+  // Pay online button — sits to the right of Approve when paymentUrl exists.
   if (paymentUrl) {
     const buttonLabel = hasAdvance
       ? `Pay advance ${money(amountDue, currency)} online ->`
       : `Pay online now ->`;
-    const buttonTextSize = 11;
     const buttonW =
       fontBold.widthOfTextAtSize(buttonLabel, buttonTextSize) + 32;
-    const buttonH = 30;
-    const buttonX = M + 18;
-    const buttonY = y - acceptH + 14;
+    const buttonX = approveX + approveW + 12;
 
-    // Teal background, white text — matches the design-system primary CTA.
     page.drawRectangle({
       x: buttonX,
       y: buttonY,
@@ -1290,31 +1362,10 @@ async function renderBusinessQuote(ctx: RenderCtx) {
       color: WHITE,
     });
 
-    // PDF link annotation — makes the rect clickable in any PDF viewer.
-    try {
-      const linkRef = pdf.context.register(
-        pdf.context.obj({
-          Type: "Annot",
-          Subtype: "Link",
-          Rect: [buttonX, buttonY, buttonX + buttonW, buttonY + buttonH],
-          Border: [0, 0, 0],
-          A: pdf.context.obj({
-            Type: "Action",
-            S: "URI",
-            URI: PDFString.of(paymentUrl),
-          }),
-        }),
-      );
-      const annotsKey = PDFName.of("Annots");
-      const existing = page.node.lookup(annotsKey);
-      if (existing && (existing as any).push) {
-        (existing as any).push(linkRef);
-      } else {
-        page.node.set(annotsKey, pdf.context.obj([linkRef]));
-      }
-    } catch (err) {
-      console.warn("Pay-online link annotation failed:", err);
-    }
+    addLinkAnnotation(
+      [buttonX, buttonY, buttonX + buttonW, buttonY + buttonH],
+      paymentUrl,
+    );
   }
 
   // ─── FOOTER ──────────────────────────────────────────────────────────
