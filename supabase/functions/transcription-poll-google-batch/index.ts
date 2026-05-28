@@ -92,7 +92,15 @@ serve(async (req: Request) => {
     let pollResp: Response;
     try {
       const token = await getGoogleAccessToken();
-      pollResp = await fetch(`https://speech.googleapis.com/v2/${opName}`, {
+      // chirp_2 operations live in a regional location; the LRO GET must
+      // use the matching regional hostname. Extract from the opName path
+      // (shape: projects/{id}/locations/{region}/operations/{id}).
+      const locMatch = opName.match(/\/locations\/([^/]+)\//);
+      const region = locMatch?.[1] ?? "global";
+      const host = region === "global"
+        ? "https://speech.googleapis.com"
+        : `https://${region}-speech.googleapis.com`;
+      pollResp = await fetch(`${host}/v2/${opName}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (e) {

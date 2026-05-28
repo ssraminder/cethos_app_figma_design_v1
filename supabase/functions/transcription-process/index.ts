@@ -267,7 +267,19 @@ serve(async (req: Request) => {
             break;
           } catch (err) {
             lastErr = err;
-            console.log(`${tryProvider} failed on file ${fi} (attempt ${attempt + 1}/${providerChain.length}):`, err);
+            const msg = err instanceof Error ? err.message : String(err);
+            console.log(`${tryProvider} failed on file ${fi} (attempt ${attempt + 1}/${providerChain.length}):`, msg);
+            // Persist per-provider failures so the audit log shows the actual
+            // reason each provider rejected the file — without this the only
+            // visible row is the LAST provider's error and earlier failures
+            // (e.g. Google STT failed on a malformed gs:// URI) are invisible.
+            await auditLog(admin, jobId, "provider_attempt_failed", "system", null, {
+              provider: tryProvider,
+              file_index: fi,
+              attempt: attempt + 1,
+              total_in_chain: providerChain.length,
+              error: msg.slice(0, 1000),
+            });
           }
         }
 
@@ -1303,6 +1315,12 @@ async function resolveGoogleLanguageCodes(job: Record<string, unknown>): Promise
 }
 
 function buildGoogleRecognitionConfig(languageCodes: string[]): Record<string, unknown> {
+  // chirp_2 specifically does NOT support speaker diarization — adding
+  // diarizationConfig causes Google to 400 with
+  //   "Recognizer does not support feature: speaker_diarization"
+  // So we keep punctuation + word-level timestamps but skip diarization.
+  // The downstream segment normalizer infers single-speaker segments when
+  // no speakerLabel is present, which is the correct behavior for chirp_2.
   return {
     autoDecodingConfig: {},
     languageCodes,
@@ -1311,12 +1329,26 @@ function buildGoogleRecognitionConfig(languageCodes: string[]): Record<string, u
       enableAutomaticPunctuation: true,
       enableWordTimeOffsets: true,
       enableWordConfidence: true,
-      diarizationConfig: {
-        minSpeakerCount: 1,
-        maxSpeakerCount: 6,
-      },
     },
   };
+}
+
+// chirp_2 is a regional model — `global` only carries older chirp/long/short models.
+// For chirp_2 we must use a region-specific recognizer path AND the matching
+// regional hostname (https://us-central1-speech.googleapis.com/...). The
+// region must also be compatible with the GCS bucket's location: the default
+// setup script puts the bucket in `US` multi-region, so `us-central1` is the
+// safe default. Override with GOOGLE_STT_LOCATION if the bucket lives in EU /
+// asia / etc.
+function getGoogleSttLocation(): string {
+  return Deno.env.get("GOOGLE_STT_LOCATION") || "us-central1";
+}
+
+function getGoogleSttBaseUrl(): string {
+  const location = getGoogleSttLocation();
+  // `global` uses the unqualified host; every other region uses {region}-speech.
+  if (location === "global") return "https://speech.googleapis.com";
+  return `https://${location}-speech.googleapis.com`;
 }
 
 // Shared parser: Google STT v2 sync.results and batch.transcript.results have
@@ -1373,7 +1405,8 @@ async function transcribeGoogleSync(
     content: audioBase64,
   };
 
-  const url = `https://speech.googleapis.com/v2/projects/${projectId}/locations/global/recognizers/_:recognize`;
+  const location = getGoogleSttLocation();
+  const url = `${getGoogleSttBaseUrl()}/v2/projects/${projectId}/locations/${location}/recognizers/_:recognize`;
   const resp = await fetch(url, {
     method: "POST",
     headers: {
@@ -1447,7 +1480,8 @@ async function transcribeGoogleBatch(
     processingStrategy: "DYNAMIC_BATCHING",
   };
 
-  const url = `https://speech.googleapis.com/v2/projects/${projectId}/locations/global/recognizers/_:batchRecognize`;
+  const location = getGoogleSttLocation();
+  const url = `${getGoogleSttBaseUrl()}/v2/projects/${projectId}/locations/${location}/recognizers/_:batchRecognize`;
   const resp = await fetch(url, {
     method: "POST",
     headers: {
