@@ -265,7 +265,16 @@ export default function TranscriptionJobDetail() {
 
   // Build per-file list: real source_files or synthetic single-file entry
   const isMultiFile = (job.source_files?.length ?? 0) > 1;
-  const isSyntheticSingleFile = !job.source_files || job.source_files.length === 0;
+  // "Single-output job" predicate — true when the pipeline produces ONE
+  // combined transcript instead of per-file outputs. Covers both:
+  //   • legacy uploads with no source_files at all (synthesized from job
+  //     columns), AND
+  //   • new uploads with a 1-element source_files array.
+  // transcription-deliver and transcription-process both key per-file outputs
+  // (file-{n}.{fmt}, file_index column) ONLY when source_files.length > 1.
+  // For length ≤ 1, the canonical paths are `transcript.{fmt}` and
+  // `file_index = null`, so the UI must look there too.
+  const isSyntheticSingleFile = (job.source_files?.length ?? 0) <= 1;
   const files: SourceFile[] = job.source_files && job.source_files.length > 0
     ? job.source_files
     : [{
