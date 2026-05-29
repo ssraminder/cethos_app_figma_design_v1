@@ -21,6 +21,24 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import {
+  ctaButton,
+  emailShell,
+  esc as escShell,
+  hint,
+  lead,
+  REPLY,
+  statusBadge,
+  title,
+  C,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TPL_REMINDER: TemplateMeta = {
+  name: "Vendor — ISO 17100 Reminder",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
+import {
   recomputeItems,
   nextStatusFromItems,
   type RequestedItem,
@@ -102,33 +120,27 @@ function buildReminderHtml(args: {
       const guidance = alternatePathFor(it.slug);
       const explainHref = `${args.uploadLinkUrl}?explain=${encodeURIComponent(it.slug)}`;
       return `<li style="margin-bottom:14px;">
-  <div style="font-weight:600;color:#111827;">${escapeHtml(it.label)} <span style="color:#9ca3af;font-size:11px;font-weight:400;">${tag}</span></div>
-  <div style="color:#4b5563;font-size:13px;margin-top:3px;">${escapeHtml(guidance)}</div>
-  <div style="margin-top:6px;"><a href="${escapeHtml(explainHref)}" style="color:#0891B2;font-size:12px;">I don't have this — let me explain</a></div>
+  <div style="font-weight:600;color:${C.navy};">${escShell(it.label)} <span style="color:${C.muted};font-size:11px;font-weight:400;">${tag}</span></div>
+  <div style="color:${C.gray};font-size:13px;margin-top:3px;">${escShell(guidance)}</div>
+  <div style="margin-top:6px;"><a href="${escShell(explainHref)}" style="color:${C.tealDeep};font-size:12px;">I don't have this — let me explain</a></div>
 </li>`;
     })
     .join("\n");
 
-  const html = `<!doctype html><html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;"><tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-<tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
-  <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
-  <div style="font-size:13px;opacity:0.85;margin-top:2px;">Reminder ${args.tier.tier} of 3 — ISO 17100 evidence</div>
-</td></tr>
-<tr><td style="padding:24px;color:#111827;font-size:14px;line-height:1.55;">
-  <p>${args.tier.preamble}</p>
-  <p><strong>Still pending:</strong></p>
-  <ul style="padding-left:18px;">${itemsHtml}</ul>
-  <p style="margin:24px 0 0;text-align:center;">
-    <a href="${escapeHtml(args.uploadLinkUrl)}" style="display:inline-block;padding:11px 22px;background:#0891B2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Open my evidence checklist</a>
-  </p>
-  <p style="color:#6B7280;font-size:13px;margin-top:24px;">Link expires ${new Date(args.expiresAt).toLocaleDateString()}.</p>
-</td></tr>
-<tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-  Reply to this email if anything is blocking you — we'll figure out a path. You can also click "I don't have this" on any item.
-</td></tr>
-</table></td></tr></table></body></html>`;
+  const tone: "warn" | "error" = args.tier.tier === 3 ? "error" : "warn";
+
+  const html = emailShell(
+    [
+      statusBadge(tone, `Reminder ${args.tier.tier} of 3`),
+      title("ISO 17100 evidence still needed"),
+      lead(args.tier.preamble),
+      `<p style="margin:0 0 8px;font-size:14px;font-weight:600;color:${C.navy};">Still pending</p>`,
+      `<ul style="margin:0 0 22px 20px;padding:0;font-size:14px;color:${C.gray};line-height:1.7;">${itemsHtml}</ul>`,
+      ctaButton({ label: "Open my evidence checklist", url: args.uploadLinkUrl }),
+      hint(`Link expires ${new Date(args.expiresAt).toLocaleDateString()}. Reply to this email if anything is blocking you — we'll figure out a path.`),
+    ].join(""),
+    { replyTo: REPLY.vendorMgmt, template: TPL_REMINDER, preheader: `${args.tier.tier === 3 ? "Final reminder" : "Reminder"} — ISO 17100 evidence pending.` },
+  );
 
   return {
     subject: args.tier.tier === 3

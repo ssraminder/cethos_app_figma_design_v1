@@ -17,6 +17,28 @@
 // no longer resolves).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  ctaButton,
+  deliveryOptions,
+  detailsTable,
+  emailShell,
+  esc,
+  eyebrow,
+  hint,
+  lead,
+  lineItemsTable,
+  REPLY,
+  strong,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+import { formatMoney, getRushConfig } from "../_shared/rush-pricing.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Customer — Quote Ready",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,8 +85,19 @@ serve(async (req) => {
         quote_number,
         total,
         subtotal,
+        tax_amount,
+        tax_rate,
+        rush_fee,
+        is_rush,
+        promised_delivery_date,
+        promised_delivery_date_rush,
+        estimated_delivery_date,
         version,
         expires_at,
+        source_language_id,
+        target_language_id,
+        target_language_other,
+        service_id,
         customer_id,
         customers (
           id,
@@ -234,11 +267,6 @@ serve(async (req) => {
 
     const quoteReviewLink = `${publicUrl}/quote?quote_id=${quoteId}&token=${token}`;
 
-    const formattedTotal = new Intl.NumberFormat("en-CA", {
-      style: "currency",
-      currency: "CAD",
-    }).format(quote.total || 0);
-
     let emailSent = false;
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
 
@@ -249,60 +277,127 @@ serve(async (req) => {
         day: "numeric",
       });
 
-      const emailHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #7c3aed; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-            .header h1 { margin: 0; font-size: 24px; }
-            .content { padding: 30px; background-color: #f9fafb; }
-            .quote-box { background-color: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0; }
-            .quote-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
-            .quote-row:last-child { border-bottom: none; font-weight: bold; font-size: 18px; color: #7c3aed; }
-            .cta-button { display: inline-block; padding: 14px 40px; background-color: #7c3aed; color: white; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: bold; font-size: 16px; }
-            .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-            .expiry-notice { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 15px; margin: 20px 0; font-size: 14px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>Your Translation Quote is Ready</h1>
-            </div>
-            <div class="content">
-              <p>Hello ${customer.full_name || "Valued Customer"},</p>
-              <p>Your translation quote is ready for review. Please click the button below to review your quote details and proceed with payment when you're ready.</p>
-              <div class="quote-box">
-                <div class="quote-row">
-                  <span>Quote Number:</span>
-                  <span><strong>${quote.quote_number}</strong></span>
-                </div>
-                <div class="quote-row">
-                  <span>Total Amount:</span>
-                  <span>${formattedTotal}</span>
-                </div>
-              </div>
-              <p>Click the button below to review your quote:</p>
-              <div style="text-align: center;">
-                <a href="${quoteReviewLink}" class="cta-button">Review and Pay</a>
-              </div>
-              <div class="expiry-notice">
-                <strong>Note:</strong> This link will expire on ${expiryString}.
-              </div>
-              <p>If you have any questions or need assistance, please contact us at <a href="mailto:support@cethos.com">support@cethos.com</a>.</p>
-              <p>Best regards,<br/>The Cethos Team</p>
-            </div>
-            <div class="footer">
-              <p>This is an automated email from Cethos Translation Services.</p>
-              <p>&copy; ${new Date().getFullYear()} Cethos. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
+      // Resolve language pair display.
+      const langIds = [quote.source_language_id, quote.target_language_id]
+        .filter((v): v is string => typeof v === "string" && v.length > 0);
+      const langMap = new Map<string, string>();
+      if (langIds.length > 0) {
+        const { data: langs } = await supabase
+          .from("languages")
+          .select("id, name")
+          .in("id", langIds);
+        for (const r of (langs ?? []) as Array<{ id: string; name: string }>) {
+          langMap.set(r.id, r.name);
+        }
+      }
+      const sourceLangName = quote.source_language_id ? langMap.get(quote.source_language_id) ?? null : null;
+      const targetLangName = quote.target_language_id
+        ? langMap.get(quote.target_language_id) ?? null
+        : (quote.target_language_other ?? null);
+
+      let serviceName: string | null = null;
+      if (quote.service_id) {
+        const { data: svc } = await supabase
+          .from("services")
+          .select("name")
+          .eq("id", quote.service_id)
+          .maybeSingle();
+        serviceName = svc?.name ?? null;
+      }
+
+      // Rush config from settings — never hardcode the surcharge label.
+      const rushCfg = await getRushConfig(supabase);
+
+      const subtotal = Number(quote.subtotal ?? 0);
+      const taxAmount = Number(quote.tax_amount ?? 0);
+      const taxRate = Number(quote.tax_rate ?? 0);
+      const total = Number(quote.total ?? 0);
+      const taxRatePct = Math.round(taxRate * 1000) / 10;
+
+      const fmtDate = (iso: string | null | undefined): string => {
+        if (!iso) return "—";
+        try {
+          return new Date(iso).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+        } catch {
+          return String(iso);
+        }
+      };
+
+      const standardDate = fmtDate(
+        quote.promised_delivery_date ?? quote.estimated_delivery_date ?? null,
+      );
+      const rushDate = fmtDate(quote.promised_delivery_date_rush ?? null);
+      // Only show DeliveryOptions when BOTH dates exist — otherwise the rush
+      // card shows "—" and gives the customer nothing to compare against.
+      const showDeliveryOptions =
+        quote.promised_delivery_date && quote.promised_delivery_date_rush;
+
+      const langLabel =
+        sourceLangName && targetLangName
+          ? `${sourceLangName} → ${targetLangName}`
+          : sourceLangName || targetLangName || null;
+
+      const items = [
+        {
+          label: serviceName ?? "Translation services",
+          sub: langLabel ?? undefined,
+          amount: formatMoney(subtotal),
+        },
+      ];
+      const totals = [
+        { label: "Subtotal", amount: formatMoney(subtotal) },
+        { label: `GST (${taxRatePct}%)`, amount: formatMoney(taxAmount) },
+        { label: "Total due", amount: formatMoney(total), emphasis: "grand" as const },
+      ];
+
+      const detailRows: Array<[string, string]> = [["Quote #", quote.quote_number]];
+      if (langLabel) detailRows.push(["Project", langLabel]);
+      if (serviceName) detailRows.push(["Service", serviceName]);
+      detailRows.push(["Valid until", expiryString]);
+
+      const customerFirstName =
+        (customer.full_name || "").trim().split(/\s+/)[0] || "Valued Customer";
+
+      const deliveryBlock = showDeliveryOptions
+        ? deliveryOptions({
+            standardDate,
+            rushDate,
+            rushLabel: rushCfg.label,
+            selected: null,
+          })
+        : "";
+
+      const rushHint = showDeliveryOptions
+        ? hint(
+            `Standard delivery is ${strong(standardDate)} at the price shown. Need it sooner? Select ${strong(`Rush delivery (${rushCfg.label})`)} when you review the quote and the total will update automatically.`,
+          )
+        : "";
+
+      const body = [
+        eyebrow("Your quote is ready"),
+        title(`Quote ${esc(quote.quote_number)} is ready for review`),
+        lead(
+          `Hi ${esc(customerFirstName)}, your translation quote is ready. Take a look at the breakdown below, then accept the quote when you're ready and we'll start work right away.`,
+        ),
+        detailsTable(detailRows),
+        lineItemsTable({ items, totals }),
+        deliveryBlock,
+        ctaButton({ label: "Review & accept quote", url: quoteReviewLink }),
+        rushHint,
+        hint(
+          `Questions? Reply to this email or contact <a href="mailto:support@cethos.com" style="color:#0E7490;">support@cethos.com</a>.`,
+        ),
+      ].join("");
+
+      const emailHtml = emailShell(body, {
+        replyTo: REPLY.customer,
+        template: TEMPLATE,
+        preheader: `Your translation quote ${quote.quote_number} for ${formatMoney(total)} — review & accept.`,
+      });
 
       try {
         const brevoResponse = await fetch(
@@ -316,8 +411,9 @@ serve(async (req) => {
             body: JSON.stringify({
               sender: {
                 name: "Cethos Translation Services",
-                email: "noreply@cethos.com",
+                email: "donotreply@cethos.com",
               },
+              replyTo: { email: REPLY.customer },
               to: [
                 {
                   email: customer.email,

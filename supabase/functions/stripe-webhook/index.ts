@@ -12,6 +12,30 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import Stripe from "https://esm.sh/stripe@13.3.0?target=deno";
+import {
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc,
+  lead,
+  nextSteps,
+  REPLY,
+  statusBadge,
+  strong,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TPL_CUSTOMER: TemplateMeta = {
+  name: "Customer — Order Confirmation (Prepay)",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
+const TPL_ADMIN: TemplateMeta = {
+  name: "Admin — New Paid Order",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -401,63 +425,34 @@ function orderConfirmationHtml(args: {
 }): string {
   const { firstName, orderNumber, quoteNumber, amountPaid, currency, eta, portalUrl } = args;
   const amountStr = `$${amountPaid.toFixed(2)} ${currency}`;
-  const etaBlock = eta
-    ? `<tr>
-         <td style="padding:8px 0;color:#6b7280;font-size:14px;">Estimated Delivery</td>
-         <td style="padding:8px 0;color:#111827;font-size:14px;text-align:right;font-weight:600;">${eta}</td>
-       </tr>`
-    : "";
-  return `<!doctype html>
-<html><body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111827;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-        <tr>
-          <td style="background:#22c55e;padding:32px;text-align:center;color:#ffffff;">
-            <div style="width:64px;height:64px;background:#ffffff;border-radius:50%;display:inline-block;line-height:64px;margin-bottom:12px;">
-              <span style="color:#22c55e;font-size:36px;font-weight:bold;">✓</span>
-            </div>
-            <h1 style="margin:0;font-size:24px;font-weight:700;">Payment Successful</h1>
-            <p style="margin:6px 0 0;font-size:14px;color:#dcfce7;">Thank you for your order, ${firstName}.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:28px;">
-            <p style="margin:0 0 8px;color:#6b7280;font-size:13px;text-align:center;">Order Number</p>
-            <p style="margin:0 0 24px;font-size:28px;font-weight:700;text-align:center;color:#111827;letter-spacing:0.5px;">${orderNumber}</p>
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 16px;" />
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="padding:8px 0;color:#6b7280;font-size:14px;">Quote</td>
-                <td style="padding:8px 0;color:#111827;font-size:14px;text-align:right;font-weight:600;">${quoteNumber}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#6b7280;font-size:14px;">Amount Paid</td>
-                <td style="padding:8px 0;color:#111827;font-size:14px;text-align:right;font-weight:600;">${amountStr}</td>
-              </tr>
-              ${etaBlock}
-            </table>
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
-            <h3 style="margin:0 0 12px;font-size:15px;color:#111827;">What happens next?</h3>
-            <ol style="margin:0;padding-left:20px;color:#4b5563;font-size:14px;line-height:22px;">
-              <li>Our translators will begin working on your documents.</li>
-              <li>You'll receive an email when your translation is ready.</li>
-              <li>Download from your dashboard or receive by mail.</li>
-            </ol>
-            <div style="margin-top:24px;text-align:center;">
-              <a href="${portalUrl}/dashboard" style="display:inline-block;background:#2563eb;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">View My Orders</a>
-            </div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:0 28px 28px;text-align:center;color:#9ca3af;font-size:12px;">
-            Questions? Contact us at <a href="mailto:support@cethos.com" style="color:#2563eb;text-decoration:none;">support@cethos.com</a>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
+
+  const rows: Array<[string, string]> = [
+    ["Order #", orderNumber],
+    ["Quote #", quoteNumber],
+    ["Amount paid", amountStr],
+  ];
+  if (eta) rows.push(["Estimated delivery", eta]);
+
+  const body = [
+    statusBadge("success", "Payment received"),
+    title(`Thanks, ${esc(firstName)} — payment received & order confirmed`),
+    lead(
+      `We've received your payment of ${strong(esc(amountStr))} for order ${strong(esc(orderNumber))}, and your order is now confirmed. Our linguists are starting work — your receipt is below.`,
+    ),
+    detailsTable(rows),
+    nextSteps("What happens next", [
+      "Our linguists begin work on your documents within 2 business hours.",
+      "You'll receive a draft to review before final delivery.",
+      "Download final files from your dashboard, or by tracked courier if selected.",
+    ]),
+    ctaButton({ label: "View my order", url: `${portalUrl}/dashboard` }),
+  ].join("");
+
+  return emailShell(body, {
+    replyTo: REPLY.customer,
+    template: TPL_CUSTOMER,
+    preheader: `Payment received for ${orderNumber} (${amountStr}) — order confirmed.`,
+  });
 }
 
 // ── Admin "new paid order" notification HTML ────────────────────────────────
@@ -484,47 +479,28 @@ function adminPaymentNotificationHtml(args: {
     orderId,
   } = args;
   const amountStr = `$${amountPaid.toFixed(2)} ${currency}`;
-  const etaRow = eta
-    ? `<tr>
-         <td style="padding:6px 0;color:#6b7280;font-size:13px;">Estimated Delivery</td>
-         <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;">${eta}</td>
-       </tr>`
-    : "";
-  return `<!doctype html>
-<html><body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111827;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;">
-        <tr><td style="padding:20px 24px;border-bottom:1px solid #e5e7eb;">
-          <p style="margin:0;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">New Paid Order</p>
-          <h1 style="margin:6px 0 0;font-size:22px;color:#111827;">${orderNumber} — ${amountStr}</h1>
-        </td></tr>
-        <tr><td style="padding:20px 24px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-            <tr>
-              <td style="padding:6px 0;color:#6b7280;font-size:13px;">Customer</td>
-              <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;">${customerName}</td>
-            </tr>
-            <tr>
-              <td style="padding:6px 0;color:#6b7280;font-size:13px;">Email</td>
-              <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;">${customerEmail}</td>
-            </tr>
-            <tr>
-              <td style="padding:6px 0;color:#6b7280;font-size:13px;">Quote</td>
-              <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;">${quoteNumber}</td>
-            </tr>
-            <tr>
-              <td style="padding:6px 0;color:#6b7280;font-size:13px;">Amount Paid</td>
-              <td style="padding:6px 0;color:#111827;font-size:13px;text-align:right;font-weight:600;">${amountStr}</td>
-            </tr>
-            ${etaRow}
-          </table>
-          <div style="margin-top:20px;text-align:center;">
-            <a href="${portalUrl}/admin/orders/${orderId}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">Open in Admin Portal</a>
-          </div>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
+
+  const rows: Array<[string, string]> = [
+    ["Customer", customerName],
+    ["Email", customerEmail],
+    ["Quote #", quoteNumber],
+    ["Amount paid", amountStr],
+  ];
+  if (eta) rows.push(["Estimated delivery", eta]);
+
+  const body = [
+    statusBadge("info", "New paid order"),
+    title(`${esc(orderNumber)} — ${esc(amountStr)}`),
+    lead(
+      `A new prepay order has just been confirmed. Open it in the admin portal to start workflow setup or hand it to a project manager.`,
+    ),
+    detailsTable(rows),
+    ctaButton({ label: "Open in admin portal", url: `${portalUrl}/admin/orders/${orderId}` }),
+  ].join("");
+
+  return emailShell(body, {
+    replyTo: REPLY.ops,
+    template: TPL_ADMIN,
+    preheader: `New paid order ${orderNumber} (${amountStr}) — ready for project setup.`,
+  });
 }

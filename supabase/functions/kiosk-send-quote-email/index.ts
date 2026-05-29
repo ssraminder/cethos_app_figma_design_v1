@@ -23,6 +23,24 @@ import {
   KioskAuthError,
   resolveActingStaffId,
 } from "../_shared/kiosk-auth.ts";
+import {
+  ctaButton,
+  emailShell,
+  esc,
+  eyebrow,
+  hint,
+  lead,
+  REPLY,
+  strong,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Customer — Kiosk Quote Email",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const SITE_URL = Deno.env.get("SITE_URL") || "https://portal.cethos.com";
 
@@ -85,17 +103,20 @@ serve(async (req: Request) => {
           email: "donotreply@cethos.com",
         },
         subject: `Your quote ${quote.quote_number} from Cethos`,
-        htmlContent: `
-<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b">
-  <h2 style="margin:0 0 12px;color:#0f766e">Thanks for visiting Cethos!</h2>
-  <p>Hi ${customer.full_name || "there"},</p>
-  <p>We've prepared your translation quote <strong>${quote.quote_number}</strong> while you were in our office.
-  The total is <strong>$${Number(quote.total || 0).toFixed(2)}</strong>.</p>
-  <p style="margin:24px 0;text-align:center">
-    <a href="${quoteUrl}" style="display:inline-block;padding:14px 28px;background:#0f766e;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">Review &amp; Pay Online</a>
-  </p>
-  <p style="color:#64748b;font-size:13px">If you have any questions, just reply to this email.</p>
-</body></html>`,
+        htmlContent: emailShell(
+          [
+            eyebrow("Thanks for visiting"),
+            title(`Your quote from your Cethos office visit`),
+            lead(
+              `Hi ${esc((customer.full_name || "there").split(/\s+/)[0])}, we've prepared your translation quote ${strong(esc(quote.quote_number))} while you were in our office. The total is ${strong(`$${Number(quote.total || 0).toFixed(2)} CAD`)}.`,
+            ),
+            ctaButton({ label: "Review & pay online", url: quoteUrl, align: "left" }),
+            hint(
+              `If you have any questions, just reply to this email — we'll pick it up within 2 business hours.`,
+            ),
+          ].join(""),
+          { replyTo: REPLY.customer, template: TEMPLATE, preheader: `Quote ${esc(quote.quote_number)} from your Cethos office visit.` },
+        ),
       };
       const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",

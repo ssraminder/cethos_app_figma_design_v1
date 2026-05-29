@@ -19,6 +19,23 @@
 //   TWILIO_FROM_NUMBER             (e.164, e.g. +15875550100)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  callout,
+  codeBlock,
+  emailShell as emailShellShared,
+  esc,
+  eyebrow,
+  lead,
+  REPLY,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Secure Upload OTP",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -30,8 +47,6 @@ const CORS_HEADERS = {
 const OTP_EXPIRY_MINUTES = 10;
 const RATE_WINDOW_MINUTES = 10;
 const RATE_MAX_SENDS = 3;
-const LOGO_URL =
-  "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -240,38 +255,17 @@ async function sendBrevoEmail(args: {
 }
 
 function buildOtpEmailHtml(name: string, code: string): string {
-  const greeting = name || "there";
-  return `
-  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #ffffff;">
-    <div style="background-color: #ffffff; padding: 36px 32px 28px; text-align: center; border-bottom: 3px solid #0891b2;">
-      <img src="${LOGO_URL}" alt="Cethos" style="height: 52px; width: auto; display: block; margin: 0 auto;" />
-    </div>
-    <div style="padding: 40px 36px;">
-      <p style="color: #0f172a; font-size: 16px; font-weight: 600; margin: 0 0 8px;">Hi ${greeting},</p>
-      <p style="color: #475569; font-size: 14px; margin: 0 0 12px; line-height: 1.7;">Your secure upload verification code:</p>
-      <div style="text-align: center; margin: 28px 0;">
-        <div style="display: inline-block; padding: 20px 48px; background-color: #f8fafc; border: 2px solid #e2e8f0;
-                    border-radius: 12px; font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-                    font-size: 36px; font-weight: 700; letter-spacing: 12px; color: #0f172a;">${code}</div>
-      </div>
-      <p style="color: #475569; font-size: 13px; margin: 0 0 24px; line-height: 1.7;">
-        Enter this code on the upload page to continue. It expires in ${OTP_EXPIRY_MINUTES} minutes.
-      </p>
-      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin: 0 0 28px;">
-        <p style="color: #64748b; font-size: 12px; margin: 0; line-height: 1.6;">
-          If you didn't request this code, you can safely ignore this email.
-        </p>
-      </div>
-      <p style="color: #cbd5e1; font-size: 12px; margin: 0; text-align: center; line-height: 1.6;">
-        Questions? <a href="mailto:support@cethos.com" style="color: #0891b2; text-decoration: none;">support@cethos.com</a>
-      </p>
-    </div>
-    <div style="padding: 20px 36px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center;">
-      <p style="color: #94a3b8; font-size: 11px; margin: 0;">
-        Cethos Translation Services · <a href="https://cethos.com" style="color: #0891b2; text-decoration: none;">cethos.com</a>
-      </p>
-    </div>
-  </div>`;
+  const firstName = (name || "there").trim().split(/\s+/)[0] || "there";
+  return emailShellShared(
+    [
+      eyebrow("Secure upload"),
+      title("Your secure upload code"),
+      lead(`Hi ${esc(firstName)}, enter this code on the upload page to continue. It expires in ${OTP_EXPIRY_MINUTES} minutes.`),
+      codeBlock({ code, expiresIn: `${OTP_EXPIRY_MINUTES} minutes` }),
+      callout({ tone: "info", title: "Didn't request this?", body: "You can safely ignore this email." }),
+    ].join(""),
+    { replyTo: REPLY.customer, template: TEMPLATE, preheader: `Your Cethos secure upload code · expires in ${OTP_EXPIRY_MINUTES} minutes.` },
+  );
 }
 
 // ============================================================================

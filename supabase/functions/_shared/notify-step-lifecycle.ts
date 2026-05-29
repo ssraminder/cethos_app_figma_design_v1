@@ -10,29 +10,50 @@
 //   - notifyVendorPayablePaid         → manage-vendor-payables.update_status('paid')
 //   - notifyCustomerWorkflowCompleted → update-workflow-step.approve (final step)
 //
-// Each helper writes a row to notification_log (success or failure) so the
-// admin "Email log" modal can show staff what was sent — same pattern as
-// notify-counter.ts and notify-vendor-assignment.ts.
+// Each event renders through the shared shell (`_shared/email-shell.ts`) and
+// declares its own TemplateMeta so the footer surfaces "{name} v{version} ·
+// Updated {date}" for support.
 // ============================================================================
+
+import {
+  brevoPayload,
+  callout,
+  detailsTable,
+  emailShell,
+  esc,
+  eyebrow,
+  lead,
+  REPLY,
+  statusBadge,
+  strong,
+  title,
+  type TemplateMeta,
+} from "./email-shell.ts";
+
+// ────────────────────────────────────────────────────────────────────────────
+// Per-event template metadata. Bump version + updatedAt when you change copy
+// or layout that's customer-visible.
+// ────────────────────────────────────────────────────────────────────────────
+const TPL = {
+  stepApproved:        { name: "Vendor — Step Approved",      version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+  revisionRequested:   { name: "Vendor — Revision Requested", version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+  payableInvoiced:     { name: "Vendor — Invoice Recorded",   version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+  payablePaid:         { name: "Vendor — Payment Sent",       version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+  unassigned:          { name: "Vendor — Assignment Removed", version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+  deadlineChanged:     { name: "Vendor — Deadline Updated",   version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+  payableAdjusted:     { name: "Vendor — Payable Adjusted",   version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+  workflowCompleted:   { name: "Customer — Order Complete",   version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+};
 
 const VENDOR_PORTAL_URL =
   Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com";
 const ADMIN_PORTAL_URL =
   Deno.env.get("ADMIN_PORTAL_URL") || "https://portal.cethos.com";
 
-const escapeHtml = (s: string | null | undefined): string =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => {
-    switch (c) {
-      case "&": return "&amp;";
-      case "<": return "&lt;";
-      case ">": return "&gt;";
-      case '"': return "&quot;";
-      case "'": return "&#39;";
-      default: return c;
-    }
-  });
-
-const fmtMoney = (amount: number | null | undefined, currency: string | null | undefined): string => {
+const fmtMoney = (
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+): string => {
   if (amount == null) return "—";
   try {
     return new Intl.NumberFormat("en-CA", {
@@ -57,9 +78,6 @@ const fmtDate = (iso: string | null | undefined): string => {
   }
 };
 
-// Human-readable labels for the unassign_reason enum the admin UI picks
-// from. Falls through to the raw value if a new reason is added before
-// this map is updated.
 const UNASSIGN_REASON_LABELS: Record<string, string> = {
   vendor_unresponsive: "Vendor unresponsive",
   vendor_unavailable: "Vendor unavailable",
@@ -83,6 +101,16 @@ function ccFor(vendor: VendorRow): string[] {
     .filter((e) => e && e.toLowerCase() !== String(vendor.email).toLowerCase());
 }
 
+function firstName(full: string | null | undefined): string {
+  if (!full) return "there";
+  const trimmed = full.trim();
+  if (!trimmed) return "there";
+  return trimmed.split(/\s+/)[0];
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Send helper — pushes to Brevo + audits to notification_log.
+// ────────────────────────────────────────────────────────────────────────────
 interface SendArgs {
   supabase: any;
   eventType: string;
@@ -93,6 +121,7 @@ interface SendArgs {
   ccEmails?: string[];
   subject: string;
   htmlContent: string;
+  replyTo?: string;
   metadata?: Record<string, unknown>;
   orderId?: string | null;
   stepId?: string | null;
@@ -105,17 +134,16 @@ async function sendOne(args: SendArgs): Promise<void> {
     console.warn("notify-step-lifecycle: BREVO_API_KEY not set, skipping send");
     return;
   }
-  const payload: Record<string, unknown> = {
+  const payload = brevoPayload({
     to: [{ email: args.recipientEmail, name: args.recipientName || args.recipientEmail }],
-    sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
-    replyTo: { email: "vendor@cethos.com", name: "Cethos Vendor Ops" },
     subject: args.subject,
-    htmlContent: args.htmlContent,
+    html: args.htmlContent,
+    replyTo: args.replyTo ?? REPLY.vendor,
+    cc: args.ccEmails && args.ccEmails.length > 0
+      ? args.ccEmails.map((e) => ({ email: e }))
+      : undefined,
     tags: [args.eventType],
-  };
-  if (args.ccEmails && args.ccEmails.length > 0) {
-    payload.cc = args.ccEmails.map((e) => ({ email: e }));
-  }
+  });
 
   let status: "sent" | "failed" = "sent";
   let errorMsg: string | null = null;
@@ -169,49 +197,6 @@ async function sendOne(args: SendArgs): Promise<void> {
   }
 }
 
-function emailShell(title: string, lead: string, detailsHtml: string, noteHtml: string, ctaLabel: string, ctaUrl: string): string {
-  return `
-<!doctype html>
-<html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-        <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
-          <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
-          <div style="font-size:13px;opacity:0.85;margin-top:2px;">${escapeHtml(title)}</div>
-        </td></tr>
-        <tr><td style="padding:24px;color:#111827;">
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">${lead}</p>
-          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;">${detailsHtml}</table>
-          ${noteHtml}
-          <p style="margin:24px 0 0;text-align:center;">
-            <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">${escapeHtml(ctaLabel)}</a>
-          </p>
-        </td></tr>
-        <tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-          Replies to this email go to vendor@cethos.com.
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`.trim();
-}
-
-function rows(items: Array<[string, string]>): string {
-  return items
-    .map(([k, v]) =>
-      `<tr><td style="padding:4px 12px 4px 0;color:#6b7280;font-size:13px;vertical-align:top;">${escapeHtml(k)}</td><td style="padding:4px 0;color:#111827;font-size:14px;">${escapeHtml(v)}</td></tr>`,
-    )
-    .join("");
-}
-
-function noteBlock(label: string, body: string): string {
-  if (!body) return "";
-  return `<div style="margin-top:16px;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#374151;font-size:13px;line-height:1.5;white-space:pre-wrap;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(body)}</div>`;
-}
-
-// Common context shape — vendor + order + step + payable are the four
-// entities every step-lifecycle email touches.
 export interface StepLifecycleContext {
   supabase: any;
   vendor: VendorRow;
@@ -229,26 +214,33 @@ export interface StepLifecycleContext {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 1. notifyVendorStepApproved — admin approved the vendor's delivery.
-// This makes the work invoiceable; payment happens later, only after admin
-// marks the payable paid. Copy must not imply auto-scheduling.
+// 1. notifyVendorStepApproved
 // ──────────────────────────────────────────────────────────────────────────
 export async function notifyVendorStepApproved(ctx: StepLifecycleContext): Promise<void> {
   const subject = `Step approved: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
-  const lead = `Your delivery has been approved. Thanks for the work — this step is now eligible for invoicing. You can submit your invoice from the vendor portal whenever you're ready.`;
-  const items: Array<[string, string]> = [
+  const rows: Array<[string, string]> = [
     ["Order", ctx.order.order_number],
     ["Step", ctx.step.name || "—"],
   ];
-  if (ctx.payable?.total != null) items.push(["Amount", fmtMoney(ctx.payable.total, ctx.payable.currency)]);
-  const html = emailShell(
-    "Step approved — thank you",
-    lead,
-    rows(items),
-    "",
-    "Open vendor portal",
-    `${VENDOR_PORTAL_URL}/jobs`,
-  );
+  if (ctx.payable?.total != null) {
+    rows.push(["Amount", fmtMoney(ctx.payable.total, ctx.payable.currency)]);
+  }
+
+  const body = [
+    statusBadge("success", "Step approved"),
+    title(`Step approved: ${esc(ctx.step.name || "step")}`),
+    lead(
+      `Hi ${esc(firstName(ctx.vendor.full_name))}, your delivery has been approved. Thanks for the work — this step is now eligible for invoicing. You can submit your invoice from the vendor portal whenever you're ready.`,
+    ),
+    detailsTable(rows),
+    callout({
+      tone: "success",
+      title: "Ready to invoice",
+      body: "Submit your invoice from the vendor portal. Payment follows on the next bi-weekly cycle once we record your invoice.",
+    }),
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(VENDOR_PORTAL_URL + "/jobs")}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">Open vendor portal</a></td></tr></tbody></table>`,
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "step_approved",
@@ -257,7 +249,7 @@ export async function notifyVendorStepApproved(ctx: StepLifecycleContext): Promi
     recipientId: ctx.vendor.id,
     ccEmails: ccFor(ctx.vendor),
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.stepApproved }),
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     payableId: ctx.payable?.id ?? null,
@@ -265,25 +257,30 @@ export async function notifyVendorStepApproved(ctx: StepLifecycleContext): Promi
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 2. notifyVendorRevisionRequested — admin asked the vendor to revise.
-// Carries the reviewer's reason so vendor knows what to address.
+// 2. notifyVendorRevisionRequested
 // ──────────────────────────────────────────────────────────────────────────
 export async function notifyVendorRevisionRequested(
   ctx: StepLifecycleContext & { reason: string | null },
 ): Promise<void> {
   const subject = `Revision requested: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
-  const lead = `The reviewer has requested revisions to your delivery. Please address the feedback and re-deliver from the vendor portal.`;
-  const html = emailShell(
-    "Revision requested",
-    lead,
-    rows([
+  const reasonCallout = ctx.reason
+    ? callout({ tone: "warn", title: "Reviewer feedback", body: esc(ctx.reason) })
+    : "";
+
+  const body = [
+    eyebrow("Revision requested", "warn"),
+    title(`Revision requested: ${esc(ctx.step.name || "step")}`),
+    lead(
+      `Hi ${esc(firstName(ctx.vendor.full_name))}, the reviewer has requested revisions to your delivery. Please address the feedback and re-deliver from the vendor portal.`,
+    ),
+    detailsTable([
       ["Order", ctx.order.order_number],
       ["Step", ctx.step.name || "—"],
     ]),
-    noteBlock("Reviewer feedback", ctx.reason ?? ""),
-    "Open job",
-    `${VENDOR_PORTAL_URL}/jobs`,
-  );
+    reasonCallout,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(VENDOR_PORTAL_URL + "/jobs")}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">Open job</a></td></tr></tbody></table>`,
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "revision_requested",
@@ -292,7 +289,7 @@ export async function notifyVendorRevisionRequested(
     recipientId: ctx.vendor.id,
     ccEmails: ccFor(ctx.vendor),
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.revisionRequested }),
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     metadata: { reason: ctx.reason ?? null },
@@ -300,28 +297,30 @@ export async function notifyVendorRevisionRequested(
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 3. notifyVendorPayableInvoiced — admin recorded the vendor's invoice number.
-// Confirms admin received the invoice; payment is the next state.
+// 3. notifyVendorPayableInvoiced
 // ──────────────────────────────────────────────────────────────────────────
 export async function notifyVendorPayableInvoiced(ctx: StepLifecycleContext): Promise<void> {
   if (!ctx.payable) return;
   const subject = `Invoice recorded: ${ctx.order.order_number}`;
-  const lead = `Your invoice has been recorded against this job. Payment will follow per the agreed terms.`;
-  const items: Array<[string, string]> = [
+
+  const rows: Array<[string, string]> = [
     ["Order", ctx.order.order_number],
     ["Step", ctx.step.name || "—"],
     ["Amount", fmtMoney(ctx.payable.total, ctx.payable.currency)],
   ];
-  if (ctx.payable.vendor_invoice_number) items.push(["Invoice #", ctx.payable.vendor_invoice_number]);
-  if (ctx.payable.vendor_invoice_date) items.push(["Invoice date", ctx.payable.vendor_invoice_date]);
-  const html = emailShell(
-    "Invoice recorded",
-    lead,
-    rows(items),
-    "",
-    "Open vendor portal",
-    `${VENDOR_PORTAL_URL}/invoices`,
-  );
+  if (ctx.payable.vendor_invoice_number) rows.push(["Invoice #", ctx.payable.vendor_invoice_number]);
+  if (ctx.payable.vendor_invoice_date) rows.push(["Invoice date", ctx.payable.vendor_invoice_date]);
+
+  const body = [
+    eyebrow("Invoice received", "teal"),
+    title("Invoice recorded against this job"),
+    lead(
+      `Hi ${esc(firstName(ctx.vendor.full_name))}, your invoice has been recorded against this job. Payment will follow per the agreed terms.`,
+    ),
+    detailsTable(rows),
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(VENDOR_PORTAL_URL + "/invoices")}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">Open vendor portal</a></td></tr></tbody></table>`,
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "payable_invoiced",
@@ -330,7 +329,7 @@ export async function notifyVendorPayableInvoiced(ctx: StepLifecycleContext): Pr
     recipientId: ctx.vendor.id,
     ccEmails: ccFor(ctx.vendor),
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.payableInvoiced }),
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     payableId: ctx.payable.id,
@@ -342,29 +341,30 @@ export async function notifyVendorPayableInvoiced(ctx: StepLifecycleContext): Pr
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 4. notifyVendorPayablePaid — admin marked the payable paid.
-// Final payment confirmation. Carries method + reference so vendor can
-// match against their bank record.
+// 4. notifyVendorPayablePaid
 // ──────────────────────────────────────────────────────────────────────────
 export async function notifyVendorPayablePaid(ctx: StepLifecycleContext): Promise<void> {
   if (!ctx.payable) return;
   const subject = `Payment sent: ${ctx.order.order_number}`;
-  const lead = `Payment has been issued for this job. Reference details below.`;
-  const items: Array<[string, string]> = [
+
+  const rows: Array<[string, string]> = [
     ["Order", ctx.order.order_number],
     ["Step", ctx.step.name || "—"],
     ["Amount", fmtMoney(ctx.payable.total, ctx.payable.currency)],
   ];
-  if (ctx.payable.payment_method) items.push(["Method", ctx.payable.payment_method]);
-  if (ctx.payable.payment_reference) items.push(["Reference", ctx.payable.payment_reference]);
-  const html = emailShell(
-    "Payment sent",
-    lead,
-    rows(items),
-    "",
-    "View payment history",
-    `${VENDOR_PORTAL_URL}/invoices`,
-  );
+  if (ctx.payable.payment_method) rows.push(["Method", ctx.payable.payment_method]);
+  if (ctx.payable.payment_reference) rows.push(["Reference", ctx.payable.payment_reference]);
+
+  const body = [
+    statusBadge("success", "Payment sent"),
+    title("Your payment has been issued"),
+    lead(
+      `Hi ${esc(firstName(ctx.vendor.full_name))}, payment has been issued for this job. Reference details below — please match against your bank record.`,
+    ),
+    detailsTable(rows),
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(VENDOR_PORTAL_URL + "/invoices")}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">View payment history</a></td></tr></tbody></table>`,
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "payable_paid",
@@ -373,7 +373,7 @@ export async function notifyVendorPayablePaid(ctx: StepLifecycleContext): Promis
     recipientId: ctx.vendor.id,
     ccEmails: ccFor(ctx.vendor),
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.payablePaid }),
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     payableId: ctx.payable.id,
@@ -385,27 +385,7 @@ export async function notifyVendorPayablePaid(ctx: StepLifecycleContext): Promis
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 5. notifyCustomerWorkflowCompleted — fired when the last workflow step
-// flips to approved/skipped and the parent order_workflows row transitions
-// to status='completed'. Tells the customer their order is done.
-//
-// Uses a separate context shape (customer, no vendor) but the same Brevo
-// + notification_log audit pipeline via sendOne. recipient_type='customer'
-// so admin email-log filters can distinguish customer-facing emails.
-// ──────────────────────────────────────────────────────────────────────────
-export interface WorkflowCompletedContext {
-  supabase: any;
-  customer: { id: string; full_name: string | null; email: string };
-  order: { id: string; order_number: string };
-  workflowId: string;
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// 6. notifyVendorUnassigned — admin removed the vendor from a step.
-// Fires AFTER the step has been reset (vendor_id cleared, unassigned_*
-// columns populated), so the caller must pass the previous vendor's row
-// in the context — we don't try to re-fetch off step.vendor_id (which is
-// now null).
+// 5. notifyVendorUnassigned
 // ──────────────────────────────────────────────────────────────────────────
 export interface UnassignedContext extends StepLifecycleContext {
   reason: string | null;
@@ -417,21 +397,25 @@ export async function notifyVendorUnassigned(ctx: UnassignedContext): Promise<vo
     ? UNASSIGN_REASON_LABELS[ctx.reason] ?? ctx.reason
     : "Not specified";
   const subject = `Assignment removed: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
-  const lead = `Your assignment for order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been removed by the project manager. You no longer need to deliver this step. See details and reason below.`;
-  const items: Array<[string, string]> = [
-    ["Order", ctx.order.order_number],
-    ["Step", ctx.step.name || "—"],
-    ["Reason", reasonLabel],
-  ];
-  const note = ctx.notes ? noteBlock("Notes from project manager", ctx.notes) : "";
-  const html = emailShell(
-    "Assignment removed",
-    lead,
-    rows(items),
-    note,
-    "Open vendor portal",
-    `${VENDOR_PORTAL_URL}/jobs`,
-  );
+  const notesCallout = ctx.notes
+    ? callout({ tone: "info", title: "Notes from project manager", body: esc(ctx.notes) })
+    : "";
+
+  const body = [
+    eyebrow("Assignment removed", "muted"),
+    title(`Assignment removed for ${esc(ctx.order.order_number)}`),
+    lead(
+      `Hi ${esc(firstName(ctx.vendor.full_name))}, your assignment for order ${strong(esc(ctx.order.order_number))} has been removed by the project manager. You no longer need to deliver this step. See details and reason below.`,
+    ),
+    detailsTable([
+      ["Order", ctx.order.order_number],
+      ["Step", ctx.step.name || "—"],
+      ["Reason", reasonLabel],
+    ]),
+    notesCallout,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(VENDOR_PORTAL_URL + "/jobs")}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">Open vendor portal</a></td></tr></tbody></table>`,
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "vendor_unassigned",
@@ -440,7 +424,7 @@ export async function notifyVendorUnassigned(ctx: UnassignedContext): Promise<vo
     recipientId: ctx.vendor.id,
     ccEmails: ccFor(ctx.vendor),
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.unassigned }),
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     metadata: {
@@ -452,8 +436,7 @@ export async function notifyVendorUnassigned(ctx: UnassignedContext): Promise<vo
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 7. notifyVendorDeadlineChanged — admin updated the step deadline.
-// Surfaces old → new so the vendor immediately sees what shifted.
+// 6. notifyVendorDeadlineChanged
 // ──────────────────────────────────────────────────────────────────────────
 export interface DeadlineChangedContext extends StepLifecycleContext {
   old_deadline: string | null;
@@ -466,35 +449,41 @@ export async function notifyVendorDeadlineChanged(ctx: DeadlineChangedContext): 
   const now = Date.now();
   const oldMs = ctx.old_deadline ? new Date(ctx.old_deadline).getTime() : null;
   const newMs = new Date(ctx.new_deadline).getTime();
-  const shifted =
+  const shifted: "extended" | "shortened" | "unchanged" | null =
     oldMs != null && Number.isFinite(oldMs) && Number.isFinite(newMs)
-      ? newMs > oldMs
-        ? "extended"
-        : newMs < oldMs
-          ? "shortened"
-          : "unchanged"
+      ? newMs > oldMs ? "extended"
+        : newMs < oldMs ? "shortened" : "unchanged"
       : null;
-  const lead =
+
+  const leadCopy =
     shifted === "extended"
-      ? `The deadline for your assignment on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been <strong>extended</strong>. The new deadline is below.`
+      ? `Hi ${esc(firstName(ctx.vendor.full_name))}, the deadline for your assignment on order ${strong(esc(ctx.order.order_number))} has been ${strong("extended")}. The new deadline is below.`
       : shifted === "shortened"
-        ? `The deadline for your assignment on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been <strong>shortened</strong>. Please confirm you can still deliver by the new deadline.`
-        : `The deadline for your assignment on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been updated. Details below.`;
-  const items: Array<[string, string]> = [
+        ? `Hi ${esc(firstName(ctx.vendor.full_name))}, the deadline for your assignment on order ${strong(esc(ctx.order.order_number))} has been ${strong("shortened")}. Please confirm you can still deliver by the new deadline.`
+        : `Hi ${esc(firstName(ctx.vendor.full_name))}, the deadline for your assignment on order ${strong(esc(ctx.order.order_number))} has been updated. Details below.`;
+
+  const tone = shifted === "shortened" ? "warn" : "info";
+
+  const rows: Array<[string, string]> = [
     ["Order", ctx.order.order_number],
     ["Step", ctx.step.name || "—"],
   ];
-  if (ctx.old_deadline) items.push(["Previous deadline", fmtDate(ctx.old_deadline)]);
-  items.push(["New deadline", fmtDate(ctx.new_deadline)]);
-  const note = ctx.reason ? noteBlock("Reason", ctx.reason) : "";
-  const html = emailShell(
-    "Deadline updated",
-    lead,
-    rows(items),
-    note,
-    "Open job",
-    `${VENDOR_PORTAL_URL}/jobs`,
-  );
+  if (ctx.old_deadline) rows.push(["Previous deadline", fmtDate(ctx.old_deadline)]);
+  rows.push(["New deadline", fmtDate(ctx.new_deadline)]);
+
+  const reasonCallout = ctx.reason
+    ? callout({ tone, title: "Reason", body: esc(ctx.reason) })
+    : "";
+
+  const body = [
+    eyebrow("Deadline updated", tone === "warn" ? "warn" : "teal"),
+    title("Deadline updated"),
+    lead(leadCopy),
+    detailsTable(rows),
+    reasonCallout,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(VENDOR_PORTAL_URL + "/jobs")}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">Open job</a></td></tr></tbody></table>`,
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "vendor_deadline_changed",
@@ -503,7 +492,7 @@ export async function notifyVendorDeadlineChanged(ctx: DeadlineChangedContext): 
     recipientId: ctx.vendor.id,
     ccEmails: ccFor(ctx.vendor),
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.deadlineChanged }),
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     metadata: {
@@ -518,9 +507,7 @@ export async function notifyVendorDeadlineChanged(ctx: DeadlineChangedContext): 
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 8. notifyVendorPayableAdjusted — admin changed the rate or total on a
-// committed payable. The vendor needs to see this so they don't invoice
-// the old amount.
+// 7. notifyVendorPayableAdjusted
 // ──────────────────────────────────────────────────────────────────────────
 export interface PayableAdjustedContext extends StepLifecycleContext {
   old_rate: number | null;
@@ -533,37 +520,40 @@ export interface PayableAdjustedContext extends StepLifecycleContext {
 
 export async function notifyVendorPayableAdjusted(ctx: PayableAdjustedContext): Promise<void> {
   const subject = `Payable adjusted: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
-  const direction =
+  const direction: "increased" | "decreased" | "unchanged" | null =
     ctx.old_subtotal != null && ctx.new_subtotal != null
-      ? ctx.new_subtotal > ctx.old_subtotal
-        ? "increased"
-        : ctx.new_subtotal < ctx.old_subtotal
-          ? "decreased"
-          : "unchanged"
+      ? ctx.new_subtotal > ctx.old_subtotal ? "increased"
+        : ctx.new_subtotal < ctx.old_subtotal ? "decreased" : "unchanged"
       : null;
-  const lead =
+  const leadCopy =
     direction === "increased"
-      ? `The payable for your work on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been <strong>increased</strong>. Updated amounts below — please invoice the new total when ready.`
+      ? `Hi ${esc(firstName(ctx.vendor.full_name))}, the payable for your work on order ${strong(esc(ctx.order.order_number))} has been ${strong("increased")}. Updated amounts below — please invoice the new total when ready.`
       : direction === "decreased"
-        ? `The payable for your work on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been <strong>decreased</strong>. Updated amounts below — please invoice the new total when ready.`
-        : `The payable for your work on order <strong>${escapeHtml(ctx.order.order_number)}</strong> has been adjusted. Updated amounts below.`;
-  const items: Array<[string, string]> = [
+        ? `Hi ${esc(firstName(ctx.vendor.full_name))}, the payable for your work on order ${strong(esc(ctx.order.order_number))} has been ${strong("decreased")}. Updated amounts below — please invoice the new total when ready.`
+        : `Hi ${esc(firstName(ctx.vendor.full_name))}, the payable for your work on order ${strong(esc(ctx.order.order_number))} has been adjusted. Updated amounts below.`;
+
+  const rows: Array<[string, string]> = [
     ["Order", ctx.order.order_number],
     ["Step", ctx.step.name || "—"],
   ];
-  if (ctx.old_rate != null) items.push(["Previous rate", fmtMoney(ctx.old_rate, ctx.currency)]);
-  if (ctx.new_rate != null) items.push(["New rate", fmtMoney(ctx.new_rate, ctx.currency)]);
-  if (ctx.old_subtotal != null) items.push(["Previous total", fmtMoney(ctx.old_subtotal, ctx.currency)]);
-  if (ctx.new_subtotal != null) items.push(["New total", fmtMoney(ctx.new_subtotal, ctx.currency)]);
-  const note = ctx.reason ? noteBlock("Reason", ctx.reason) : "";
-  const html = emailShell(
-    "Payable adjusted",
-    lead,
-    rows(items),
-    note,
-    "View in vendor portal",
-    `${VENDOR_PORTAL_URL}/jobs`,
-  );
+  if (ctx.old_rate != null) rows.push(["Previous rate", fmtMoney(ctx.old_rate, ctx.currency)]);
+  if (ctx.new_rate != null) rows.push(["New rate", fmtMoney(ctx.new_rate, ctx.currency)]);
+  if (ctx.old_subtotal != null) rows.push(["Previous total", fmtMoney(ctx.old_subtotal, ctx.currency)]);
+  if (ctx.new_subtotal != null) rows.push(["New total", fmtMoney(ctx.new_subtotal, ctx.currency)]);
+
+  const reasonCallout = ctx.reason
+    ? callout({ tone: "info", title: "Reason", body: esc(ctx.reason) })
+    : "";
+
+  const body = [
+    eyebrow("Payable adjusted", "teal"),
+    title("Payable adjusted"),
+    lead(leadCopy),
+    detailsTable(rows),
+    reasonCallout,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(VENDOR_PORTAL_URL + "/jobs")}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">View in vendor portal</a></td></tr></tbody></table>`,
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "vendor_payable_adjusted",
@@ -572,7 +562,7 @@ export async function notifyVendorPayableAdjusted(ctx: PayableAdjustedContext): 
     recipientId: ctx.vendor.id,
     ccEmails: ccFor(ctx.vendor),
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.payableAdjusted }),
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     payableId: ctx.payable?.id ?? null,
@@ -588,23 +578,35 @@ export async function notifyVendorPayableAdjusted(ctx: PayableAdjustedContext): 
   });
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// 8. notifyCustomerWorkflowCompleted — order complete (customer).
+// ──────────────────────────────────────────────────────────────────────────
+export interface WorkflowCompletedContext {
+  supabase: any;
+  customer: { id: string; full_name: string | null; email: string };
+  order: { id: string; order_number: string };
+  workflowId: string;
+}
+
 export async function notifyCustomerWorkflowCompleted(ctx: WorkflowCompletedContext): Promise<void> {
   const subject = `Order complete: ${ctx.order.order_number}`;
   const greeting = ctx.customer.full_name
-    ? `Hi ${escapeHtml(ctx.customer.full_name.split(" ")[0])},`
-    : `Hi,`;
-  const lead = `${greeting} good news — every step of your order has been completed and approved. Your final deliverable is being prepared.`;
-  const html = emailShell(
-    "Your order is complete",
-    lead,
-    rows([
+    ? `Hi ${esc(firstName(ctx.customer.full_name))},`
+    : "Hi,";
+
+  const body = [
+    statusBadge("success", "Order complete"),
+    title("Your order is complete"),
+    lead(
+      `${greeting} good news — every step of your order has been completed and approved. Your final deliverable is being prepared.`,
+    ),
+    detailsTable([
       ["Order", ctx.order.order_number],
       ["Status", "Completed"],
     ]),
-    "",
-    "Open order",
-    `${ADMIN_PORTAL_URL}/orders/${ctx.order.id}`,
-  );
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(ADMIN_PORTAL_URL + "/orders/" + ctx.order.id)}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">Open order</a></td></tr></tbody></table>`,
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "workflow_completed",
@@ -613,7 +615,8 @@ export async function notifyCustomerWorkflowCompleted(ctx: WorkflowCompletedCont
     recipientName: ctx.customer.full_name,
     recipientId: ctx.customer.id,
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.customer, template: TPL.workflowCompleted }),
+    replyTo: REPLY.customer,
     orderId: ctx.order.id,
     metadata: { workflow_id: ctx.workflowId },
   });

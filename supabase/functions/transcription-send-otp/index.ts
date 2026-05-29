@@ -13,6 +13,22 @@ import {
   sendBrevoEmail,
   auditLog,
 } from "../_shared/transcription.ts";
+import {
+  callout,
+  codeBlock,
+  emailShell,
+  eyebrow,
+  lead,
+  REPLY,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Transcription OTP",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const OTP_EXPIRY_MINUTES = 5;
 const MAX_OTPS_PER_WINDOW = 3;
@@ -74,33 +90,18 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Failed to create OTP" }, 500);
     }
 
-    // Send via Brevo
-    const sent = await sendBrevoEmail(
-      email,
-      "Your Cethos Transcription Code",
-      `
-      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-        <div style="text-align: center; margin-bottom: 24px;">
-          <h2 style="color: #0f172a; margin: 0;">Cethos Transcription</h2>
-        </div>
-        <p style="color: #334155; font-size: 16px; line-height: 1.5;">
-          Your verification code is:
-        </p>
-        <div style="text-align: center; margin: 24px 0;">
-          <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #0f172a; background: #f1f5f9; padding: 16px 32px; border-radius: 8px; display: inline-block;">
-            ${otp}
-          </span>
-        </div>
-        <p style="color: #64748b; font-size: 14px; line-height: 1.5;">
-          This code expires in ${OTP_EXPIRY_MINUTES} minutes. If you didn't request this, you can safely ignore this email.
-        </p>
-        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-        <p style="color: #94a3b8; font-size: 12px; text-align: center;">
-          Cethos Solutions Inc. &bull; cethos.com
-        </p>
-      </div>
-      `,
+    // Send via Brevo using the shared shell.
+    const html = emailShell(
+      [
+        eyebrow("Cethos Transcription"),
+        title("Your verification code"),
+        lead(`Enter this code in the transcription app to continue. It expires in ${OTP_EXPIRY_MINUTES} minutes.`),
+        codeBlock({ code: otp, expiresIn: `${OTP_EXPIRY_MINUTES} minutes` }),
+        callout({ tone: "info", title: "Didn't request this?", body: "You can safely ignore this email." }),
+      ].join(""),
+      { replyTo: REPLY.customer, template: TEMPLATE, preheader: `Your Cethos Transcription verification code · expires in ${OTP_EXPIRY_MINUTES} minutes.` },
     );
+    const sent = await sendBrevoEmail(email, "Your Cethos Transcription Code", html);
 
     if (!sent) {
       console.error("Brevo email send failed for:", email);

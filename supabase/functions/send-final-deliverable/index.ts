@@ -14,6 +14,25 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { triggerDropboxSync } from "../_shared/dropbox-trigger.ts";
+import {
+  callout,
+  emailShell,
+  esc,
+  hint,
+  lead,
+  REPLY,
+  statusBadge,
+  strong,
+  title,
+  C,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Customer — Final Deliverable",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -238,50 +257,49 @@ async function sendCustomerEmail(args: CustomerEmailArgs): Promise<void> {
     return;
   }
 
-  const firstName = args.customerName?.split(" ")[0] || "";
-  const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : "Hi,";
+  const firstName = (args.customerName || "").trim().split(/\s+/)[0] || "there";
   const subject = `Your final translation is ready — ${args.orderNumber}`;
 
+  // Download list — one row per file in a teal-bordered card.
   const downloadRows = args.downloads
     .map(
       (d) =>
-        `<tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">
-          <a href="${escapeHtml(d.url)}" style="color:#0f766e;text-decoration:none;font-weight:500;">${escapeHtml(d.name)}</a>
-          <div style="font-size:12px;color:#6b7280;margin-top:2px;">Download link valid for 7 days</div>
+        `<tr><td style="padding:10px 14px;border-bottom:1px solid ${C.border};">
+          <a href="${esc(d.url)}" target="_blank" style="color:${C.tealDeep};text-decoration:none;font-weight:600;font-size:14px;">${esc(d.name)}</a>
+          <div style="font-size:11.5px;color:${C.muted};margin-top:2px;">Download link valid for 7 days</div>
         </td></tr>`,
     )
     .join("");
 
+  const downloadList = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 22px;border:1px solid ${C.border};border-radius:8px;overflow:hidden;background:${C.white};">${downloadRows}</table>`;
+
   const customMessageBlock = args.message
-    ? `<div style="margin:16px 0;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#374151;font-size:13px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(args.message)}</div>`
+    ? callout({
+        tone: "info",
+        title: "Note from our team",
+        body: esc(args.message).replace(/\n/g, "<br />"),
+      })
     : "";
 
-  const html = `
-<!doctype html>
-<html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-        <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
-          <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
-          <div style="font-size:13px;opacity:0.85;margin-top:2px;">Your final deliverable</div>
-        </td></tr>
-        <tr><td style="padding:24px;color:#111827;">
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">${greeting}</p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">Your translation is complete. The final files for order <strong>${escapeHtml(args.orderNumber)}</strong> are ready for download below.</p>
-          ${customMessageBlock}
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;">
-            ${downloadRows}
-          </table>
-          <p style="margin:24px 0 0;font-size:13px;color:#6b7280;">Need anything else? Just reply to this email and we'll be in touch.</p>
-        </td></tr>
-        <tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-          Thank you for choosing Cethos. Replies go to support@cethos.com.
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`.trim();
+  const html = emailShell(
+    [
+      statusBadge("success", "Delivered"),
+      title(`Your translation for ${esc(args.orderNumber)} is ready`),
+      lead(
+        `Hi ${esc(firstName)}, your final translation has been completed and is ready to download. Files below — ${strong("links expire in 7 days")}, so save copies locally if you need long-term access.`,
+      ),
+      customMessageBlock,
+      downloadList,
+      hint(
+        `Need anything else? Just reply to this email and we'll be in touch. Need a free revision? You have one revision pass included — reply with what you need.`,
+      ),
+    ].join(""),
+    {
+      replyTo: REPLY.customer,
+      template: TEMPLATE,
+      preheader: `Your translation for ${args.orderNumber} is ready — download links below (valid 7 days).`,
+    },
+  );
 
   const payload = {
     to: [{ email: args.customerEmail, name: args.customerName || args.customerEmail }],

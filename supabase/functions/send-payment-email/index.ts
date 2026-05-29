@@ -11,6 +11,33 @@
 // existed.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  amountCard,
+  callout,
+  ctaButton,
+  deliveryOptions,
+  detailsTable,
+  emailShell,
+  esc,
+  eyebrow,
+  hint,
+  lead,
+  REPLY,
+  strong,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+import {
+  computeRushTotal,
+  formatMoney,
+  getRushConfig,
+} from "../_shared/rush-pricing.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Customer — Pay Link",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,74 +90,146 @@ serve(async (req) => {
       day: "numeric",
     });
 
-    const formattedTotal = new Intl.NumberFormat("en-CA", {
-      style: "currency",
-      currency: "CAD",
-    }).format(total || 0);
+    const formattedTotal = formatMoney(total || 0);
 
     let emailSent = false;
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
 
     if (brevoApiKey) {
-      const emailHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #16a34a; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-            .header h1 { margin: 0; font-size: 24px; }
-            .content { padding: 30px; background-color: #f9fafb; }
-            .quote-box { background-color: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0; }
-            .quote-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
-            .quote-row:last-child { border-bottom: none; font-weight: bold; font-size: 18px; color: #16a34a; }
-            .cta-button { display: inline-block; padding: 14px 40px; background-color: #16a34a; color: white; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: bold; font-size: 16px; }
-            .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-            .expiry-notice { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 15px; margin: 20px 0; font-size: 14px; }
-            .secure-notice { background-color: #ecfdf5; border-left: 4px solid #16a34a; padding: 12px 15px; margin: 20px 0; font-size: 14px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>Pay for Your Translation</h1>
-            </div>
-            <div class="content">
-              <p>Hello ${customerName || "Valued Customer"},</p>
-              <p>Your translation quote is ready for payment. Complete your payment to start your translation project.</p>
-              <div class="quote-box">
-                <div class="quote-row">
-                  <span>Quote Number:</span>
-                  <span><strong>${quoteNumber}</strong></span>
-                </div>
-                <div class="quote-row">
-                  <span>Total Amount:</span>
-                  <span>${formattedTotal}</span>
-                </div>
-              </div>
-              <p>Click the button below to complete your secure payment:</p>
-              <div style="text-align: center;">
-                <a href="${paymentUrl}" class="cta-button">Pay Now</a>
-              </div>
-              <div class="secure-notice">
-                <strong>Secure Payment:</strong> Your payment is processed securely through Stripe. We never store your card details.
-              </div>
-              <div class="expiry-notice">
-                <strong>Note:</strong> This quote expires on ${formattedExpiryDate}. Please complete your payment before this date.
-              </div>
-              <p>If you have any questions or need assistance, please contact us at <a href="mailto:support@cethos.com">support@cethos.com</a>.</p>
-              <p>Thank you for choosing Cethos Translation Services!</p>
-              <p>Best regards,<br/>The Cethos Team</p>
-            </div>
-            <div class="footer">
-              <p>This is an automated email from Cethos Translation Services.</p>
-              <p>&copy; ${new Date().getFullYear()} Cethos. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
+      // Fetch the quote so we can advertise both delivery dates + spell out
+      // the rush dollars. Quote is created admin-side with both dates set.
+      const { data: quote } = await supabase
+        .from("quotes")
+        .select(
+          "subtotal, tax_amount, tax_rate, total, promised_delivery_date, promised_delivery_date_rush, source_language_id, target_language_id, target_language_other, service_id",
+        )
+        .eq("id", quoteId)
+        .maybeSingle();
+
+      const subtotal = Number(quote?.subtotal ?? 0);
+      const taxRate = Number(quote?.tax_rate ?? 0);
+
+      const fmtDate = (iso: string | null | undefined): string => {
+        if (!iso) return "—";
+        try {
+          return new Date(iso).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+        } catch {
+          return String(iso);
+        }
+      };
+
+      const langIds = [quote?.source_language_id, quote?.target_language_id]
+        .filter((v): v is string => typeof v === "string" && v.length > 0);
+      const langMap = new Map<string, string>();
+      if (langIds.length > 0) {
+        const { data: langs } = await supabase
+          .from("languages")
+          .select("id, name")
+          .in("id", langIds);
+        for (const r of (langs ?? []) as Array<{ id: string; name: string }>) {
+          langMap.set(r.id, r.name);
+        }
+      }
+      const sourceLangName = quote?.source_language_id
+        ? langMap.get(quote.source_language_id) ?? null
+        : null;
+      const targetLangName = quote?.target_language_id
+        ? langMap.get(quote.target_language_id) ?? null
+        : quote?.target_language_other ?? null;
+      const langLabel =
+        sourceLangName && targetLangName
+          ? `${sourceLangName} → ${targetLangName}`
+          : sourceLangName || targetLangName || null;
+
+      let serviceName: string | null = null;
+      if (quote?.service_id) {
+        const { data: svc } = await supabase
+          .from("services")
+          .select("name")
+          .eq("id", quote.service_id)
+          .maybeSingle();
+        serviceName = svc?.name ?? null;
+      }
+
+      // Rush config from settings — never hardcode the percentage.
+      const rushCfg = await getRushConfig(supabase);
+      const rush = computeRushTotal({ subtotal, taxRate, surcharge: rushCfg.surcharge });
+
+      const standardDate = fmtDate(quote?.promised_delivery_date ?? null);
+      const rushDate = fmtDate(quote?.promised_delivery_date_rush ?? null);
+      const showDelivery = !!(quote?.promised_delivery_date && quote?.promised_delivery_date_rush);
+
+      const customerFirstName =
+        (customerName || "").trim().split(/\s+/)[0] || "Valued Customer";
+
+      const detailRows: Array<[string, string]> = [["Quote #", quoteNumber]];
+      if (langLabel) detailRows.push(["Project", langLabel]);
+      if (serviceName) detailRows.push(["Service", serviceName]);
+      detailRows.push(["Subtotal", formatMoney(subtotal)]);
+      detailRows.push([
+        `GST (${Math.round(taxRate * 1000) / 10}%)`,
+        formatMoney(Number(quote?.tax_amount ?? 0)),
+      ]);
+      detailRows.push(["Quote expires", formattedExpiryDate]);
+
+      const deliveryBlock = showDelivery
+        ? deliveryOptions({
+            standardDate,
+            rushDate,
+            rushLabel: rushCfg.label,
+            selected: null,
+          })
+        : "";
+
+      // Rush-dollars callout — pay link is a fixed amount, so rush requires
+      // a new link. Spell out the math so the customer can decide.
+      const rushCallout = showDelivery
+        ? callout({
+            tone: "info",
+            title: "Choosing rush delivery?",
+            body: `Rush delivery brings your translation forward to ${strong(rushDate)} for a ${strong(rushCfg.label)} surcharge (${strong(formatMoney(rush.rushFee))}), bringing your total to ${strong(formatMoney(rush.rushedTotal))}. Let your project manager know and we'll send an updated pay link.`,
+          })
+        : "";
+
+      const body = [
+        eyebrow("Ready for payment"),
+        title(`Pay for translation ${esc(quoteNumber)}`),
+        lead(
+          `Hi ${esc(customerFirstName)}, your translation quote is ready for payment. Complete payment to start your translation project — we'll begin work within 2 business hours of confirmation.`,
+        ),
+        amountCard({
+          amount: formattedTotal,
+          currency: "Canadian Dollars (CAD)",
+          label: "Amount due",
+        }),
+        detailsTable(detailRows),
+        deliveryBlock,
+        rushCallout,
+        ctaButton({
+          label: `Pay ${formattedTotal} securely`,
+          url: paymentUrl,
+          variant: "navy",
+          align: "full",
+        }),
+        callout({
+          tone: "success",
+          title: "🔒 Secure payment",
+          body: "Payments are processed via Stripe. Card details are never stored on our servers.",
+        }),
+        hint(
+          `This quote expires on ${strong(formattedExpiryDate)}. Questions? Reply to this email or contact <a href="mailto:support@cethos.com" style="color:#0E7490;">support@cethos.com</a>.`,
+        ),
+      ].join("");
+
+      const emailHtml = emailShell(body, {
+        replyTo: REPLY.customer,
+        template: TEMPLATE,
+        preheader: `Pay ${formattedTotal} for ${quoteNumber} securely via Stripe.`,
+      });
 
       try {
         const brevoResponse = await fetch(
@@ -144,8 +243,9 @@ serve(async (req) => {
             body: JSON.stringify({
               sender: {
                 name: "Cethos Translation Services",
-                email: "noreply@cethos.com",
+                email: "donotreply@cethos.com",
               },
+              replyTo: { email: REPLY.customer },
               to: [
                 {
                   email: customerEmail,

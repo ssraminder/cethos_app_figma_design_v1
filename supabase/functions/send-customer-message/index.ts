@@ -8,6 +8,24 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc as escShell,
+  lead,
+  messageBlock,
+  REPLY,
+  statusBadge,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Admin — Customer Message Received",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -422,71 +440,28 @@ serve(async (req) => {
               </div>`;
         }
 
-        const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:40px 20px;">
-    <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-          <!-- Header -->
-          <tr>
-            <td style="background-color:#0d9488;padding:24px 32px;">
-              <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">New Customer Message</h1>
-            </td>
-          </tr>
-          <!-- Body -->
-          <tr>
-            <td style="padding:32px;">
-              <p style="margin:0 0 8px;color:#374151;font-size:14px;">
-                <strong>From:</strong> ${customer.full_name} (<a href="mailto:${customer.email}" style="color:#1e40af;">${customer.email}</a>)
-              </p>
-              <p style="margin:0 0 16px;color:#374151;font-size:14px;">
-                <strong>Reference:</strong> ${refLine}
-              </p>
-              <p style="margin:0 0 8px;color:#374151;font-size:14px;font-weight:600;">Message:</p>
-              <!-- Message block -->
-              <div style="margin:0 0 24px;padding:16px 20px;background-color:#f0fdfa;border-left:4px solid #0d9488;border-radius:0 8px 8px 0;">
-                <p style="margin:0;color:#134e4a;font-size:15px;line-height:1.6;white-space:pre-wrap;">${message_text}</p>
-              </div>
-              ${attachmentsHtml}
-              <!-- CTA Button -->
-              <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
-                <tr>
-                  <td style="background-color:#0d9488;border-radius:8px;">
-                    <a href="${adminLink}" style="display:inline-block;padding:14px 28px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;">
-                      View in Admin Panel
-                    </a>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <!-- Footer -->
-          <tr>
-            <td style="padding:20px 32px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
-              <p style="margin:0;color:#9ca3af;font-size:12px;text-align:center;">
-                CETHOS Translation Services &bull; Customer Portal Notification
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+        const htmlContent = emailShell(
+          [
+            statusBadge("info", "New customer message"),
+            title(`New message from ${escShell(customer.full_name)}`),
+            lead(`A new message just came in from the customer portal. Reply directly to the customer at ${escShell(customer.email)}, or open the admin panel to thread the conversation.`),
+            detailsTable([
+              ["From", `${escShell(customer.full_name)} (${escShell(customer.email)})`],
+              ["Reference", String(refLine)],
+            ]),
+            messageBlock(escShell(message_text).replace(/\n/g, "<br />")),
+            attachmentsHtml,
+            ctaButton({ label: "View in admin panel", url: adminLink }),
+          ].join(""),
+          { replyTo: REPLY.ops, template: TEMPLATE, preheader: `New message from ${escShell(customer.full_name)}` },
+        );
 
         const emailPayload: Record<string, unknown> = {
           sender: {
-            name: "CETHOS Customer Portal",
-            email: "noreply@cethos.com",
+            name: "Cethos Customer Portal",
+            email: "donotreply@cethos.com",
           },
+          replyTo: { email: REPLY.ops },
           to: [{ email: "support@cethos.com", name: "Cethos Support" }],
           subject: emailSubject,
           htmlContent,

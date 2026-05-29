@@ -7,6 +7,25 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  ctaButton,
+  emailShell,
+  esc,
+  eyebrow,
+  hint,
+  lead,
+  messageBlock,
+  REPLY,
+  strong,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Customer — Staff Message",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -341,67 +360,25 @@ serve(async (req: Request) => {
               </div>`;
         }
 
-        const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:40px 20px;">
-    <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-          <!-- Header -->
-          <tr>
-            <td style="background-color:#1e40af;padding:24px 32px;">
-              <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">CETHOS Translation Services</h1>
-            </td>
-          </tr>
-          <!-- Body -->
-          <tr>
-            <td style="padding:32px;">
-              <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">
-                Hi ${customer.full_name || "there"},
-              </p>
-              <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.5;">
-                You have a new message from <strong>${staffUser.full_name}</strong>${quoteNumber ? ` regarding quote <strong>${quoteNumber}</strong>` : ""}:
-              </p>
-              <!-- Message block -->
-              <div style="margin:24px 0;padding:16px 20px;background-color:#eff6ff;border-left:4px solid #3b82f6;border-radius:0 8px 8px 0;">
-                <p style="margin:0;color:#1e3a5f;font-size:15px;line-height:1.6;white-space:pre-wrap;">${message_text}</p>
-              </div>
-              ${attachmentsHtml}
-              <!-- CTA Button -->
-              <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
-                <tr>
-                  <td style="background-color:#1e40af;border-radius:8px;">
-                    <a href="${dashboardUrl}" style="display:inline-block;padding:14px 28px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;">
-                      View in Dashboard
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:16px 0 0;color:#6b7280;font-size:14px;line-height:1.5;">
-                You can reply directly to this email, and your response will be delivered to our team.
-              </p>
-            </td>
-          </tr>
-          <!-- Footer -->
-          <tr>
-            <td style="padding:20px 32px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
-              <p style="margin:0;color:#9ca3af;font-size:12px;text-align:center;">
-                CETHOS Translation Services &bull; Professional Document Translation
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+        const customerFirstName = (customer.full_name || "").trim().split(/\s+/)[0] || "there";
+        const refLine = quoteNumber ? ` regarding quote ${strong(esc(quoteNumber))}` : "";
+
+        const htmlContent = emailShell(
+          [
+            eyebrow("New message"),
+            title(`You have a new message from ${esc(staffUser.full_name)}`),
+            lead(
+              `Hi ${esc(customerFirstName)}, your project manager has sent a message${refLine}. You can reply directly to this email and your response will reach the team.`,
+            ),
+            messageBlock(esc(message_text).replace(/\n/g, "<br />")),
+            attachmentsHtml,
+            ctaButton({ label: "Open conversation", url: dashboardUrl }),
+            hint(
+              `Replies to this email go straight to your project manager.`,
+            ),
+          ].join(""),
+          { replyTo: REPLY.customer, template: TEMPLATE, preheader: `Message from ${esc(staffUser.full_name)} ${quoteNumber ? `· ${esc(quoteNumber)}` : ""}` },
+        );
 
         const emailPayload: Record<string, unknown> = {
           to: [{ email: customer.email, name: customer.full_name || customer.email }],

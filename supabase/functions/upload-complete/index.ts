@@ -28,6 +28,26 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  callout,
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc as escShell,
+  hint,
+  lead,
+  REPLY,
+  statusBadge,
+  title as titleHelper,
+  C,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Admin — New Secure Upload",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -499,33 +519,32 @@ async function notifyAdminOfSubmission(args: {
     const reviewUrl = `${args.siteUrl.replace(/\/$/, "")}/admin/public-submissions`;
     const totalCount = args.files.length;
 
-    const htmlContent = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #ffffff;">
-        <div style="padding: 36px 32px 28px; text-align: center; border-bottom: 3px solid #0891b2;">
-          <h1 style="margin:0; font-size:20px; color:#0f172a;">New secure upload</h1>
-        </div>
-        <div style="padding: 32px;">
-          <p style="color:#475569; font-size:14px; line-height:1.7;">
-            A new submission just came in via <code style="background:#f1f5f9; padding:2px 6px; border-radius:4px;">/secure-upload</code>.
-          </p>
-          <table style="width:100%; border-collapse:collapse; margin: 16px 0;">
-            <tr><td style="padding:6px 0; color:#64748b; font-size:13px; width:120px;">From</td><td style="padding:6px 0; color:#0f172a; font-size:13px;"><strong>${escapeHtml(args.fullName)}</strong></td></tr>
-            <tr><td style="padding:6px 0; color:#64748b; font-size:13px;">Email</td><td style="padding:6px 0;"><a href="mailto:${escapeHtml(args.email)}" style="color:#0891b2; text-decoration:none;">${escapeHtml(args.email)}</a></td></tr>
-            <tr><td style="padding:6px 0; color:#64748b; font-size:13px;">Phone</td><td style="padding:6px 0;"><a href="tel:${escapeHtml(args.phone)}" style="color:#0891b2; text-decoration:none;">${escapeHtml(args.phone)}</a></td></tr>
-            ${args.orderOrQuoteId ? `<tr><td style="padding:6px 0; color:#64748b; font-size:13px;">Order / Quote ID</td><td style="padding:6px 0; color:#0f172a; font-size:13px;"><code>${escapeHtml(args.orderOrQuoteId)}</code></td></tr>` : ""}
-            <tr><td style="padding:6px 0; color:#64748b; font-size:13px;">Files</td><td style="padding:6px 0; color:#0f172a; font-size:13px;">${totalCount}</td></tr>
-          </table>
-          ${args.message ? `<div style="background:#f8fafc; border:1px solid #e2e8f0; padding:12px 14px; border-radius:8px; margin: 12px 0;"><div style="font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:4px;">Message</div><div style="color:#0f172a; font-size:13px; white-space:pre-wrap;">${escapeHtml(args.message)}</div></div>` : ""}
-          <div style="margin-top:8px;">${folderHtml}</div>
-          <div style="text-align:center; margin: 28px 0 8px;">
-            <a href="${reviewUrl}" style="display:inline-block; padding:12px 32px; background-color:#0f172a; color:#ffffff; text-decoration:none; border-radius:8px; font-weight:600; font-size:14px;">Open in admin portal</a>
-          </div>
-          <p style="color:#94a3b8; font-size:11px; margin: 16px 0 0; text-align:center;">
-            Files are scanning. Downloads unlock once the scan completes.<br/>
-            Submission ID: <code style="font-size:11px;">${args.submissionId}</code>
-          </p>
-        </div>
-      </div>`;
+    const detailRows: Array<[string, string]> = [
+      ["From", String(args.fullName)],
+      ["Email", String(args.email)],
+      ["Phone", String(args.phone)],
+    ];
+    if (args.orderOrQuoteId) detailRows.push(["Order / Quote ID", String(args.orderOrQuoteId)]);
+    detailRows.push(["Files", String(totalCount)]);
+    detailRows.push(["Submission ID", String(args.submissionId)]);
+
+    const messageCallout = args.message
+      ? callout({ tone: "info", title: "Message from customer", body: escShell(args.message).replace(/\n/g, "<br />") })
+      : "";
+
+    const htmlContent = emailShell(
+      [
+        statusBadge("info", "New secure upload"),
+        titleHelper(`${escShell(args.fullName)} just uploaded ${totalCount} file${totalCount === 1 ? "" : "s"}`),
+        lead(`A new submission just came in via <code style="background:${C.slate100};padding:2px 6px;border-radius:4px;">/secure-upload</code>. Review the files in the admin portal — they're being scanned now and downloads will unlock once the scan completes.`),
+        detailsTable(detailRows),
+        messageCallout,
+        `<div style="margin:0 0 22px;">${folderHtml}</div>`,
+        ctaButton({ label: "Open in admin portal", url: reviewUrl, align: "left" }),
+        hint(`Files are scanning. Downloads unlock once the scan completes.`),
+      ].join(""),
+      { replyTo: args.email, template: TEMPLATE, preheader: `New secure upload — ${escShell(args.fullName)} (${totalCount} file${totalCount === 1 ? "" : "s"})` },
+    );
 
     const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",

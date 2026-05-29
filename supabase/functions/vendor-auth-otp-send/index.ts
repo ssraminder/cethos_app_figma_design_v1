@@ -10,6 +10,30 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+import {
+  callout,
+  codeBlock,
+  ctaButton,
+  emailShell,
+  esc,
+  eyebrow,
+  hint,
+  lead,
+  REPLY,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TPL_INVITATION: TemplateMeta = {
+  name: "Vendor — Portal Invitation",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
+const TPL_LOGIN_OTP: TemplateMeta = {
+  name: "Vendor — Login OTP",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -23,8 +47,6 @@ const INVITATION_EXPIRY_HOURS = 72;
 const OTP_EXPIRY_MINUTES = 10;
 const VENDOR_PORTAL_URL =
   Deno.env.get("VENDOR_PORTAL_URL") || "https://cethos-vendor.netlify.app";
-const LOGO_URL =
-  "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png";
 
 // ── Helpers ──
 
@@ -82,7 +104,7 @@ function buildInvitationEmail(
   setupLink: string,
   isReminder: boolean,
 ): string {
-  const greeting = vendorName || "there";
+  const firstName = (vendorName || "there").trim().split(/\s+/)[0] || "there";
   const headline = isReminder
     ? "Friendly reminder: your portal invitation is waiting"
     : "You've been invited to the CETHOS Vendor Portal";
@@ -90,86 +112,39 @@ function buildInvitationEmail(
     ? "We sent you an invitation to join the CETHOS Vendor Portal, and it's still waiting for you. Set up your account to manage your projects, submit deliverables, and track payments."
     : "You've been invited to join the CETHOS Vendor Portal where you can manage your projects, submit deliverables, and track payments.";
 
-  return `
-  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #ffffff;">
-    <div style="background-color: #ffffff; padding: 36px 32px 28px; text-align: center; border-bottom: 3px solid #0891b2;">
-      <img src="${LOGO_URL}" alt="CETHOS Translation Services" style="height: 52px; width: auto; display: block; margin: 0 auto;" />
-    </div>
-    <div style="padding: 40px 36px;">
-      <p style="color: #0f172a; font-size: 16px; font-weight: 600; margin: 0 0 8px;">
-        Hi ${greeting},
-      </p>
-      <p style="color: #475569; font-size: 14px; margin: 0 0 12px; line-height: 1.7;">
-        ${headline}
-      </p>
-      <p style="color: #475569; font-size: 14px; margin: 0 0 32px; line-height: 1.7;">
-        ${bodyText}
-      </p>
-      <div style="text-align: center; margin: 32px 0;">
-        <a href="${setupLink}"
-           style="display: inline-block; padding: 16px 52px; background-color: #0f172a; color: #ffffff;
-                  text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px;
-                  letter-spacing: 0.3px;">
-          Set Up Your Account
-        </a>
-      </div>
-      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin: 0 0 28px;">
-        <p style="color: #64748b; font-size: 12px; margin: 0; line-height: 1.6;">
-          This link expires in ${INVITATION_EXPIRY_HOURS} hours. If it has expired, contact your CETHOS project manager to receive a new one.
-        </p>
-      </div>
-      <p style="color: #cbd5e1; font-size: 12px; margin: 0; text-align: center; line-height: 1.6;">
-        Questions? <a href="mailto:support@cethos.com" style="color: #0891b2; text-decoration: none;">support@cethos.com</a>
-      </p>
-    </div>
-    <div style="padding: 20px 36px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center;">
-      <p style="color: #94a3b8; font-size: 11px; margin: 0;">
-        CETHOS Translation Services · <a href="https://cethos.com" style="color: #0891b2; text-decoration: none;">cethos.com</a>
-      </p>
-    </div>
-  </div>`;
+  return emailShell(
+    [
+      eyebrow(isReminder ? "Reminder — invitation waiting" : "You're invited"),
+      title(headline),
+      lead(`Hi ${esc(firstName)}, ${bodyText}`),
+      ctaButton({ label: "Set up your account", url: setupLink, variant: "navy", align: "full" }),
+      callout({
+        tone: "info",
+        title: "Link expiry",
+        body: `This link expires in ${INVITATION_EXPIRY_HOURS} hours. If it expires before you set up, ask your project manager for a new one.`,
+      }),
+      hint(`Questions? Reply to this email or contact <a href="mailto:vendor@cethos.com" style="color:#0E7490;">vendor@cethos.com</a>.`),
+    ].join(""),
+    { replyTo: REPLY.vendor, template: TPL_INVITATION, preheader: `${isReminder ? "Reminder" : "Invitation"}: set up your Cethos Vendor Portal account.` },
+  );
 }
 
 function buildLoginOtpEmail(vendorName: string, otpCode: string): string {
-  const greeting = vendorName || "there";
-
-  return `
-  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #ffffff;">
-    <div style="background-color: #ffffff; padding: 36px 32px 28px; text-align: center; border-bottom: 3px solid #0891b2;">
-      <img src="${LOGO_URL}" alt="CETHOS Translation Services" style="height: 52px; width: auto; display: block; margin: 0 auto;" />
-    </div>
-    <div style="padding: 40px 36px;">
-      <p style="color: #0f172a; font-size: 16px; font-weight: 600; margin: 0 0 8px;">
-        Hi ${greeting},
-      </p>
-      <p style="color: #475569; font-size: 14px; margin: 0 0 12px; line-height: 1.7;">
-        Your login verification code
-      </p>
-      <p style="color: #475569; font-size: 14px; margin: 0 0 32px; line-height: 1.7;">
-        Enter this code in the Vendor Portal to sign in. It expires in ${OTP_EXPIRY_MINUTES} minutes.
-      </p>
-      <div style="text-align: center; margin: 32px 0;">
-        <div style="display: inline-block; padding: 20px 48px; background-color: #f8fafc; border: 2px solid #e2e8f0;
-                    border-radius: 12px; font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-                    font-size: 36px; font-weight: 700; letter-spacing: 12px; color: #0f172a;">
-          ${otpCode}
-        </div>
-      </div>
-      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin: 0 0 28px;">
-        <p style="color: #64748b; font-size: 12px; margin: 0; line-height: 1.6;">
-          If you didn't request this code, you can safely ignore this email. Someone may have entered your email address by mistake.
-        </p>
-      </div>
-      <p style="color: #cbd5e1; font-size: 12px; margin: 0; text-align: center; line-height: 1.6;">
-        Questions? <a href="mailto:support@cethos.com" style="color: #0891b2; text-decoration: none;">support@cethos.com</a>
-      </p>
-    </div>
-    <div style="padding: 20px 36px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center;">
-      <p style="color: #94a3b8; font-size: 11px; margin: 0;">
-        CETHOS Translation Services · <a href="https://cethos.com" style="color: #0891b2; text-decoration: none;">cethos.com</a>
-      </p>
-    </div>
-  </div>`;
+  const firstName = (vendorName || "there").trim().split(/\s+/)[0] || "there";
+  return emailShell(
+    [
+      eyebrow("Vendor portal sign-in"),
+      title("Your sign-in code"),
+      lead(`Hi ${esc(firstName)}, enter this code in the Vendor Portal to sign in. It expires in ${OTP_EXPIRY_MINUTES} minutes.`),
+      codeBlock({ code: otpCode, expiresIn: `${OTP_EXPIRY_MINUTES} minutes` }),
+      callout({
+        tone: "info",
+        title: "Didn't request this?",
+        body: "You can safely ignore this email. Someone may have entered your address by mistake.",
+      }),
+    ].join(""),
+    { replyTo: REPLY.vendor, template: TPL_LOGIN_OTP, preheader: `Your Cethos Vendor Portal sign-in code · expires in ${OTP_EXPIRY_MINUTES} minutes.` },
+  );
 }
 
 // ── Send login OTP for existing vendor ──

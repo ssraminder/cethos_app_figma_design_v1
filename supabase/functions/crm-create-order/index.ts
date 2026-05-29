@@ -340,6 +340,30 @@ serve(async (req) => {
         }
       }
 
+      // Fire the AR order-confirmation email. Function self-gates on
+      // is_ar_customer + amount_paid=0, so it's a no-op if a payment landed.
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        if (supabaseUrl && serviceRoleKey) {
+          fetch(`${supabaseUrl}/functions/v1/notify-customer-order-confirmed`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceRoleKey}`,
+            },
+            body: JSON.stringify({ order_id: order.id }),
+          }).catch((e) =>
+            console.warn("AR order-confirmed notify failed (non-blocking):", e?.message ?? e),
+          );
+        }
+      } catch (e) {
+        console.warn(
+          "AR order-confirmed notify invocation threw:",
+          (e as Error)?.message ?? e,
+        );
+      }
+
       return jsonResp({
         success: true,
         action: "order_created",

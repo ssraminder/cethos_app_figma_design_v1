@@ -3,7 +3,26 @@
 // Shared helper used by update-workflow-step to send a Brevo email when
 // a vendor is offered or directly assigned to a workflow step. Failures
 // are swallowed so they don't block the assignment write.
+//
+// Renders through the shared `_shared/email-shell.ts`.
 // ============================================================================
+
+import {
+  brevoPayload,
+  callout,
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc,
+  eyebrow,
+  lead,
+  REPLY,
+  title,
+  type TemplateMeta,
+} from "./email-shell.ts";
+
+const TPL_OFFER:    TemplateMeta = { name: "Vendor — New Offer",      version: "2.0", updatedAt: "2026-05-28" };
+const TPL_ASSIGN:   TemplateMeta = { name: "Vendor — Direct Assign",  version: "2.0", updatedAt: "2026-05-28" };
 
 interface NotifyArgs {
   supabase: any;
@@ -21,9 +40,6 @@ interface NotifyArgs {
   instructions?: string | null;
 }
 
-// Writes a row to notification_log so vendor-offer sends are auditable the
-// same way customer/admin emails are. Failures here MUST NOT throw — this
-// helper itself runs in a fire-and-forget context inside update-workflow-step.
 async function logNotification(
   supabase: any,
   fields: {
@@ -63,24 +79,6 @@ async function logNotification(
 const VENDOR_PORTAL_URL =
   Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com";
 
-const escapeHtml = (s: string | null | undefined): string =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => {
-    switch (c) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return c;
-    }
-  });
-
 const fmtMoney = (
   amount: number | null | undefined,
   currency: string | null | undefined,
@@ -109,30 +107,18 @@ const fmtDate = (iso: string | null | undefined): string => {
   }
 };
 
-// Rate units are stored as "per_word"/"per_page"/"per_hour"/"flat". The
-// raw value bleeds straight into the email otherwise — see "per per_page"
-// in the assignment email before this fix.
 const fmtRateUnit = (unit: string | null | undefined): string => {
   switch (unit) {
-    case "per_word":
-      return "per word";
-    case "per_page":
-      return "per page";
-    case "per_hour":
-      return "per hour";
-    case "flat":
-      return "flat";
-    default:
-      return unit ? unit.replace(/_/g, " ") : "unit";
+    case "per_word": return "per word";
+    case "per_page": return "per page";
+    case "per_hour": return "per hour";
+    case "flat": return "flat";
+    default: return unit ? unit.replace(/_/g, " ") : "unit";
   }
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Resolve a source/target language pair from the step row. Both fields
-// are UUIDs into the `languages` table on order_workflow_steps; some
-// older rows carry uppercase ISO codes directly. Returns display names
-// (e.g. "English", "Hindi") so the email reads naturally.
 async function resolveLanguagePair(
   supabase: any,
   sourceVal: string | null | undefined,
@@ -141,7 +127,7 @@ async function resolveLanguagePair(
   const ids = [sourceVal, targetVal].filter(
     (v): v is string => typeof v === "string" && UUID_RE.test(v),
   );
-  let nameMap = new Map<string, string>();
+  const nameMap = new Map<string, string>();
   if (ids.length > 0) {
     try {
       const { data: rows } = await supabase
@@ -166,6 +152,13 @@ async function resolveLanguagePair(
   };
 }
 
+function firstName(full: string | null | undefined): string {
+  if (!full) return "there";
+  const trimmed = full.trim();
+  if (!trimmed) return "there";
+  return trimmed.split(/\s+/)[0];
+}
+
 export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
   try {
     const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
@@ -175,12 +168,6 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
     }
 
     const { supabase, vendor_id, step, workflow, kind } = args;
-
-    // Resolve vendor + order envelope + service + language pair + workflow
-    // step count in parallel. The extra context (languages, service, "Step
-    // X of Y") was the missing piece in the previous template — vendors
-    // had to open the portal just to find out what language pair they were
-    // being asked to translate.
     const serviceId: string | null = step?.service_id ?? null;
     const workflowId: string | null = step?.workflow_id ?? workflow?.id ?? null;
 
@@ -202,11 +189,7 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
         .eq("id", workflow?.order_id)
         .maybeSingle(),
       serviceId
-        ? supabase
-            .from("services")
-            .select("name")
-            .eq("id", serviceId)
-            .maybeSingle()
+        ? supabase.from("services").select("name").eq("id", serviceId).maybeSingle()
         : Promise.resolve({ data: null }),
       resolveLanguagePair(
         supabase,
@@ -226,8 +209,6 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
       return;
     }
 
-    // Additional cc recipients (vendors.additional_emails). Filter out
-    // empties and the primary so we don't double-deliver.
     const ccList: string[] = Array.isArray(vendor.additional_emails)
       ? vendor.additional_emails
           .map((e: any) => String(e || "").trim())
@@ -262,10 +243,6 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
     const portalLink = `${VENDOR_PORTAL_URL}/jobs`;
     const ctaLabel = isOffer ? "Review offer" : "Accept assignment";
 
-    // Detail rows surface the job specifics inline so vendors can decide
-    // whether to act without opening the portal. Order keeps the same
-    // shape as the customer-facing payment email: muted label, dark
-    // value, right-aligned.
     const detailRows: Array<[string, string]> = [
       ["Order", order?.order_number ?? "—"],
       ["Step", stepRowValue],
@@ -274,89 +251,59 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
     if (service?.name) detailRows.push(["Service", service.name]);
     if (args.vendor_rate != null && args.vendor_total != null) {
       const rateUnitLabel = fmtRateUnit(args.vendor_rate_unit);
-      const ratePrefix =
-        args.vendor_rate_unit === "flat" ? "" : `${rateUnitLabel === "flat" ? "" : "/" + rateUnitLabel}`;
-      // Flat → just the amount. Per-unit → "$0.12/per word".
       const rateText =
         args.vendor_rate_unit === "flat"
           ? `${fmtMoney(args.vendor_rate, args.vendor_currency)} (flat)`
-          : `${fmtMoney(args.vendor_rate, args.vendor_currency)} ${ratePrefix}`;
+          : `${fmtMoney(args.vendor_rate, args.vendor_currency)} / ${rateUnitLabel}`;
       detailRows.push(["Rate", rateText]);
       detailRows.push(["Total", fmtMoney(args.vendor_total, args.vendor_currency)]);
     }
     if (args.deadline) detailRows.push(["Deadline", fmtDate(args.deadline)]);
-    if (isOffer && args.expires_at)
+    if (isOffer && args.expires_at) {
       detailRows.push(["Offer expires", fmtDate(args.expires_at)]);
+    }
 
-    const detailsHtml = detailRows
-      .map(
-        ([k, v]) =>
-          `<tr>
-            <td style="padding:8px 0;color:#6b7280;font-size:13px;vertical-align:top;">${escapeHtml(k)}</td>
-            <td style="padding:8px 0;color:#111827;font-size:14px;text-align:right;font-weight:600;">${escapeHtml(v)}</td>
-          </tr>`,
-      )
-      .join("");
+    const leadCopy = isOffer
+      ? `Hi ${esc(firstName(vendor.full_name))}, you have a new offer for order <strong>${esc(order?.order_number ?? "—")}</strong>. Please review the terms below and respond before the offer expires.`
+      : `Hi ${esc(firstName(vendor.full_name))}, you have been directly assigned to a new job for order <strong>${esc(order?.order_number ?? "—")}</strong>. Please accept the assignment in the vendor portal to get started.`;
 
-    const instructionsBlock = args.instructions
-      ? `<div style="margin-top:20px;padding:14px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;color:#374151;font-size:13px;line-height:1.6;white-space:pre-wrap;">
-          <div style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Instructions</div>
-          ${escapeHtml(args.instructions)}
-        </div>`
+    const headerEyebrow = isOffer ? "New job offer" : "New job assignment";
+
+    const instructionsCallout = args.instructions
+      ? callout({
+          tone: "info",
+          title: "Instructions",
+          body: esc(args.instructions).replace(/\n/g, "<br />"),
+        })
       : "";
 
-    const lead = isOffer
-      ? `You have a new offer for order <strong>${escapeHtml(order?.order_number ?? "—")}</strong>. Please review the terms below and respond before the offer expires.`
-      : `You have been directly assigned to a new job for order <strong>${escapeHtml(order?.order_number ?? "—")}</strong>. Please accept the assignment in the vendor portal to get started.`;
+    const body = [
+      eyebrow(headerEyebrow, "teal"),
+      title(
+        isOffer
+          ? `New offer: ${esc(stepDisplayName ?? "step")}`
+          : `New assignment: ${esc(stepDisplayName ?? "step")}`,
+      ),
+      lead(leadCopy),
+      detailsTable(detailRows),
+      instructionsCallout,
+      ctaButton({ label: ctaLabel, url: portalLink, align: "full" }),
+    ].join("");
 
-    const headerSubtitle = isOffer ? "New job offer" : "New job assignment";
-    const accentColor = "#0f766e"; // Cethos teal
+    const htmlContent = emailShell(body, {
+      replyTo: REPLY.vendor,
+      template: isOffer ? TPL_OFFER : TPL_ASSIGN,
+    });
 
-    const htmlContent = `
-<!doctype html>
-<html><body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#111827;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-        <tr><td style="background:${accentColor};padding:28px 28px 22px;color:#ffffff;">
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;opacity:0.85;">Cethos Translation Services</div>
-          <h1 style="margin:6px 0 0;font-size:22px;font-weight:700;line-height:1.3;">${escapeHtml(headerSubtitle)}</h1>
-          ${
-            languagePairLabel
-              ? `<div style="margin-top:8px;font-size:14px;opacity:0.95;">${escapeHtml(languagePairLabel)}</div>`
-              : ""
-          }
-        </td></tr>
-        <tr><td style="padding:24px 28px 8px;color:#111827;">
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.55;">Hello ${escapeHtml(vendor.full_name || "there")},</p>
-          <p style="margin:0 0 18px;font-size:14px;line-height:1.55;">${lead}</p>
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 8px;" />
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${detailsHtml}</table>
-          ${instructionsBlock}
-          <div style="margin:28px 0 8px;text-align:center;">
-            <a href="${escapeHtml(portalLink)}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">${escapeHtml(ctaLabel)}</a>
-          </div>
-        </td></tr>
-        <tr><td style="padding:18px 28px 24px;border-top:1px solid #e5e7eb;background:#f9fafb;color:#6b7280;font-size:12px;line-height:1.55;text-align:center;">
-          You're receiving this because you're a registered Cethos vendor.<br />
-          Questions? Reply to this email or contact <a href="mailto:vendor@cethos.com" style="color:${accentColor};text-decoration:none;">vendor@cethos.com</a>.
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`.trim();
-
-    const payload: Record<string, unknown> = {
+    const payload = brevoPayload({
       to: [{ email: vendor.email, name: vendor.full_name || vendor.email }],
-      sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
-      replyTo: { email: "vendor@cethos.com", name: "Cethos Vendor Ops" },
       subject,
-      htmlContent,
+      html: htmlContent,
+      replyTo: REPLY.vendor,
+      cc: ccList.length > 0 ? ccList.map((e) => ({ email: e })) : undefined,
+      senderName: "Cethos Translation Services",
       tags: [`vendor-assignment-${kind}`, `order-${order?.order_number ?? "unknown"}`],
-    };
-    if (ccList.length > 0) {
-      payload.cc = ccList.map((e) => ({ email: e }));
-    }
+    });
 
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -417,7 +364,6 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
     });
   } catch (err: any) {
     console.error("notify-vendor-assignment threw:", err?.message || err);
-    // Best-effort: log the throw if we know enough.
     try {
       const { data: vendorRow } = await args.supabase
         .from("vendors").select("email, full_name").eq("id", args.vendor_id).maybeSingle();

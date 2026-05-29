@@ -27,6 +27,24 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  bulletList,
+  ctaButton,
+  emailShell,
+  esc as escShell,
+  eyebrow,
+  hint,
+  lead,
+  REPLY,
+  title,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Vendor — ISO 17100 Documents Request",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -82,32 +100,34 @@ function defaultEmailBody(args: {
     .filter(Boolean)
     .join("\n");
 
-  const intro = args.staffMessage
-    ? `<p>${escapeHtml(args.staffMessage).replace(/\n/g, "<br/>")}</p>`
-    : `<p>Hi ${escapeHtml(args.vendorFirstName) || "there"},</p>
-       <p>To keep your Cethos vendor profile aligned with ISO 17100:2015 (the translator-services standard our clients audit us against), we need a few items on file. Some are document uploads, some are short profile fields you can fill in directly.</p>`;
+  // Render the list of requested items as a HTML string for bulletList.
+  const itemBullets = args.items
+    .map((it) => {
+      const seen = new Set<string>();
+      if (seen.has(it.slug)) return null;
+      seen.add(it.slug);
+      const tag = it.kind === "profile_field"
+        ? `<span style="color:#9CA3AF;font-size:11px;">[fill in profile]</span>`
+        : `<span style="color:#9CA3AF;font-size:11px;">[upload PDF]</span>`;
+      return `${escShell(it.label)} ${tag}${it.rationale ? `<br /><span style="color:#6B7280;font-size:12.5px;">${escShell(it.rationale)}</span>` : ""}`;
+    })
+    .filter((s): s is string => Boolean(s));
 
-  const html = `<!doctype html><html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;"><tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-<tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
-  <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
-  <div style="font-size:13px;opacity:0.85;margin-top:2px;">Documents needed — ISO 17100 evidence</div>
-</td></tr>
-<tr><td style="padding:24px;color:#111827;font-size:14px;line-height:1.55;">
-  ${intro}
-  <p><strong>Please complete the following:</strong></p>
-  <ul>${itemsHtml}</ul>
-  <p style="margin:24px 0 0;text-align:center;">
-    <a href="${escapeHtml(args.uploadLinkUrl)}" style="display:inline-block;padding:11px 22px;background:#0891B2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Open my evidence checklist</a>
-  </p>
-  <p style="color:#6B7280;font-size:13px;margin-top:24px;">This link expires in ${args.expiryDays} days. If you're missing any specific document, just reply and let us know — we can usually find an alternative.</p>
-  <p style="margin-top:24px;">Best regards,<br/>Cethos Vendor Management</p>
-</td></tr>
-<tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-  You're receiving this because you're a registered Cethos vendor. Reply to this email if you have questions.
-</td></tr>
-</table></td></tr></table></body></html>`;
+  const leadCopy = args.staffMessage
+    ? escShell(args.staffMessage).replace(/\n/g, "<br />")
+    : `Hi ${escShell(args.vendorFirstName) || "there"}, to keep your Cethos vendor profile aligned with ISO 17100:2015 (the translator-services standard our clients audit us against), we need a few items on file. Some are document uploads, some are short profile fields you can fill in directly.`;
+
+  const html = emailShell(
+    [
+      eyebrow("ISO 17100 evidence"),
+      title("Documents needed for your translator profile"),
+      lead(leadCopy),
+      bulletList("Please complete the following", itemBullets),
+      ctaButton({ label: "Open my evidence checklist", url: args.uploadLinkUrl }),
+      hint(`This link expires in ${args.expiryDays} days. If you're missing any specific document, just reply and let us know — we can usually find an alternative.`),
+    ].join(""),
+    { replyTo: REPLY.vendorMgmt, template: TEMPLATE, preheader: `ISO 17100 evidence needed for your Cethos vendor profile.` },
+  );
 
   return {
     subject: "Cethos — documents needed for your translator profile (ISO 17100)",

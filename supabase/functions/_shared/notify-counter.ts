@@ -8,22 +8,32 @@
 // Triggers wired by admin-respond-counter-offer:
 //   * `accepted` — admin accepted the counter; emails the vendor.
 //   * `rejected` — admin rejected the counter; emails the vendor.
+//
+// Renders through `_shared/email-shell.ts`. Per-event TemplateMeta surfaces
+// in the footer.
 // ============================================================================
+
+import {
+  brevoPayload,
+  callout,
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc,
+  lead,
+  REPLY,
+  statusBadge,
+  title,
+  type TemplateMeta,
+} from "./email-shell.ts";
+
+const TPL = {
+  counterAccepted: { name: "Vendor — Counter Accepted", version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+  counterRejected: { name: "Vendor — Counter Declined", version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
+};
 
 const VENDOR_PORTAL_URL =
   Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com";
-
-const escapeHtml = (s: string | null | undefined): string =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => {
-    switch (c) {
-      case "&": return "&amp;";
-      case "<": return "&lt;";
-      case ">": return "&gt;";
-      case '"': return "&quot;";
-      case "'": return "&#39;";
-      default: return c;
-    }
-  });
 
 const fmtMoney = (amount: number | null | undefined, currency: string | null | undefined): string => {
   if (amount == null) return "—";
@@ -73,17 +83,16 @@ async function sendOne(args: SendArgs): Promise<void> {
     return;
   }
 
-  const payload: Record<string, unknown> = {
+  const payload = brevoPayload({
     to: [{ email: args.recipientEmail, name: args.recipientName || args.recipientEmail }],
-    sender: { name: "Cethos Translation Services", email: "donotreply@cethos.com" },
-    replyTo: { email: "vendor@cethos.com", name: "Cethos Vendor Ops" },
     subject: args.subject,
-    htmlContent: args.htmlContent,
+    html: args.htmlContent,
+    replyTo: REPLY.vendor,
+    cc: args.ccEmails && args.ccEmails.length > 0
+      ? args.ccEmails.map((e) => ({ email: e }))
+      : undefined,
     tags: [args.eventType],
-  };
-  if (args.ccEmails && args.ccEmails.length > 0) {
-    payload.cc = args.ccEmails.map((e) => ({ email: e }));
-  }
+  });
 
   let status: "sent" | "failed" = "sent";
   let errorMsg: string | null = null;
@@ -150,32 +159,11 @@ function ccFor(vendor: VendorRow): string[] {
     .filter((e) => e && e.toLowerCase() !== String(vendor.email).toLowerCase());
 }
 
-function emailShell(title: string, lead: string, detailsHtml: string, noteHtml: string, ctaLabel: string, ctaUrl: string): string {
-  return `
-<!doctype html>
-<html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-        <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
-          <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
-          <div style="font-size:13px;opacity:0.85;margin-top:2px;">${escapeHtml(title)}</div>
-        </td></tr>
-        <tr><td style="padding:24px;color:#111827;">
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">${lead}</p>
-          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;">${detailsHtml}</table>
-          ${noteHtml}
-          <p style="margin:24px 0 0;text-align:center;">
-            <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">${escapeHtml(ctaLabel)}</a>
-          </p>
-        </td></tr>
-        <tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-          Replies to this email go to vendor@cethos.com.
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`.trim();
+function firstName(full: string | null | undefined): string {
+  if (!full) return "there";
+  const trimmed = full.trim();
+  if (!trimmed) return "there";
+  return trimmed.split(/\s+/)[0];
 }
 
 interface DecisionContext {
@@ -195,7 +183,7 @@ interface DecisionContext {
   rejectionReason?: string | null;
 }
 
-function appliedRows(c: DecisionContext): string {
+function appliedRows(c: DecisionContext): Array<[string, string]> {
   const rows: Array<[string, string]> = [
     ["Order", c.order.order_number],
     ["Step", c.step.name || "—"],
@@ -203,31 +191,29 @@ function appliedRows(c: DecisionContext): string {
   if (c.applied.rate != null) rows.push(["Rate", fmtMoney(c.applied.rate, c.applied.currency)]);
   if (c.applied.total != null) rows.push(["Total", fmtMoney(c.applied.total, c.applied.currency)]);
   if (c.applied.deadline) rows.push(["Deadline", fmtDate(c.applied.deadline)]);
-  return rows
-    .map(([k, v]) =>
-      `<tr><td style="padding:4px 12px 4px 0;color:#6b7280;font-size:13px;vertical-align:top;">${escapeHtml(k)}</td><td style="padding:4px 0;color:#111827;font-size:14px;">${escapeHtml(v)}</td></tr>`,
-    )
-    .join("");
-}
-
-function reasonBlock(reason: string | null | undefined): string {
-  if (!reason) return "";
-  return `<div style="margin-top:16px;padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#991b1b;font-size:13px;line-height:1.5;white-space:pre-wrap;"><strong>Reason:</strong> ${escapeHtml(reason)}</div>`;
+  return rows;
 }
 
 // `accepted` — admin accepted the counter; vendor's assignment is now live
 // at the counter terms.
 export async function notifyVendorCounterAccepted(ctx: DecisionContext): Promise<void> {
   const subject = `Counter accepted — you're assigned: ${ctx.order.order_number}`;
-  const lead = `Good news — your counter-proposal was accepted. The step has been assigned to you at the terms below.`;
-  const html = emailShell(
-    "Counter accepted — assignment confirmed",
-    lead,
-    appliedRows(ctx),
-    "",
-    "View in vendor portal",
-    `${VENDOR_PORTAL_URL}/jobs`,
-  );
+
+  const body = [
+    statusBadge("success", "Counter accepted"),
+    title("Your counter was accepted — assignment confirmed"),
+    lead(
+      `Hi ${esc(firstName(ctx.vendor.full_name))}, good news — your counter-proposal was accepted. The step has been assigned to you at the terms below.`,
+    ),
+    detailsTable(appliedRows(ctx)),
+    callout({
+      tone: "success",
+      title: "What happens next",
+      body: "You'll find the job in your vendor portal queue. Begin work whenever you're ready; the deadline above is binding.",
+    }),
+    ctaButton({ label: "View in vendor portal", url: `${VENDOR_PORTAL_URL}/jobs` }),
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "counter_accepted",
@@ -237,7 +223,7 @@ export async function notifyVendorCounterAccepted(ctx: DecisionContext): Promise
     recipientId: ctx.vendor.id,
     ccEmails: ccFor(ctx.vendor),
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.counterAccepted }),
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     offerId: ctx.offerId,
@@ -245,18 +231,25 @@ export async function notifyVendorCounterAccepted(ctx: DecisionContext): Promise
 }
 
 // `rejected` — admin rejected the counter; the original offer is back in
-// the vendor's court (they can still Accept the original terms or Decline).
+// the vendor's court.
 export async function notifyVendorCounterRejected(ctx: DecisionContext): Promise<void> {
   const subject = `Counter declined: ${ctx.order.order_number}`;
-  const lead = `The admin has declined your counter-proposal. The original offer is still open if you'd like to accept it as offered, or you can decline.`;
-  const html = emailShell(
-    "Counter declined",
-    lead,
-    appliedRows(ctx),
-    reasonBlock(ctx.rejectionReason),
-    "Review original offer",
-    `${VENDOR_PORTAL_URL}/jobs`,
-  );
+
+  const reasonCallout = ctx.rejectionReason
+    ? callout({ tone: "error", title: "Reason", body: esc(ctx.rejectionReason) })
+    : "";
+
+  const body = [
+    statusBadge("warn", "Counter declined"),
+    title("Your counter was declined"),
+    lead(
+      `Hi ${esc(firstName(ctx.vendor.full_name))}, the admin has declined your counter-proposal. The original offer is still open if you'd like to accept it as offered, or you can decline.`,
+    ),
+    detailsTable(appliedRows(ctx)),
+    reasonCallout,
+    ctaButton({ label: "Review original offer", url: `${VENDOR_PORTAL_URL}/jobs` }),
+  ].join("");
+
   await sendOne({
     supabase: ctx.supabase,
     eventType: "counter_rejected",
@@ -266,7 +259,7 @@ export async function notifyVendorCounterRejected(ctx: DecisionContext): Promise
     recipientId: ctx.vendor.id,
     ccEmails: ccFor(ctx.vendor),
     subject,
-    htmlContent: html,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.counterRejected }),
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     offerId: ctx.offerId,

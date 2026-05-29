@@ -13,6 +13,24 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireCronSecret } from "../_shared/require-cron-secret.ts";
+import {
+  ctaButton,
+  emailShell,
+  esc as escShell,
+  hint,
+  lead,
+  REPLY,
+  statusBadge,
+  title as titleHelper,
+  C,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Admin — HITL Negotiation Reminder",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -91,37 +109,39 @@ serve(async (req) => {
       : { data: [] as any[] };
     const vMap = new Map((vendors || []).map((v: any) => [v.id, v.full_name]));
 
-    // Build email body
+    // Build the pending recommendations table in the shared visual language.
     const rows = fresh.map((d: any) => {
       const ageHours = Math.floor((now - new Date(d.created_at).getTime()) / ONE_HOUR);
       const vname = vMap.get(d.vendor_id) || "Unknown vendor";
       const action = String(d.ai_action).toUpperCase();
       const conf = Math.round(Number(d.ai_confidence) * 100);
-      return `<tr>
-        <td style="padding:6px 12px;border-bottom:1px solid #eee">${vname}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #eee">$${Number(d.counter_rate).toFixed(2)} (was $${Number(d.original_rate).toFixed(2)})</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #eee"><strong>${action}</strong> · ${conf}%</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #eee">${ageHours}h ago</td>
+      return `<tr style="border-top:1px solid ${C.border};">
+        <td style="padding:10px 14px;font-size:13.5px;color:${C.navy};font-weight:500;">${escShell(vname)}</td>
+        <td style="padding:10px 14px;font-size:13.5px;color:${C.navy};">$${Number(d.counter_rate).toFixed(2)} <span style="color:${C.muted};">(was $${Number(d.original_rate).toFixed(2)})</span></td>
+        <td style="padding:10px 14px;font-size:13.5px;color:${C.navy};"><strong>${escShell(action)}</strong> · ${conf}%</td>
+        <td style="padding:10px 14px;font-size:13.5px;color:${C.muted};text-align:right;">${ageHours}h ago</td>
       </tr>`;
     }).join("");
 
-    const html = `
-      <p>Hi,</p>
-      <p>The AI negotiator has <strong>${fresh.length}</strong> pending counter-offer recommendation${fresh.length === 1 ? "" : "s"} awaiting your review.</p>
-      <table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;width:100%">
-        <thead>
-          <tr style="background:#f7f7f7">
-            <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ddd">Vendor</th>
-            <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ddd">Counter rate</th>
-            <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ddd">AI rec</th>
-            <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ddd">Pending</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <p style="margin-top:18px"><a href="https://portal.cethos.com/admin/tasks">Open Tasks dashboard →</a></p>
-      <p style="color:#888;font-size:12px">Re-reminders fire every 8h until you decide or supersede.</p>
-    `;
+    const table = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 22px;border:1px solid ${C.border};border-radius:8px;overflow:hidden;">
+      <thead><tr style="background:${C.slate50};">
+        <th style="padding:10px 14px;text-align:left;font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Vendor</th>
+        <th style="padding:10px 14px;text-align:left;font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Counter rate</th>
+        <th style="padding:10px 14px;text-align:left;font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">AI rec</th>
+        <th style="padding:10px 14px;text-align:right;font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Pending</th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+
+    const html = emailShell(
+      [
+        statusBadge("warn", "Pending decisions"),
+        titleHelper(`${fresh.length} pending AI negotiation recommendation${fresh.length === 1 ? "" : "s"}`),
+        lead(`The AI negotiator has ${fresh.length} pending counter-offer recommendation${fresh.length === 1 ? "" : "s"} awaiting your review.`),
+        table,
+        ctaButton({ label: "Open Tasks dashboard", url: "https://portal.cethos.com/admin/tasks" }),
+        hint(`Re-reminders fire every 8h until you decide or supersede.`),
+      ].join(""),
+      { replyTo: REPLY.ops, template: TEMPLATE, preheader: `${fresh.length} pending AI negotiation rec${fresh.length === 1 ? "" : "s"} awaiting review.` },
+    );
 
     // Send via Brevo (raw email)
     const sent = await sendBrevoRaw(email, `${fresh.length} pending AI negotiation rec${fresh.length === 1 ? "" : "s"}`, html);

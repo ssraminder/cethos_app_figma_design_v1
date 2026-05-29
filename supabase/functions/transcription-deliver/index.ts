@@ -12,6 +12,27 @@ import {
   sendBrevoEmail,
   auditLog,
 } from "../_shared/transcription.ts";
+import {
+  callout,
+  ctaButton,
+  detailsTable,
+  emailShell,
+  esc,
+  hint,
+  lead,
+  REPLY,
+  statusBadge,
+  strong,
+  title,
+  C,
+  type TemplateMeta,
+} from "../_shared/email-shell.ts";
+
+const TEMPLATE: TemplateMeta = {
+  name: "Customer — Transcription Delivered",
+  version: "2.0",
+  updatedAt: "2026-05-28",
+};
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return preflight();
@@ -235,67 +256,60 @@ serve(async (req: Request) => {
     const downloadRows = downloadLinks
       .map(
         (l) =>
-          `<tr><td style="padding:6px 0;">
-            <a href="${l.url}" style="display:inline-block;padding:10px 24px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Download ${l.format.toUpperCase()}</a>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px;">Download link valid for ${job.pricing_tier === "free" ? "7" : "30"} days</div>
+          `<tr><td style="padding:8px 0;">
+            <a href="${esc(l.url)}" target="_blank" style="display:inline-block;padding:10px 24px;background:${C.teal};color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">Download ${esc(l.format.toUpperCase())}</a>
+            <div style="font-size:11.5px;color:${C.muted};margin-top:4px;">Valid for ${job.pricing_tier === "free" ? "7" : "30"} days</div>
           </td></tr>`,
       )
       .join("");
-
-    const translationNote = job.translated_text
-      ? `<p style="margin:16px 0 0;font-size:14px;line-height:1.5;color:#111827;">Your AI translation to <strong>${targetLangName}</strong> is included in the download files.</p>
-         <p style="margin:4px 0 0;font-size:12px;color:#6b7280;font-style:italic;">AI-translated. For certified or human-reviewed translation, visit <a href="${mainWebUrl}/services/translation" style="color:#0f766e;">cethos.com/services/translation</a>.</p>`
-      : "";
 
     const qualityLabel =
       job.ai_quality_score === "A" ? "High" :
       job.ai_quality_score === "B" ? "Good" :
       job.ai_quality_score === "C" ? "Acceptable" : "Review Recommended";
 
-    const humanReviewCta = job.ai_quality_score && ["C", "D"].includes(job.ai_quality_score)
-      ? `<div style="margin:16px 0 0;padding:12px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;">
-           <p style="color:#92400e;font-size:13px;margin:0;line-height:1.5;">
-             <strong>Quality: ${qualityLabel}</strong> — We recommend a human review for best results.
-             <a href="${mainWebUrl}/services/transcription?job=${jobId}&action=human-review" style="color:#92400e;font-weight:bold;">Request Human Review →</a>
-           </p>
-         </div>`
+    const lowQuality = job.ai_quality_score && ["C", "D"].includes(job.ai_quality_score);
+    const humanReviewCallout = lowQuality
+      ? callout({
+          tone: "warn",
+          title: `Quality: ${qualityLabel}`,
+          body: `We recommend a human review for best results. <a href="${esc(mainWebUrl)}/services/transcription?job=${esc(jobId)}&action=human-review" style="color:${C.warnText};font-weight:600;">Request Human Review →</a>`,
+        })
       : "";
 
-    const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const translationCallout = job.translated_text
+      ? callout({
+          tone: "info",
+          title: `AI translation to ${esc(String(targetLangName))} included`,
+          body: `Your AI translation is included in the download files. For certified or human-reviewed translation, visit <a href="${esc(mainWebUrl)}/services/translation" style="color:${C.tealDeep};">cethos.com/services/translation</a>.`,
+        })
+      : "";
 
-    const emailHtml = `<!doctype html>
-<html><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-        <tr><td style="padding:20px 24px;background:#0f766e;color:#ffffff;">
-          <div style="font-size:18px;font-weight:600;">Cethos Translation Services</div>
-          <div style="font-size:13px;opacity:0.85;margin-top:2px;">AI Transcription</div>
-        </td></tr>
-        <tr><td style="padding:24px;color:#111827;">
-          <p style="margin:0 0 16px;font-size:15px;line-height:1.5;">Your transcription is ready! The file <strong>${escapeHtml(job.file_name)}</strong> has been transcribed successfully.</p>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;">
-            <tr><td style="padding:12px 16px;font-size:13px;line-height:1.8;color:#374151;">
-              <strong>Duration:</strong> ${metadata.duration}<br/>
-              <strong>Words:</strong> ${metadata.wordCount ?? "—"}<br/>
-              <strong>Language:</strong> ${metadata.language}<br/>
-              <strong>Quality:</strong> ${qualityLabel} (${job.ai_quality_score ?? "—"})
-            </td></tr>
-          </table>
-          ${humanReviewCta}
-          ${translationNote}
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">
-            ${downloadRows || '<tr><td style="padding:6px 0;font-size:13px;color:#6b7280;">No download files were generated. Please contact support.</td></tr>'}
-          </table>
-          <p style="margin:24px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">Need anything else? Just reply to this email and we'll be in touch.</p>
-        </td></tr>
-        <tr><td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
-          Thank you for choosing Cethos. Replies go to support@cethos.com.
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`.trim();
+    const detailRows: Array<[string, string]> = [
+      ["File", String(job.file_name)],
+      ["Duration", String(metadata.duration)],
+      ["Words", String(metadata.wordCount ?? "—")],
+      ["Language", String(metadata.language)],
+      ["Quality", `${qualityLabel} (${job.ai_quality_score ?? "—"})`],
+    ];
+
+    const emailHtml = emailShell(
+      [
+        statusBadge("success", "Transcription ready"),
+        title(`Your transcription is ready`),
+        lead(
+          `Your file ${strong(esc(String(job.file_name)))} has been transcribed successfully. Download the formats you need below — ${strong(`links expire in ${job.pricing_tier === "free" ? "7" : "30"} days`)}.`,
+        ),
+        detailsTable(detailRows),
+        humanReviewCallout,
+        translationCallout,
+        downloadRows
+          ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;">${downloadRows}</table>`
+          : callout({ tone: "warn", title: "No downloads available", body: "No download files were generated. Please reply to this email and we'll sort it out." }),
+        hint(`Need anything else? Just reply to this email and we'll be in touch.`),
+      ].join(""),
+      { replyTo: REPLY.customer, template: TEMPLATE, preheader: `Your transcription of ${esc(String(job.file_name))} is ready.` },
+    );
 
     // Skip email for internal/admin-test jobs — staff downloads from job detail page
     const isInternal = job.customer_email === "internal@cethos.com" ||
