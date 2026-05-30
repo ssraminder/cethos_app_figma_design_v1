@@ -208,8 +208,14 @@ export default function AdminCreateOrder() {
   // ── Form state ──
   const [customer, setCustomer] = useState<ARCustomer | null>(null);
   const [serviceId, setServiceId] = useState<string>("");
+  // Quote mode uses the single header pair below. Direct Order mode uses
+  // languagePairs (one quote+order per pair, all under one project) — see
+  // the multi-pair list in the Service section.
   const [sourceLanguageId, setSourceLanguageId] = useState<string>("");
   const [targetLanguageId, setTargetLanguageId] = useState<string>("");
+  const [languagePairs, setLanguagePairs] = useState<
+    Array<{ sourceLanguageId: string; targetLanguageId: string }>
+  >([{ sourceLanguageId: "", targetLanguageId: "" }]);
   const [lineItems, setLineItems] = useState<LineItem[]>([newLine()]);
 
   const [rushFee, setRushFee] = useState<string>("");
@@ -905,8 +911,20 @@ export default function AdminCreateOrder() {
   const validate = (): string | null => {
     if (!customer) return "Pick a customer";
     if (!serviceId) return "Pick a service";
-    if (!sourceLanguageId) return "Pick a source language";
-    if (!targetLanguageId) return "Pick a target language";
+    if (mode === "direct_order") {
+      // Direct orders can span multiple language pairs; each becomes its own
+      // order under one project. Every pair needs both source and target.
+      const complete = languagePairs.filter(
+        (p) => p.sourceLanguageId && p.targetLanguageId,
+      );
+      if (complete.length === 0)
+        return "Pick a source and target language for at least one pair";
+      if (languagePairs.some((p) => !p.sourceLanguageId || !p.targetLanguageId))
+        return "Every language pair needs both a source and a target";
+    } else {
+      if (!sourceLanguageId) return "Pick a source language";
+      if (!targetLanguageId) return "Pick a target language";
+    }
     if (!branchId) return "Pick an invoicing branch";
     if (mode === "direct_order" && !customer.is_ar_customer) {
       return "Direct orders require an AR-approved customer";
@@ -1165,14 +1183,21 @@ export default function AdminCreateOrder() {
         return;
       }
 
-      // Direct order mode
+      // Direct order mode — fan out one order per language pair under one
+      // project. Send the complete pairs as languagePairs; also send the
+      // first pair as the scalar source/target for backward-compat with the
+      // single-pair fallback in admin-create-order.
+      const completePairs = languagePairs.filter(
+        (p) => p.sourceLanguageId && p.targetLanguageId,
+      );
       const body = {
         staffId: session.staffId,
         customer: { existingCustomerId: customer!.id },
         order: {
           serviceId,
-          sourceLanguageId,
-          targetLanguageId,
+          languagePairs: completePairs,
+          sourceLanguageId: completePairs[0]?.sourceLanguageId,
+          targetLanguageId: completePairs[0]?.targetLanguageId,
           specialInstructions: specialInstructions.trim() || null,
           promisedDeliveryDate: promisedDeliveryDate || null,
           promisedDeliveryDateRush: promisedDeliveryDateRush || null,
@@ -1210,8 +1235,14 @@ export default function AdminCreateOrder() {
         throw new Error(data?.error || "Direct order creation failed");
       }
       if (data.quoteId) await uploadAttachedFiles(data.quoteId);
-      toast.success(`Order ${data.orderNumber} created`);
-      navigate(`/admin/orders/${data.orderId}`);
+      const orderCount = Array.isArray(data.orders) ? data.orders.length : 1;
+      if (orderCount > 1 && data.projectId) {
+        toast.success(`${orderCount} orders created under one project`);
+        navigate(`/admin/projects/${data.projectId}`);
+      } else {
+        toast.success(`Order ${data.orderNumber} created`);
+        navigate(`/admin/orders/${data.orderId}`);
+      }
     } catch (e: any) {
       toast.error(e?.message || "Submission failed");
     } finally {
@@ -1673,28 +1704,112 @@ export default function AdminCreateOrder() {
                   </p>
                 )}
               </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">
-                  Source language
-                </label>
-                <SearchableSelect
-                  options={sourceLangOptions as any}
-                  value={sourceLanguageId}
-                  onChange={setSourceLanguageId}
-                  placeholder="Source…"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">
-                  Target language
-                </label>
-                <SearchableSelect
-                  options={targetLangOptions as any}
-                  value={targetLanguageId}
-                  onChange={setTargetLanguageId}
-                  placeholder="Target…"
-                />
-              </div>
+              {mode !== "direct_order" ? (
+                <>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Source language
+                    </label>
+                    <SearchableSelect
+                      options={sourceLangOptions as any}
+                      value={sourceLanguageId}
+                      onChange={setSourceLanguageId}
+                      placeholder="Source…"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Target language
+                    </label>
+                    <SearchableSelect
+                      options={targetLangOptions as any}
+                      value={targetLanguageId}
+                      onChange={setTargetLanguageId}
+                      placeholder="Target…"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="md:col-span-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs text-gray-600">
+                      Language pairs
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLanguagePairs((prev) => [
+                          ...prev,
+                          { sourceLanguageId: "", targetLanguageId: "" },
+                        ])
+                      }
+                      className="text-sm flex items-center gap-1 text-teal-600 hover:text-teal-700"
+                    >
+                      <Plus className="w-4 h-4" /> Add language pair
+                    </button>
+                  </div>
+                  {languagePairs.map((pair, idx) => (
+                    <div key={idx} className="flex items-end gap-2">
+                      <div className="flex-1">
+                        {idx === 0 && (
+                          <label className="block text-[11px] text-gray-500 mb-1">
+                            Source
+                          </label>
+                        )}
+                        <SearchableSelect
+                          options={sourceLangOptions as any}
+                          value={pair.sourceLanguageId}
+                          onChange={(v) =>
+                            setLanguagePairs((prev) =>
+                              prev.map((p, i) =>
+                                i === idx ? { ...p, sourceLanguageId: v } : p,
+                              ),
+                            )
+                          }
+                          placeholder="Source…"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        {idx === 0 && (
+                          <label className="block text-[11px] text-gray-500 mb-1">
+                            Target
+                          </label>
+                        )}
+                        <SearchableSelect
+                          options={targetLangOptions as any}
+                          value={pair.targetLanguageId}
+                          onChange={(v) =>
+                            setLanguagePairs((prev) =>
+                              prev.map((p, i) =>
+                                i === idx ? { ...p, targetLanguageId: v } : p,
+                              ),
+                            )
+                          }
+                          placeholder="Target…"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={languagePairs.length === 1}
+                        onClick={() =>
+                          setLanguagePairs((prev) =>
+                            prev.filter((_, i) => i !== idx),
+                          )
+                        }
+                        className="mb-1 p-2 text-gray-400 hover:text-red-600 disabled:opacity-30 disabled:hover:text-gray-400"
+                        title="Remove this language pair"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-gray-500">
+                    Each pair becomes its own order under one shared project
+                    number. Add line items / billing per order on the Finance
+                    tab after creation.
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
                   Standard delivery{" "}

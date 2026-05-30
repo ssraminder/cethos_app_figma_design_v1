@@ -331,7 +331,7 @@ serve(async (req) => {
       // Notify staff of review required
       try {
         const notifResponse = await fetch(
-          `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-staff-notification`,
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-staff-new-lead`,
           {
             method: "POST",
             headers: {
@@ -417,7 +417,7 @@ serve(async (req) => {
       // Notify staff of review required (error fallback)
       try {
         const notifResponse = await fetch(
-          `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-staff-notification`,
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-staff-new-lead`,
           {
             method: "POST",
             headers: {
