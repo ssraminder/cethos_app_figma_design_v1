@@ -1900,7 +1900,7 @@ export default function Step4ReviewCheckout() {
 
       // Notify staff of review request — fire and forget
       fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-notification`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-staff-new-lead`,
         {
           method: "POST",
           headers: {

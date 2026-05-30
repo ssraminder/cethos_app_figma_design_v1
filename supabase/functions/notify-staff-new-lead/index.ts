@@ -124,7 +124,7 @@ serve(async (req: Request) => {
       `id, quote_number, created_at, customer_id,
        source_language_id, target_language_id, target_language_other,
        service_id, country_of_issue,
-       customers (id, full_name, email, company_name, is_ar_customer)`,
+       customers!quotes_customer_id_fkey (id, full_name, email, company_name, is_ar_customer)`,
     )
     .eq("id", quoteId)
     .maybeSingle();

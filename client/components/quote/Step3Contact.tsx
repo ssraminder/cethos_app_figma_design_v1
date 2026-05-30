@@ -108,7 +108,7 @@ export default function Step3Contact() {
 
         // Notify staff of new lead — fire and forget, do NOT await
         fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-staff-notification`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-staff-new-lead`,
           {
             method: 'POST',
             headers: {
