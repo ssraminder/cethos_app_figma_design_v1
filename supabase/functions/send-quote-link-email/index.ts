@@ -99,7 +99,7 @@ serve(async (req) => {
         target_language_other,
         service_id,
         customer_id,
-        customers (
+        customers!quotes_customer_id_fkey (
           id,
           full_name,
           email

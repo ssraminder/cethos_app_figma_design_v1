@@ -3194,13 +3194,10 @@ export default function AdminQuoteDetail() {
 
     const methodName = paymentMethods.find((pm) => pm.id === selectedPaymentMethodId)?.name || "Unknown";
 
-    const confirmMessage = isAccountPayment
-      ? `Are you sure? Quote ${quote?.quote_number} will be converted to an AR order (Net 30) with $${totalAmount.toFixed(2)} balance due. This cannot be undone.`
-      : `Are you sure? Quote ${quote?.quote_number} will be marked as PAID for $${parsedAmountPaid.toFixed(2)} via ${methodName}. This cannot be undone.`;
-
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
+    // The modal itself shows the "Important: This will convert the quote to a paid order"
+    // warning, so the user has already explicitly confirmed by clicking Confirm Payment.
+    // A second window.confirm() blocks the renderer and is impossible to dismiss in
+    // automated tests; the in-modal warning is the canonical confirmation step.
 
     setIsProcessingPayment(true);
 

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "https://esm.sh/stripe@14.14.0?target=deno";
 
 const corsHeaders = {
@@ -46,6 +47,44 @@ serve(async (req) => {
     if (!quote_id || !amount || !quote_number) {
       return new Response(
         JSON.stringify({ error: "Missing required fields: quote_id, amount, quote_number" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    // ── Guard: child quote — never independently payable ────────────────────
+    // Multi-pair fan-out: only the PARENT quote carries the full payable total.
+    // Children have parent_quote_id IS NOT NULL and must reject here, matching
+    // the same guard in create-checkout-session and customer-approve-quote-ar.
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+    const { data: quoteRow, error: quoteErr } = await sb
+      .from("quotes")
+      .select("id, parent_quote_id")
+      .eq("id", quote_id)
+      .single();
+
+    if (quoteErr || !quoteRow) {
+      return new Response(
+        JSON.stringify({ error: "Quote not found" }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    if (quoteRow.parent_quote_id) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "This is a sub-quote of a multi-language order; pay the parent quote instead.",
+        }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
