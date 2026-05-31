@@ -171,6 +171,18 @@ interface OrderDetail {
   po_number: string | null;
   client_project_number: string | null;
   internal_project_id: string | null;
+  parent_order_id: string | null;
+}
+
+// Multi-language fan-out: a parent order's single-pair work-unit children.
+interface ChildWorkUnit {
+  id: string;
+  order_number: string;
+  status: string;
+  work_status: string | null;
+  total_amount: number;
+  source_language_name: string | null;
+  target_language_name: string | null;
 }
 
 interface InvoiceRecord {
@@ -319,6 +331,10 @@ export default function AdminOrderDetail() {
   const { session: currentStaff } = useAdminAuthContext();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
+  // Multi-language fan-out: child work-unit orders (one per language pair).
+  // Populated only for a multi-pair PARENT order; the parent itself carries
+  // no vendor workflow — work happens on these single-pair children.
+  const [childWorkUnits, setChildWorkUnits] = useState<ChildWorkUnit[]>([]);
   // Project banner: project number + count of sibling tasks (other orders in
   // the same project). Fetched separately so we don't disturb the order
   // SELECT, which already uses *.
@@ -1557,6 +1573,31 @@ export default function AdminOrderDetail() {
       if (!orderRows.length) throw new Error("Order not found");
       const orderData = orderRows[0] as OrderDetail;
       setOrder(orderData);
+
+      // Multi-language fan-out: load this order's single-pair work-unit
+      // children (if any). Their language pair is resolved through each
+      // child's own quote header.
+      sbGet(
+        `orders?select=${encodeURIComponent(
+          "id,order_number,status,work_status,total_amount,quote:quotes(source_language:languages!source_language_id(name),target_language:languages!target_language_id(name))",
+        )}&parent_order_id=eq.${orderData.id}&order=order_number`,
+      )
+        .then(async (res) => {
+          if (!res.ok) return setChildWorkUnits([]);
+          const rows: any[] = await res.json();
+          setChildWorkUnits(
+            rows.map((r: any) => ({
+              id: r.id,
+              order_number: r.order_number,
+              status: r.status,
+              work_status: r.work_status,
+              total_amount: r.total_amount,
+              source_language_name: r.quote?.source_language?.name ?? null,
+              target_language_name: r.quote?.target_language?.name ?? null,
+            })),
+          );
+        })
+        .catch(() => setChildWorkUnits([]));
 
       const adjRows: any[] = adjRes.ok ? await adjRes.json() : [];
       setAdjustments(adjRows.map((a: any) => ({ ...a, created_by_name: a.created_by?.full_name || "System" })));
@@ -3710,7 +3751,43 @@ export default function AdminOrderDetail() {
 
           {/* Tab Content: Workflow (also renders when other tabs are active but hidden, to keep data loaded) */}
           <div className={activeMainTab !== "workflow" ? "hidden" : ""}>
-            {id && (
+            {childWorkUnits.length > 0 ? (
+              // Multi-language PARENT order: no workflow of its own. Each
+              // single-pair child carries its own vendor workflow — link out.
+              <div className="bg-white rounded-lg border p-5">
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">
+                  Work units ({childWorkUnits.length})
+                </h3>
+                <p className="text-xs text-gray-500 mb-4">
+                  This is a multi-language order. Vendor workflow is assigned per
+                  language pair on each work unit below.
+                </p>
+                <div className="divide-y divide-gray-100 border rounded-lg">
+                  {childWorkUnits.map((cu) => (
+                    <Link
+                      key={cu.id}
+                      to={`/admin/orders/${cu.id}`}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div>
+                        <p className="text-sm font-mono font-semibold text-gray-900">
+                          {cu.order_number}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {cu.source_language_name || "—"} →{" "}
+                          {cu.target_language_name || "—"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-700 capitalize">
+                          {(cu.work_status || cu.status || "").replace(/_/g, " ")}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : id ? (
               <OrderWorkflowSection
                 orderId={id}
                 onWorkflowLoaded={setWorkflowData}
@@ -3734,7 +3811,7 @@ export default function AdminOrderDetail() {
                   setSendModalOpen(true);
                 }}
               />
-            )}
+            ) : null}
           </div>
         </div>
 

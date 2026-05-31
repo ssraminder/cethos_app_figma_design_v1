@@ -66,13 +66,22 @@ serve(async (req) => {
       .select(
         `id, quote_number, status, customer_id,
          converted_to_order_id, total, currency,
-         stripe_checkout_session_id`,
+         parent_quote_id, stripe_checkout_session_id`,
       )
       .eq("id", quoteId)
       .single();
 
     if (qErr || !quote) {
       return jsonResp({ error: "Quote not found" }, 404);
+    }
+
+    // ── Guard: child quote — never independently payable ────────────────────
+    // Multi-pair fan-out: only the PARENT quote carries the full payable total.
+    if (quote.parent_quote_id) {
+      return jsonResp(
+        { error: "This is a sub-quote of a multi-language order; pay the parent quote instead." },
+        400,
+      );
     }
 
     // ── Guard: already paid ─────────────────────────────────────────────────

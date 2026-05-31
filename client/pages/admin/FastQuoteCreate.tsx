@@ -104,6 +104,10 @@ interface DocumentRow {
   files: FileAttachment[];
   billablePagesOverride: number | null;
   perPageRateOverride: number | null;
+  // Multi-language: per-row pair override. Empty = inherit the quote-level
+  // (primary) pair, so single-pair entry stays one-click.
+  sourceLanguageId?: string;
+  targetLanguageId?: string;
 }
 
 interface ValidationErrors {
@@ -558,7 +562,14 @@ export default function FastQuoteCreate() {
       }
 
       const billablePages = doc.billablePagesOverride ?? autoBillablePages;
-      const docPerPageRate = doc.perPageRateOverride ?? perPageRate;
+
+      // Effective language pair: per-row override, else the quote-level primary.
+      const effSrc = doc.sourceLanguageId || sourceLanguageId;
+      const effTgt = doc.targetLanguageId || targetLanguageId;
+      const rowTargetLang = languages.find((l) => l.id === effTgt);
+      const rowLangMult = rowTargetLang?.multiplier ?? langMultiplier;
+      const rowPerPageRate = Math.ceil((baseRate * rowLangMult) / 2.5) * 2.5;
+      const docPerPageRate = doc.perPageRateOverride ?? rowPerPageRate;
 
       const cert = certificationTypes.find(
         (c) => c.id === doc.certificationTypeId,
@@ -572,15 +583,53 @@ export default function FastQuoteCreate() {
         label: doc.label,
         autoBillablePages,
         billablePages,
-        autoPerPageRate: perPageRate,
+        autoPerPageRate: rowPerPageRate,
         perPageRate: docPerPageRate,
+        sourceLanguageId: effSrc,
+        targetLanguageId: effTgt,
         translationCost,
         certFee,
         lineTotal,
         complexityMult,
       };
     });
-  }, [documents, perPageRate, wordsPerPage, certificationTypes]);
+  }, [
+    documents,
+    perPageRate,
+    wordsPerPage,
+    certificationTypes,
+    languages,
+    sourceLanguageId,
+    targetLanguageId,
+    baseRate,
+    langMultiplier,
+  ]);
+
+  // Distinct language pairs present across the line items (effective pairs).
+  // The PRIMARY pair is the quote-level source/target — it carries the
+  // quote-level fees (rush/delivery/discount/surcharge) so per-pair child
+  // totals sum back to the parent grand total.
+  const languagePairs = useMemo(() => {
+    const seen = new Map<string, { src: string; tgt: string }>();
+    for (const dp of documentPricing) {
+      if (!dp.sourceLanguageId || !dp.targetLanguageId) continue;
+      const key = `${dp.sourceLanguageId}>${dp.targetLanguageId}`;
+      if (!seen.has(key)) {
+        seen.set(key, {
+          src: dp.sourceLanguageId,
+          tgt: dp.targetLanguageId,
+        });
+      }
+    }
+    const pairs = Array.from(seen.values());
+    // Ensure the primary (quote-level) pair sorts first.
+    pairs.sort((a, b) => {
+      const aPrimary = a.src === sourceLanguageId && a.tgt === targetLanguageId;
+      const bPrimary = b.src === sourceLanguageId && b.tgt === targetLanguageId;
+      return aPrimary === bPrimary ? 0 : aPrimary ? -1 : 1;
+    });
+    return pairs;
+  }, [documentPricing, sourceLanguageId, targetLanguageId]);
 
   const totals = useMemo(() => {
     const translationSubtotal = documentPricing.reduce(
@@ -674,6 +723,49 @@ export default function FastQuoteCreate() {
     surchargeType,
     surchargeValue,
   ]);
+
+  // Per-pair pricing for multi-language fan-out. The quote-level fees
+  // (rush/delivery/discount/surcharge) all land on the PRIMARY pair so that
+  // Σ(child totals) === parent grand total. Each pair's tax is computed on its
+  // own pre-tax slice. Only meaningful when languagePairs.length > 1.
+  const pairPricing = useMemo(() => {
+    const taxRate = totals.taxRate;
+    return languagePairs.map((pair, idx) => {
+      const isPrimary = idx === 0;
+      const rows = documentPricing.filter(
+        (dp) =>
+          dp.sourceLanguageId === pair.src && dp.targetLanguageId === pair.tgt,
+      );
+      const subtotal = rows.reduce((s, r) => s + r.translationCost, 0);
+      const certificationTotal = rows.reduce((s, r) => s + r.certFee, 0);
+      const rushFee = isPrimary ? totals.rushFee : 0;
+      const deliveryFee = isPrimary ? totals.deliveryFee : 0;
+      const discountAmount = isPrimary ? totals.discountAmount : 0;
+      const surchargeAmount = isPrimary ? totals.surchargeAmount : 0;
+      const preTax =
+        subtotal +
+        certificationTotal +
+        rushFee +
+        deliveryFee -
+        discountAmount +
+        surchargeAmount;
+      const taxAmount = preTax * taxRate;
+      const total = preTax + taxAmount;
+      return {
+        sourceLanguageId: pair.src,
+        targetLanguageId: pair.tgt,
+        subtotal,
+        certificationTotal,
+        rushFee,
+        deliveryFee,
+        discountAmount,
+        surchargeAmount,
+        taxRate,
+        taxAmount,
+        total,
+      };
+    });
+  }, [languagePairs, documentPricing, totals]);
 
   // ═══════════════════════════════════════════════════════════════
   // VALIDATION
@@ -776,6 +868,10 @@ export default function FastQuoteCreate() {
           manualQuoteNotes: internalNotes.trim() || null,
           isManualQuote: true,
           applyVolumeDiscount,
+          // Multi-language fan-out: distinct pairs + per-pair pricing.
+          // When length <= 1 the edge fn behaves exactly as a single-pair quote.
+          languagePairs,
+          pairPricing,
         },
         documents: documents.map((doc, i) => {
           const pricing = documentPricing[i];
@@ -795,6 +891,8 @@ export default function FastQuoteCreate() {
             perPageRate: pricing.perPageRate,
             translationCost: pricing.translationCost,
             lineTotal: pricing.lineTotal,
+            sourceLanguageId: pricing.sourceLanguageId,
+            targetLanguageId: pricing.targetLanguageId,
           };
         }),
         pricing: {
@@ -959,6 +1057,14 @@ export default function FastQuoteCreate() {
       value: l.id,
       label: `${l.name} (${l.native_name})`,
     }));
+
+  // Unfiltered pair options for per-row language selectors (multi-language).
+  const allSourceOptions = languages
+    .filter((l) => l.is_source_available)
+    .map((l) => ({ value: l.id, label: `${l.name} (${l.native_name})` }));
+  const allTargetOptions = languages
+    .filter((l) => l.is_target_available)
+    .map((l) => ({ value: l.id, label: `${l.name} (${l.native_name})` }));
 
   const countryOptions = countries.map((c) => ({
     value: c.id,
@@ -1313,6 +1419,45 @@ export default function FastQuoteCreate() {
                     {/* Document Body */}
                     {doc.expanded && (
                       <div className="px-4 py-4 space-y-4">
+                        {/* Per-document language pair — defaults to the quote
+                            pair; override here to fan out into multiple
+                            single-pair orders for the vendor workflow. */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Source Language
+                            </label>
+                            <SearchableSelect
+                              value={doc.sourceLanguageId || sourceLanguageId}
+                              onChange={(v) =>
+                                updateDocument(doc.id, {
+                                  sourceLanguageId: v || undefined,
+                                })
+                              }
+                              options={allSourceOptions}
+                              placeholder="Inherit quote source"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Target Language
+                            </label>
+                            <SearchableSelect
+                              value={doc.targetLanguageId || targetLanguageId}
+                              onChange={(v) =>
+                                updateDocument(doc.id, {
+                                  targetLanguageId: v || undefined,
+                                })
+                              }
+                              options={allTargetOptions.filter(
+                                (o) =>
+                                  o.value !==
+                                  (doc.sourceLanguageId || sourceLanguageId),
+                              )}
+                              placeholder="Inherit quote target"
+                            />
+                          </div>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {/* Left — Document Details */}
                           <div className="space-y-3">

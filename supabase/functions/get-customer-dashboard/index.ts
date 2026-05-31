@@ -61,18 +61,24 @@ serve(async (req: Request) => {
     const [ordersRes, quotesRes, orderHistRes, quoteHistRes] = await Promise.all([
       sb.from("orders")
         .select("id, order_number, status, total_amount, amount_paid, created_at, updated_at")
-        .eq("customer_id", customerId),
+        .eq("customer_id", customerId)
+        // Exclude multi-language work-unit child orders ($0, vendor-only)
+        .is("parent_order_id", null),
       sb.from("quotes")
         .select("id, quote_number, status, created_at, updated_at")
-        .eq("customer_id", customerId),
+        .eq("customer_id", customerId)
+        // Exclude multi-language child quotes (not customer-facing)
+        .is("parent_quote_id", null),
       sb.from("order_status_history")
-        .select("order_id, new_status, created_at, orders!inner(order_number, customer_id)")
+        .select("order_id, new_status, created_at, orders!inner(order_number, customer_id, parent_order_id)")
         .eq("orders.customer_id", customerId)
+        .is("orders.parent_order_id", null)
         .order("created_at", { ascending: false })
         .limit(10),
       sb.from("quote_status_history")
-        .select("quote_id, new_status, created_at, quotes!inner(quote_number, customer_id)")
+        .select("quote_id, new_status, created_at, quotes!inner(quote_number, customer_id, parent_quote_id)")
         .eq("quotes.customer_id", customerId)
+        .is("quotes.parent_quote_id", null)
         .order("created_at", { ascending: false })
         .limit(10),
     ]);
