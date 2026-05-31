@@ -120,7 +120,7 @@ serve(async (req) => {
         `id, quote_number, status, customer_id, total, subtotal,
          certification_total, rush_fee, delivery_fee, tax_rate, tax_amount,
          currency, turnaround_type, estimated_delivery_date,
-         converted_to_order_id, advance_percentage,
+         converted_to_order_id, advance_percentage, parent_quote_id,
          customer:customers!quotes_customer_id_fkey(id, full_name, company_name, email, is_ar_customer, payment_terms)`,
       )
       .eq("id", quoteId)
@@ -151,6 +151,16 @@ serve(async (req) => {
         400,
       );
     }
+    if (quote.parent_quote_id) {
+      return jsonResp(
+        {
+          success: false,
+          error:
+            "This is a sub-quote of a multi-language order; approve the parent quote instead.",
+        },
+        400,
+      );
+    }
     if (Number(quote.advance_percentage ?? 0) > 0) {
       return jsonResp(
         {
@@ -169,54 +179,88 @@ serve(async (req) => {
     const totalAmount = Number(quote.total);
     const currency = (quote.currency || "CAD").toUpperCase();
 
-    const { data: order, error: orderErr } = await sb
-      .from("orders")
-      .insert({
-        quote_id: quote.id,
-        customer_id: quote.customer_id,
-        status: "balance_due",
-        work_status: "pending",
-        invoice_status: "unbilled",
-        subtotal: quote.subtotal || 0,
-        certification_total: quote.certification_total || 0,
-        rush_fee: quote.rush_fee || 0,
-        delivery_fee: quote.delivery_fee || 0,
-        tax_rate: quote.tax_rate || 0,
-        tax_amount: quote.tax_amount || 0,
-        total_amount: totalAmount,
-        amount_paid: 0,
-        balance_due: totalAmount,
-        currency,
-        estimated_delivery_date: quote.estimated_delivery_date || null,
-        is_rush: quote.turnaround_type === "rush",
-      })
-      .select("id, order_number")
-      .single();
-
-    if (orderErr || !order) {
-      console.error("Order create failed:", orderErr);
-      return jsonResp(
-        { success: false, error: `Failed to create order: ${orderErr?.message}` },
-        500,
-      );
-    }
-
-    // ── Flip the quote ────────────────────────────────────────────────────
     const nowIso = new Date().toISOString();
-    const { error: quoteErr } = await sb
-      .from("quotes")
-      .update({
-        status: "ar_approved",
-        billing_mode: "ar_invoice",
-        approved_at: nowIso,
-        approved_by_customer_id: quote.customer_id,
-        converted_to_order_id: order.id,
-      })
-      .eq("id", quoteId);
 
-    if (quoteErr) {
-      console.error("Quote update failed:", quoteErr.message);
-      // Order is already inserted — don't roll back; staff can reconcile.
+    // ── Multi-pair fan-out: does this quote have single-pair child quotes? ───
+    const { count: childCount } = await sb
+      .from("quotes")
+      .select("id", { count: "exact", head: true })
+      .eq("parent_quote_id", quote.id);
+
+    let order: { id: string; order_number: string };
+
+    if (childCount && childCount > 0) {
+      // PARENT quote with children → atomic fan-out RPC builds the parent order
+      // (full AR balance) + N child work-unit orders ($0), and flips all quotes.
+      const { data: rpcResult, error: rpcErr } = await sb.rpc(
+        "convert_quote_to_orders",
+        {
+          p_quote_id: quote.id,
+          p_payment: { method: "ar", currency, amount_paid: 0 },
+        },
+      );
+      if (rpcErr || !rpcResult?.parent_order_id) {
+        console.error("AR fan-out failed:", rpcErr);
+        return jsonResp(
+          { success: false, error: `Fan-out conversion failed: ${rpcErr?.message}` },
+          500,
+        );
+      }
+      order = {
+        id: rpcResult.parent_order_id,
+        order_number: rpcResult.parent_order_number,
+      };
+    } else {
+      // ── Childless single-pair path — UNCHANGED from today ─────────────────
+      const { data: insertedOrder, error: orderErr } = await sb
+        .from("orders")
+        .insert({
+          quote_id: quote.id,
+          customer_id: quote.customer_id,
+          status: "balance_due",
+          work_status: "pending",
+          invoice_status: "unbilled",
+          subtotal: quote.subtotal || 0,
+          certification_total: quote.certification_total || 0,
+          rush_fee: quote.rush_fee || 0,
+          delivery_fee: quote.delivery_fee || 0,
+          tax_rate: quote.tax_rate || 0,
+          tax_amount: quote.tax_amount || 0,
+          total_amount: totalAmount,
+          amount_paid: 0,
+          balance_due: totalAmount,
+          currency,
+          estimated_delivery_date: quote.estimated_delivery_date || null,
+          is_rush: quote.turnaround_type === "rush",
+        })
+        .select("id, order_number")
+        .single();
+
+      if (orderErr || !insertedOrder) {
+        console.error("Order create failed:", orderErr);
+        return jsonResp(
+          { success: false, error: `Failed to create order: ${orderErr?.message}` },
+          500,
+        );
+      }
+      order = insertedOrder as { id: string; order_number: string };
+
+      // ── Flip the quote ──────────────────────────────────────────────────
+      const { error: quoteErr } = await sb
+        .from("quotes")
+        .update({
+          status: "ar_approved",
+          billing_mode: "ar_invoice",
+          approved_at: nowIso,
+          approved_by_customer_id: quote.customer_id,
+          converted_to_order_id: order.id,
+        })
+        .eq("id", quoteId);
+
+      if (quoteErr) {
+        console.error("Quote update failed:", quoteErr.message);
+        // Order is already inserted — don't roll back; staff can reconcile.
+      }
     }
 
     // ── Mark the magic-link token as used so it can't approve twice ───────

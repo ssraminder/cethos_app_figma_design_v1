@@ -114,6 +114,10 @@ interface LineItem {
   calculationUnit: CalcUnit;
   unitQuantity: string;
   baseRate: string;
+  // Multi-language (quote mode): per-line pair override. Empty = inherit the
+  // quote-level primary pair, so single-pair entry stays unchanged.
+  sourceLanguageId?: string;
+  targetLanguageId?: string;
 }
 
 const UNIT_LABELS: Record<CalcUnit, string> = {
@@ -638,6 +642,60 @@ export default function AdminCreateOrder() {
     return { lineTotals, subtotal, rush, delivery, rate, tax, total };
   }, [lineItems, rushFee, deliveryFee, taxRate]);
 
+  // ── Quote-mode multi-language fan-out ────────────────────────────────────
+  // Each line item carries an effective pair (its override, else the quote
+  // primary). Distinct pairs → child quotes; the PRIMARY pair carries the
+  // quote-level fees so Σ(child totals) === parent grand total.
+  const quoteLanguagePairs = useMemo(() => {
+    const seen = new Map<string, { sourceLanguageId: string; targetLanguageId: string }>();
+    for (const li of lineItems) {
+      const src = li.sourceLanguageId || sourceLanguageId;
+      const tgt = li.targetLanguageId || targetLanguageId;
+      if (!src || !tgt) continue;
+      const key = `${src}>${tgt}`;
+      if (!seen.has(key)) seen.set(key, { sourceLanguageId: src, targetLanguageId: tgt });
+    }
+    const pairs = Array.from(seen.values());
+    pairs.sort((a, b) => {
+      const aP = a.sourceLanguageId === sourceLanguageId && a.targetLanguageId === targetLanguageId;
+      const bP = b.sourceLanguageId === sourceLanguageId && b.targetLanguageId === targetLanguageId;
+      return aP === bP ? 0 : aP ? -1 : 1;
+    });
+    return pairs;
+  }, [lineItems, sourceLanguageId, targetLanguageId]);
+
+  const quotePairPricing = useMemo(() => {
+    return quoteLanguagePairs.map((pair, idx) => {
+      const isPrimary = idx === 0;
+      const subtotal =
+        Math.round(
+          lineItems.reduce((sum, li) => {
+            const src = li.sourceLanguageId || sourceLanguageId;
+            const tgt = li.targetLanguageId || targetLanguageId;
+            if (src !== pair.sourceLanguageId || tgt !== pair.targetLanguageId) return sum;
+            const qty = li.calculationUnit === "flat" ? 1 : num(li.unitQuantity);
+            return sum + qty * num(li.baseRate);
+          }, 0) * 100,
+        ) / 100;
+      const rushFeeP = isPrimary ? totals.rush : 0;
+      const deliveryFeeP = isPrimary ? totals.delivery : 0;
+      const preTax = subtotal + rushFeeP + deliveryFeeP;
+      const taxAmount = Math.round(preTax * totals.rate * 100) / 100;
+      const total = Math.round((preTax + taxAmount) * 100) / 100;
+      return {
+        sourceLanguageId: pair.sourceLanguageId,
+        targetLanguageId: pair.targetLanguageId,
+        subtotal,
+        certificationTotal: 0,
+        rushFee: rushFeeP,
+        deliveryFee: deliveryFeeP,
+        taxRate: totals.rate,
+        taxAmount,
+        total,
+      };
+    });
+  }, [quoteLanguagePairs, lineItems, sourceLanguageId, targetLanguageId, totals]);
+
   // ── New customer: when Direct Order is active, default to AR-approved ──
   useEffect(() => {
     if (mode === "direct_order" && creatingCustomer && !newIsAR) {
@@ -1100,6 +1158,8 @@ export default function AdminCreateOrder() {
               unitQuantity: qty,
               baseRate: rate,
               lineTotal: Math.round(qty * rate * 100) / 100,
+              sourceLanguageId: li.sourceLanguageId || sourceLanguageId,
+              targetLanguageId: li.targetLanguageId || targetLanguageId,
             };
           });
 
@@ -1158,6 +1218,10 @@ export default function AdminCreateOrder() {
             poNumber: poNumber.trim() || null,
             clientProjectNumber: clientProjectNumber.trim() || null,
             applyVolumeDiscount,
+            // Multi-language fan-out: distinct pairs + per-pair pricing.
+            // length <= 1 → edge fn produces a single-pair quote (today's path).
+            languagePairs: quoteLanguagePairs,
+            pairPricing: quotePairPricing,
           },
           documents,
           pricing,
@@ -1924,6 +1988,40 @@ export default function AdminCreateOrder() {
                     key={li.id}
                     className="grid grid-cols-12 gap-2 items-start rounded-md border border-gray-200 p-3"
                   >
+                    <div className="col-span-12 rounded-md bg-gray-50 border border-gray-200 p-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] text-gray-500 mb-1">
+                          Source language
+                        </label>
+                        <SearchableSelect
+                          options={sourceLangOptions as any}
+                          value={li.sourceLanguageId || sourceLanguageId}
+                          onChange={(v: string) =>
+                            updateLine(li.id, { sourceLanguageId: v || undefined })
+                          }
+                          placeholder="Source"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-gray-500 mb-1">
+                          Target language
+                        </label>
+                        <SearchableSelect
+                          options={
+                            targetLangOptions.filter(
+                              (o) =>
+                                o.value !==
+                                (li.sourceLanguageId || sourceLanguageId),
+                            ) as any
+                          }
+                          value={li.targetLanguageId || targetLanguageId}
+                          onChange={(v: string) =>
+                            updateLine(li.id, { targetLanguageId: v || undefined })
+                          }
+                          placeholder="Target"
+                        />
+                      </div>
+                    </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className="block text-[11px] text-gray-500 mb-1">
                         Description

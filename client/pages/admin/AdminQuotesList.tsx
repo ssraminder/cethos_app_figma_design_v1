@@ -162,7 +162,9 @@ export default function AdminQuotesList() {
         `,
           { count: "exact" },
         )
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        // Hide multi-language child quotes — only the payable parent is listed
+        .is("parent_quote_id", null);
 
       // Apply filters
       if (search) {
@@ -257,12 +259,14 @@ export default function AdminQuotesList() {
           .from("quotes")
           .select("id", { count: "exact", head: true })
           .eq("processing_status", "review_required")
-          .is("deleted_at", null),
+          .is("deleted_at", null)
+          .is("parent_quote_id", null),
         supabase
           .from("quotes")
           .select("id", { count: "exact", head: true })
           .eq("status", "lead")
-          .is("deleted_at", null),
+          .is("deleted_at", null)
+          .is("parent_quote_id", null),
       ]);
       setReviewRequiredCount(reviewRes.count || 0);
       setNewLeadCount(leadRes.count || 0);

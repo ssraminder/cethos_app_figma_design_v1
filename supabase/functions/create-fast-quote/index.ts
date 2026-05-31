@@ -14,6 +14,57 @@ function jsonResponse(data: Record<string, unknown>, status = 200) {
   });
 }
 
+const VALID_UNITS = ["per_page", "per_word", "per_hour", "per_minute", "flat"];
+
+// Insert ai_analysis_results rows (line items) for a quote. Shared by the
+// payable parent quote (all documents) and each single-pair child quote
+// (that pair's slice of documents).
+async function insertQuoteDocuments(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  quoteId: string,
+  docs: any[],
+  staffId: string,
+) {
+  for (const doc of docs) {
+    const unit = doc.calculationUnit || "per_page";
+    if (!VALID_UNITS.includes(unit)) {
+      throw new Error(
+        `Invalid calculation_unit '${unit}' (valid: ${VALID_UNITS.join(", ")})`,
+      );
+    }
+    const quantity =
+      unit === "flat" ? 1 : Number(doc.unitQuantity ?? doc.billablePages ?? 0);
+
+    const { error: docError } = await supabaseAdmin
+      .from("ai_analysis_results")
+      .insert({
+        quote_id: quoteId,
+        quote_file_id: null,
+        manual_filename: doc.label,
+        detected_document_type: doc.documentType || null,
+        assessed_complexity: doc.complexity || "easy",
+        complexity_multiplier: doc.complexityMultiplier || 1.0,
+        word_count: doc.wordCount ?? (unit === "per_word" ? quantity : 0),
+        page_count: doc.pageCount || 1,
+        billable_pages: unit === "per_page" ? quantity : doc.billablePages || 0,
+        calculation_unit: unit,
+        unit_quantity: quantity,
+        base_rate: doc.baseRate ?? doc.perPageRate ?? 65,
+        line_total: doc.lineTotal || 0,
+        certification_type_id: doc.certificationTypeId || null,
+        certification_price: doc.certificationPrice || 0,
+        processing_status: "completed",
+        ocr_provider: "manual",
+        is_staff_created: true,
+        created_by_staff_id: staffId,
+      });
+
+    if (docError) {
+      console.error("Failed to insert document analysis:", docError);
+    }
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
@@ -181,6 +232,7 @@ serve(async (req: Request) => {
         promised_delivery_date_rush: quote.promisedDeliveryDateRush || null,
         internal_project_id: internalProjectId,
         auto_discount_suppressed: quote.applyVolumeDiscount === false,
+        parent_quote_id: null,
       })
       .select("id, quote_number")
       .single();
@@ -191,52 +243,8 @@ serve(async (req: Request) => {
 
     const quoteId = quoteRecord.id;
 
-    // 4. INSERT ai_analysis_results rows (one per document)
-    const validUnits = ["per_page", "per_word", "per_hour", "per_minute", "flat"];
-    for (const doc of documents) {
-      const unit = doc.calculationUnit || "per_page";
-      if (!validUnits.includes(unit)) {
-        throw new Error(
-          `Invalid calculation_unit '${unit}' (valid: ${validUnits.join(", ")})`,
-        );
-      }
-      const quantity =
-        unit === "flat"
-          ? 1
-          : Number(doc.unitQuantity ?? doc.billablePages ?? 0);
-
-      const { error: docError } = await supabaseAdmin
-        .from("ai_analysis_results")
-        .insert({
-          quote_id: quoteId,
-          quote_file_id: null,
-          manual_filename: doc.label,
-          detected_document_type: doc.documentType || null,
-          assessed_complexity: doc.complexity || "easy",
-          complexity_multiplier: doc.complexityMultiplier || 1.0,
-          word_count:
-            doc.wordCount ?? (unit === "per_word" ? quantity : 0),
-          page_count: doc.pageCount || 1,
-          billable_pages:
-            unit === "per_page"
-              ? quantity
-              : doc.billablePages || 0,
-          calculation_unit: unit,
-          unit_quantity: quantity,
-          base_rate: doc.baseRate ?? doc.perPageRate ?? 65,
-          line_total: doc.lineTotal || 0,
-          certification_type_id: doc.certificationTypeId || null,
-          certification_price: doc.certificationPrice || 0,
-          processing_status: "completed",
-          ocr_provider: "manual",
-          is_staff_created: true,
-          created_by_staff_id: staffId,
-        });
-
-      if (docError) {
-        console.error("Failed to insert document analysis:", docError);
-      }
-    }
+    // 4. INSERT ai_analysis_results rows (one per document) — parent holds ALL
+    await insertQuoteDocuments(supabaseAdmin, quoteId, documents, staffId);
 
     // 5. INSERT quote_adjustments (discount / surcharge)
     if (pricing.discountAmount > 0) {
@@ -326,12 +334,132 @@ serve(async (req: Request) => {
       // Non-blocking
     }
 
-    // 8. Return
+    // 7c. MULTI-PAIR FAN-OUT — mint N single-pair CHILD quotes off the parent.
+    // N=1 (single pair) skips this entirely → behaves byte-for-byte as before.
+    const languagePairs: any[] = Array.isArray(quote.languagePairs)
+      ? quote.languagePairs
+      : [];
+    const pairPricing: any[] = Array.isArray(quote.pairPricing)
+      ? quote.pairPricing
+      : Array.isArray(pricing?.pairPricing)
+      ? pricing.pairPricing
+      : [];
+    const children: Array<{
+      quoteId: string;
+      quoteNumber: string;
+      src: string;
+      tgt: string;
+    }> = [];
+
+    if (languagePairs.length > 1) {
+      const childLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      for (let i = 0; i < languagePairs.length; i++) {
+        const pair = languagePairs[i];
+        const src = pair.sourceLanguageId ?? pair.src;
+        const tgt = pair.targetLanguageId ?? pair.tgt;
+        const pp =
+          pairPricing.find(
+            (p) =>
+              (p.sourceLanguageId ?? p.src) === src &&
+              (p.targetLanguageId ?? p.tgt) === tgt,
+          ) || {};
+        const childDocs = (documents || []).filter(
+          (d: any) =>
+            (d.sourceLanguageId ?? quote.sourceLanguageId) === src &&
+            (d.targetLanguageId ?? quote.targetLanguageId) === tgt,
+        );
+        const childNumber = `${quoteNumber}-${childLetters[i] || i + 1}`;
+
+        const childSubtotal = Number(pp.subtotal ?? 0);
+        const childCertTotal = Number(pp.certificationTotal ?? 0);
+        const childRushFee = Number(pp.rushFee ?? 0);
+        const childDeliveryFee = Number(pp.deliveryFee ?? 0);
+        const childTaxRate = Number(pp.taxRate ?? pricing.taxRate ?? 0);
+        const childTaxAmount = Number(pp.taxAmount ?? 0);
+        const childTotal = Number(pp.total ?? 0);
+
+        const { data: childRecord, error: childErr } = await supabaseAdmin
+          .from("quotes")
+          .insert({
+            quote_number: childNumber,
+            customer_id: customerId,
+            status: "quote_ready",
+            service_id: quote.serviceId || null,
+            source_language_id: src,
+            target_language_id: tgt,
+            intended_use_id: quote.intendedUseId || null,
+            country_of_issue: quote.countryOfIssue || null,
+            special_instructions: quote.specialInstructions || null,
+            tax_rate_id: quote.taxRateId || null,
+            tax_rate: childTaxRate,
+            turnaround_option_id: quote.turnaroundOptionId || null,
+            is_rush: quote.isRush || false,
+            rush_fee: childRushFee,
+            physical_delivery_option_id: quote.physicalDeliveryOptionId || null,
+            delivery_fee: childDeliveryFee,
+            subtotal: childSubtotal,
+            certification_total: childCertTotal,
+            tax_amount: childTaxAmount,
+            total: childTotal,
+            calculated_totals: {
+              translation_total: childSubtotal,
+              certification_total: childCertTotal,
+              subtotal: childSubtotal,
+              rush_fee: childRushFee,
+              delivery_fee: childDeliveryFee,
+              tax_rate: childTaxRate,
+              tax_amount: childTaxAmount,
+              total: childTotal,
+            },
+            is_manual_quote: true,
+            created_by_staff_id: staffId,
+            entry_point: quote.entryPoint || "staff_manual",
+            processing_status: "quote_ready",
+            promised_delivery_date: quote.promisedDeliveryDate || null,
+            promised_delivery_date_rush: quote.promisedDeliveryDateRush || null,
+            internal_project_id: null,
+            parent_quote_id: quoteId,
+          })
+          .select("id, quote_number")
+          .single();
+
+        if (childErr || !childRecord) {
+          throw new Error(
+            `Failed to create child quote (${src}->${tgt}): ${childErr?.message}`,
+          );
+        }
+
+        await insertQuoteDocuments(
+          supabaseAdmin,
+          childRecord.id,
+          childDocs,
+          staffId,
+        );
+
+        try {
+          await supabaseAdmin.rpc("recalculate_quote_totals", {
+            p_quote_id: childRecord.id,
+          });
+        } catch (rpcError) {
+          console.error("child recalculate_quote_totals error:", rpcError);
+        }
+
+        children.push({
+          quoteId: childRecord.id,
+          quoteNumber: childRecord.quote_number,
+          src,
+          tgt,
+        });
+      }
+    }
+
+    // 8. Return — quoteId is always the PAYABLE PARENT; children are work units.
     return jsonResponse({
       success: true,
       quoteId: quoteId,
       quoteNumber: quoteNumber,
       customerId: customerId,
+      children,
     });
   } catch (error) {
     console.error("create-fast-quote error:", error.message);
