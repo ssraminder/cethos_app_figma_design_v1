@@ -1817,6 +1817,12 @@ export default function AdminQuoteDetail() {
         return next;
       });
 
+      // Reveal the "View OCR & Analysis" trigger immediately. Without this,
+      // hasBatch only flips on the next page mount because its useEffect
+      // runs only with [id] as a dep — admins who just ran OCR would have
+      // to refresh before seeing the button.
+      setHasBatch(true);
+
       if (succeededFiles.length === 1) {
         toast.success(`OCR batch queued for ${succeededFiles[0].original_filename}`);
       } else {
@@ -4350,10 +4356,35 @@ export default function AdminQuoteDetail() {
 
           {displayItems.length > 0 && (
             <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Zap className="w-5 h-5 text-gray-400" />
-                Document Analysis
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-gray-400" />
+                  Document Analysis
+                </h2>
+                {/* Duplicate the OCR & Analysis trigger here so staff don't
+                    have to hunt for it in the Uploaded Files header — this is
+                    where they expect to find "show me the OCR" given that the
+                    analysis values they want to question are right below.
+                    When no batch exists yet, hint at how to create one. */}
+                {hasBatch ? (
+                  <button
+                    onClick={() => setShowOcrModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+                    title="View the OCR text, AI analysis, and pricing breakdown that produced this row"
+                  >
+                    <FileSearch className="w-4 h-4" />
+                    View OCR & Analysis
+                  </button>
+                ) : (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg"
+                    title="Run Preprocess & OCR on a file in the Uploaded Files section to create a batch you can drill into."
+                  >
+                    <FileSearch className="w-3.5 h-3.5" />
+                    No OCR batch yet — run Preprocess &amp; OCR above
+                  </span>
+                )}
+              </div>
 
               {/* Document Tabs */}
               {displayItems.length > 1 && (
