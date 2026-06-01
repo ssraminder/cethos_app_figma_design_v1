@@ -238,7 +238,10 @@ export default function KioskStaffForm({
   const priced = useMemo(() => {
     return docs.map((d) => {
       const compMult = COMPLEXITY_MULT[d.complexity];
-      const billable = Math.ceil(d.pageCount * compMult * 10) / 10;
+      // Floor every document at 1 billable page — matches the GREATEST(...,1.0)
+      // guard in recalculate_document_group and the floors in analyse-ocr-batch
+      // / process-quote-documents. Kiosk staff can still override.
+      const billable = Math.max(Math.ceil(d.pageCount * compMult * 10) / 10, 1.0);
       const cert = certTypes.find((c) => c.id === d.certificationTypeId);
       const certPrice = cert?.price || 0;
       const overrideRate = parseFloat(d.perPageRateOverride);

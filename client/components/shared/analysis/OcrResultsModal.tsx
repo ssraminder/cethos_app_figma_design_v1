@@ -1399,9 +1399,15 @@ export default function OcrResultsModal({
         billable = r.pricingBillablePages;
       } else {
         const wpp = isCjkLanguage(r.language) ? CHARS_PER_PAGE_CJK : pricingWordsPerPage;
+        // r.billablePages may be a sub-1 value persisted by an older
+        // analyse-ocr-batch (before the floor was added). Pass it through
+        // recalcBillablePages's Math.max(..., 1.0) by going through the
+        // explicit recompute when the stored value is under the floor.
+        const fromStored = r.billablePages || 0;
         billable =
-          r.billablePages ||
-          recalcBillablePages(r.wordCount, mult, wpp);
+          fromStored >= 1.0
+            ? fromStored
+            : recalcBillablePages(r.wordCount, mult, wpp);
       }
 
       // Certification — use saved if available

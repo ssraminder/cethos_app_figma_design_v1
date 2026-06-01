@@ -213,13 +213,31 @@ serve(async (req: Request) => {
     }
 
     // ── Insert fresh pricing rows ──
+    // Every document must bill at least 1 page (business rule, mirrors the
+    // GREATEST(..., 1.0) floor in recalculate_document_group). We apply the
+    // floor here as defense-in-depth: clients may pass a sub-1 billable from
+    // a stale OcrResultsModal that loaded a row written before the analyse-
+    // ocr-batch fix shipped. We DO NOT recompute line_total — that comes
+    // from the caller and is treated as authoritative — but we floor the
+    // billable and let the caller's price reflect their own math.
+    const MIN_BILLABLE_PAGES = 1.0;
     const insertRows = documents.map((doc) => {
       const wordCount = num(doc.wordCount, 0);
       const pageCount = num(doc.pageCount, 1);
-      const billable = num(doc.billablePages, 0);
+      const billableRaw = num(doc.billablePages, 0);
+      const billable = Math.max(billableRaw, MIN_BILLABLE_PAGES);
       const baseRate = num(doc.baseRate ?? doc.perPageRate, 0);
       const complexityMult = num(doc.complexityMultiplier, 1);
-      const lineTotal = round2(num(doc.translationCost, 0));
+      // If the caller passed an under-floor billable AND didn't explicitly
+      // override the line total, recompute the line total at the floored
+      // billable rather than honoring the stale client computation. This
+      // avoids the "1 billable page but $25.30 line total" mismatch.
+      const callerLineTotal = round2(num(doc.translationCost, 0));
+      const flooredLineTotal =
+        billableRaw < MIN_BILLABLE_PAGES && callerLineTotal > 0
+          ? round2(billable * baseRate * complexityMult)
+          : callerLineTotal;
+      const lineTotal = flooredLineTotal;
       const certPrice = round2(num(doc.certificationPrice, 0));
       return {
         quote_id: quoteId,
