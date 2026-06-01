@@ -121,7 +121,12 @@ serve(async (req: Request) => {
       service_id: ts.service_id,
       allowed_actor_types: ts.allowed_actor_types,
       status: "pending",
-      vendor_currency: "CAD",
+      // Leave vendor_currency null at creation time — it gets stamped with
+      // the actual vendor's preferred currency when admin assigns the step
+      // via update-workflow-step. Hardcoding "CAD" here masked the issue
+      // where the assign modal also defaulted to CAD, so non-CAD vendors
+      // ended up with CAD payables they never agreed to.
+      vendor_currency: null,
       revision_count: 0,
       source_language: sourceLang,
       target_language: targetLang,
