@@ -25,6 +25,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
+import { ADMIN_CURRENCIES } from "@/lib/currencies";
 import BrevoEmailLogsModal from "./BrevoEmailLogsModal";
 import ManagePayableModal from "./ManagePayableModal";
 import OrderFinancialSummary, {
@@ -1034,12 +1035,16 @@ function VendorAssignModal({
   clientDeadlineDate,
   orderId,
 }: VendorAssignModalProps) {
+  // Use the vendor's own preferred rate currency as the starting default.
+  // Falls back to CAD when the modal opens with no specific vendor (e.g.
+  // offer_multiple) or when the vendor has no preference recorded.
+  const initialCurrency = (vendor?.preferred_rate_currency as string | undefined) || "CAD";
   const [pricingMode, setPricingMode] = useState<"per_unit" | "target">("per_unit");
   const [targetTotal, setTargetTotal] = useState<string>("");
   const [vendorRate, setVendorRate] = useState<string>("");
   const [vendorRateUnit, setVendorRateUnit] = useState("per_word");
   const [units, setUnits] = useState<string>("1");
-  const [vendorCurrency, setVendorCurrency] = useState("CAD");
+  const [vendorCurrency, setVendorCurrency] = useState(initialCurrency);
   const [deadline, setDeadline] = useState("");
   const [instructions, setInstructions] = useState("");
   const [expiresInHours, setExpiresInHours] = useState<string>("24");
@@ -1061,7 +1066,9 @@ function VendorAssignModal({
       setVendorRate("");
       setVendorRateUnit("per_word");
       setUnits("1");
-      setVendorCurrency("CAD");
+      // Re-read the vendor's preferred currency in case the modal is being
+      // re-opened for a different vendor since the last mount.
+      setVendorCurrency((vendor?.preferred_rate_currency as string | undefined) || "CAD");
       setDeadline("");
       setInstructions("");
       setExpiresInHours("24");
@@ -1456,10 +1463,9 @@ function VendorAssignModal({
                     onChange={(e) => setVendorCurrency(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="CAD">CAD</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                    <option value="GBP">GBP</option>
+                    {ADMIN_CURRENCIES.map((c) => (
+                      <option key={c.code} value={c.code}>{c.code}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1498,10 +1504,9 @@ function VendorAssignModal({
                       onChange={(e) => setVendorCurrency(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
-                      <option value="CAD">CAD</option>
-                      <option value="USD">USD</option>
-                      <option value="EUR">EUR</option>
-                      <option value="GBP">GBP</option>
+                      {ADMIN_CURRENCIES.map((c) => (
+                        <option key={c.code} value={c.code}>{c.code}</option>
+                      ))}
                     </select>
                   </div>
                 </div>

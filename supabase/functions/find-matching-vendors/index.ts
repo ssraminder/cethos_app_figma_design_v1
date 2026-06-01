@@ -208,6 +208,7 @@ serve(async (req) => {
           last_project_date: v.last_project_date,
           native_languages: v.native_languages,
           minimum_rate: v.minimum_rate,
+          preferred_rate_currency: v.preferred_rate_currency || null,
           language_pair_count: lpCounts[v.id] || 0,
           matching_pairs: lpDetails[v.id] || [],
           rate_for_service: rateMap[v.id] || null,

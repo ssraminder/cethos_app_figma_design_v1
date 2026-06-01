@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_CURRENCIES } from "@/lib/currencies";
 import { toast } from "sonner";
 import { Loader2, X, Sparkles, Upload, AlertTriangle } from "lucide-react";
 
@@ -146,11 +147,18 @@ export default function ManagePayableModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
+  // Vendor's preferred rate currency from their profile. Looked up async on
+  // open so the modal defaults to a currency the vendor actually expects to
+  // be paid in, rather than a hardcoded CAD.
+  const [vendorPreferredCurrency, setVendorPreferredCurrency] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     // Reset every time the modal opens. Pre-fill from existing payable when
-    // present so staff can see what's already there.
+    // present so staff can see what's already there. For a brand-new payable
+    // we default to the vendor's preferred_rate_currency (fetched below) and
+    // fall back to CAD when the vendor has no preference recorded.
     if (existingPayable) {
       const unitMap: Record<string, Mode> = {
         flat: "flat",
@@ -180,7 +188,32 @@ export default function ManagePayableModal({
     setCatWarnings([]);
     setCatReferenceTotal(null);
     setCatSourceFile(null);
-  }, [open, existingPayable]);
+    setVendorPreferredCurrency(null);
+
+    // Fetch the vendor's preferred currency. Only apply it to the form state
+    // when we're creating a fresh payable — never override an existing
+    // payable's currency, since that would silently change what the vendor
+    // already saw on file.
+    if (vendorId) {
+      supabase
+        .from("vendors")
+        .select("preferred_rate_currency")
+        .eq("id", vendorId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (cancelled) return;
+          const pref = (data?.preferred_rate_currency as string | null) || null;
+          setVendorPreferredCurrency(pref);
+          if (pref && !existingPayable) {
+            setCurrency(pref);
+          }
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, existingPayable, vendorId]);
 
   const subtotal = useMemo<number>(() => {
     if (mode === "flat") return Number(flatAmount) || 0;
@@ -594,12 +627,15 @@ export default function ManagePayableModal({
                 onChange={(e) => setCurrency(e.target.value)}
                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-teal-500"
               >
-                <option value="CAD">CAD</option>
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-                <option value="GBP">GBP</option>
-                <option value="INR">INR</option>
+                {ADMIN_CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.code}</option>
+                ))}
               </select>
+              {vendorPreferredCurrency && vendorPreferredCurrency !== currency && (
+                <p className="text-[11px] text-amber-700 mt-1">
+                  Vendor prefers {vendorPreferredCurrency}
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs text-gray-600 mb-1">Tax %</label>
