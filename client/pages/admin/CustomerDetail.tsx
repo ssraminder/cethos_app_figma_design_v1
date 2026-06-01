@@ -31,6 +31,7 @@ import {
   ChevronUp,
   UserCheck,
   Receipt,
+  ExternalLink,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -191,6 +192,34 @@ export default function CustomerDetail() {
   const [xtrfSyncing, setXtrfSyncing] = useState(false);
   const [xtrfSyncResult, setXtrfSyncResult] = useState<string[] | null>(null);
   const [arExpanded, setArExpanded] = useState(false);
+
+  // "View as customer" — mints a 30-min impersonation session and opens
+  // /dashboard with the raw token. Mirrors handleViewAsCustomer on
+  // AdminOrderDetail / AdminQuoteDetail.
+  const [impersonating, setImpersonating] = useState(false);
+  const handleViewAsCustomer = async () => {
+    if (!customer?.id) {
+      toast.error("Customer not loaded yet.");
+      return;
+    }
+    setImpersonating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "admin-impersonate-customer",
+        { body: { action: "start", customer_id: customer.id } },
+      );
+      if (error) throw error;
+      if (!data?.token) throw new Error("No token returned");
+      const url = `/dashboard?impersonate_token=${encodeURIComponent(data.token)}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+      toast.success(
+        `Opened customer portal as ${customer.full_name || customer.email}`,
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to start impersonation");
+    }
+    setImpersonating(false);
+  };
 
   // Deposit modal state
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -776,6 +805,15 @@ export default function CustomerDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleViewAsCustomer}
+            disabled={impersonating}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors disabled:opacity-60"
+            title="Open the customer portal as this customer (30 min)"
+          >
+            <ExternalLink className="w-4 h-4" />
+            {impersonating ? "Opening…" : "View as customer"}
+          </button>
           <button
             onClick={() => {
               setDepositModalOpen(true);
