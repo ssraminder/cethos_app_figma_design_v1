@@ -251,7 +251,16 @@ export default function AdminVendorsList() {
   const [languageFilter, setLanguageFilter] = useState("");
   const [countryFilter, setCountryFilter] = useState("");
   const [portalFilter, setPortalFilter] = useState("");
+  const [cvFilter, setCvFilter] = useState<"" | "has_cv" | "no_cv">("");
+  const [ndaFilter, setNdaFilter] = useState<"" | "has_nda" | "no_nda">("");
   const [countries, setCountries] = useState<string[]>([]);
+  // Pre-loaded ID sets for vendors who have CV / signed NDA. These are the
+  // small side of the join (~300 each out of ~1500) so an .in()/.not(in)
+  // against them stays well under PostgREST's URL-length limit. Reload
+  // when the page is refreshed or when the user toggles the filter so
+  // newly-uploaded CVs / signed NDAs appear without a full reload.
+  const [vendorsWithCv, setVendorsWithCv] = useState<string[] | null>(null);
+  const [vendorsWithNda, setVendorsWithNda] = useState<string[] | null>(null);
 
   // Fetch distinct countries and summary stats on mount
   useEffect(() => {
@@ -266,6 +275,23 @@ export default function AdminVendorsList() {
           ].sort();
           setCountries(unique);
         }
+      });
+
+    // Pre-load the vendor IDs that have at least one CV and a current NDA.
+    // Both sides of the join are small (~300 of 1500), so we materialize
+    // them once and apply them as .in()/.not(in) on the main vendor query.
+    supabase
+      .from("vendor_cvs")
+      .select("vendor_id")
+      .then(({ data }) => {
+        setVendorsWithCv([...new Set((data ?? []).map((r) => r.vendor_id as string))]);
+      });
+    supabase
+      .from("vendor_nda_signatures")
+      .select("vendor_id")
+      .eq("is_current", true)
+      .then(({ data }) => {
+        setVendorsWithNda([...new Set((data ?? []).map((r) => r.vendor_id as string))]);
       });
 
     Promise.all([
@@ -330,6 +356,30 @@ export default function AdminVendorsList() {
         .not("invitation_sent_at", "is", null)
         .is("auth_user_id", null);
     }
+    // CV filter — applied via pre-loaded ID set (small enough for the URL).
+    if (cvFilter === "has_cv" && vendorsWithCv) {
+      if (vendorsWithCv.length === 0) {
+        query = query.eq("id", "00000000-0000-0000-0000-000000000000");
+      } else {
+        query = query.in("id", vendorsWithCv);
+      }
+    } else if (cvFilter === "no_cv" && vendorsWithCv) {
+      if (vendorsWithCv.length > 0) {
+        query = query.not("id", "in", `(${vendorsWithCv.join(",")})`);
+      }
+    }
+    // NDA filter — same pattern. "Signed NDA" means a row with is_current=true.
+    if (ndaFilter === "has_nda" && vendorsWithNda) {
+      if (vendorsWithNda.length === 0) {
+        query = query.eq("id", "00000000-0000-0000-0000-000000000000");
+      } else {
+        query = query.in("id", vendorsWithNda);
+      }
+    } else if (ndaFilter === "no_nda" && vendorsWithNda) {
+      if (vendorsWithNda.length > 0) {
+        query = query.not("id", "in", `(${vendorsWithNda.join(",")})`);
+      }
+    }
 
     const { data, count, error } = await query;
     if (!error) {
@@ -346,6 +396,10 @@ export default function AdminVendorsList() {
     languageFilter,
     countryFilter,
     portalFilter,
+    cvFilter,
+    ndaFilter,
+    vendorsWithCv,
+    vendorsWithNda,
   ]);
 
   // Clear selection when data changes
@@ -412,6 +466,8 @@ export default function AdminVendorsList() {
     languageFilter,
     countryFilter,
     portalFilter,
+    cvFilter,
+    ndaFilter,
   ]);
 
   useEffect(() => {
@@ -426,6 +482,8 @@ export default function AdminVendorsList() {
     setLanguageFilter("");
     setCountryFilter("");
     setPortalFilter("");
+    setCvFilter("");
+    setNdaFilter("");
     setPage(1);
   };
 
@@ -436,7 +494,9 @@ export default function AdminVendorsList() {
     vendorTypeFilter ||
     languageFilter ||
     countryFilter ||
-    portalFilter;
+    portalFilter ||
+    cvFilter ||
+    ndaFilter;
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const rangeStart = (page - 1) * PAGE_SIZE + 1;
@@ -607,6 +667,38 @@ export default function AdminVendorsList() {
               <option value="has_access">Has Portal Access</option>
               <option value="no_access">No Portal Access</option>
               <option value="invited_pending">Invited (Pending)</option>
+            </select>
+          </div>
+
+          {/* CV */}
+          <div className="min-w-[140px]">
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              CV
+            </label>
+            <select
+              value={cvFilter}
+              onChange={(e) => setCvFilter(e.target.value as "" | "has_cv" | "no_cv")}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="">All</option>
+              <option value="has_cv">Has CV</option>
+              <option value="no_cv">No CV</option>
+            </select>
+          </div>
+
+          {/* NDA */}
+          <div className="min-w-[140px]">
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              NDA
+            </label>
+            <select
+              value={ndaFilter}
+              onChange={(e) => setNdaFilter(e.target.value as "" | "has_nda" | "no_nda")}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="">All</option>
+              <option value="has_nda">Signed NDA</option>
+              <option value="no_nda">No NDA</option>
             </select>
           </div>
 
