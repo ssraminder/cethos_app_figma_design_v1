@@ -376,6 +376,21 @@ serve(async (req) => {
       );
     }
 
+    // TODO(2026-05-31): The placeholder analysis above returns the same
+    // dummy values (1pg / 350w / birth_certificate / es) for every file.
+    // The previously-deployed v85 of this function also invoked a real
+    // OCR pipeline (Google Document AI + LLM) inline and returned a
+    // batchId — that source was never committed and is gone after the
+    // verify_jwt-fix CLI redeploy on 2026-05-31. Restoration needs:
+    //   1. Copy quote_files rows from `quote-files/{quote_id}/` to
+    //      `ocr-uploads/{batch_id}/` (or modify ocr-process-next to read
+    //      from quote-files bucket directly)
+    //   2. Then call ocr-batch-create with the ocr-uploads paths
+    //   3. Wait/poll for completion or return batchId for client polling
+    // Workaround until restoration: customer sees placeholder $101.40,
+    // staff opens the admin quote page and clicks Run OCR → that flow
+    // is intact and uses ocr-uploads correctly.
+
     const result = {
       success: true,
       documentsProcessed: files.length,
