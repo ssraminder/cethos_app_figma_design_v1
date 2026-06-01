@@ -25,7 +25,15 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 - **Pattern:** Matches `feedback_supabase_bundle_loss_pattern.md` (stripe-webhook, cancel-order, process-quote-documents previously). Five bundle-loss incidents in ~6 weeks — this is now a recurring failure mode.
 - **Diagnostic recipe:** `curl -s -i https://api.cethos.com/functions/v1/<name> -H "Authorization: Bearer <anon>" -H "apikey: <anon>" -H "Content-Type: application/json" -X POST -d "{}"` — gateway response carrying `sb-error-code: NOT_FOUND` + JSON body `{"code":"NOT_FOUND"}` is bundle-loss (function listed ACTIVE in metadata but no runtime bundle). A 4xx/5xx with a body other than that JSON means the function ran and rejected — different problem.
 - **In the same PR:** added the existing AdminOrderDetail "View as customer" button to both `AdminQuoteDetail` (in the Customer Information card header) and `CustomerDetail` (in the page header next to "Request Deposit"), both calling `admin-impersonate-customer` and opening `/dashboard?impersonate_token=<raw>` in a new tab. Pattern is byte-identical to the working order page.
-- **Status:** active. `verify-customer-login-otp` restored. `get-customer-quote-detail` pending in spawned follow-up.
+- **Status:** active. `verify-customer-login-otp` restored. `get-customer-quote-detail` also restored (see entry above).
+
+### 2026-06-01 — Reconstructed get-customer-quote-detail edge function (bundle-loss follow-up)
+- **What:** Wrote a fresh `supabase/functions/get-customer-quote-detail/index.ts` mirroring `get-customer-order-detail`'s shape — service-role client, `quote_id` + `customer_id` query params with ownership check on `quotes.customer_id`, language resolution via `languages` table `.in()` lookup, intended-use resolution, `delivery_method` derivation (physical option name → "Online Portal" fallback for digital → null). Flattens the row and aliases: `total_amount = quotes.total`, `valid_until = quotes.expires_at`, `stripe_session_id = quotes.stripe_checkout_session_id`, `source_language` / `target_language` resolved names (target falls back to `target_language_other`). Deployed via CLI `--no-verify-jwt`.
+- **Verified live on prod:**
+  - 400 on missing params, 404 on wrong owner, 200 with full payload on correct owner. `QT-2026-25310` returns `total_amount: 68.25, source_language: "Portuguese (Brazil)", target_language: "English"`.
+  - Chrome MCP impersonated Samara Da Cunha Maciel → navigated to `/dashboard/quotes/8d1f4a3f-...` → page rendered with quote number, languages, $68.25 pricing, "Paid" status, "Payment Received" banner — i.e. the customer portal Quote detail page is no longer broken.
+- **Status:** active.
+- **Affects:** [supabase/functions/get-customer-quote-detail/index.ts](supabase/functions/get-customer-quote-detail/index.ts) (new), called by [client/pages/customer/CustomerQuoteDetail.tsx:252](client/pages/customer/CustomerQuoteDetail.tsx).
 - **Affects:** [supabase/functions/verify-customer-login-otp/index.ts](supabase/functions/verify-customer-login-otp/index.ts), [client/pages/admin/AdminQuoteDetail.tsx](client/pages/admin/AdminQuoteDetail.tsx), [client/pages/admin/CustomerDetail.tsx](client/pages/admin/CustomerDetail.tsx).
 
 ### 2026-05-31 — REGRESSION: process-quote-documents real OCR pipeline lost
