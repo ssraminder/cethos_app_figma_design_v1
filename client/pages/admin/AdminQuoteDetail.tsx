@@ -540,6 +540,34 @@ export default function AdminQuoteDetail() {
 
   const [unreadStaffCount, setUnreadStaffCount] = useState(0);
 
+  // "View as customer" — mints a 30-min impersonation session and opens
+  // /dashboard with the raw token. Mirrors handleViewAsCustomer on
+  // AdminOrderDetail / CustomerDetail.
+  const [impersonating, setImpersonating] = useState(false);
+  const handleViewAsCustomer = async () => {
+    if (!quote?.customer_id) {
+      toast.error("This quote has no linked customer.");
+      return;
+    }
+    setImpersonating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "admin-impersonate-customer",
+        { body: { action: "start", customer_id: quote.customer_id } },
+      );
+      if (error) throw error;
+      if (!data?.token) throw new Error("No token returned");
+      const url = `/dashboard?impersonate_token=${encodeURIComponent(data.token)}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+      toast.success(
+        `Opened customer portal as ${quote.customer?.full_name || quote.customer?.email}`,
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to start impersonation");
+    }
+    setImpersonating(false);
+  };
+
   // Inline chat state
   const [messageFilter, setMessageFilter] = useState<"all" | "quote">("all");
   const [newMessage, setNewMessage] = useState("");
@@ -3823,10 +3851,23 @@ export default function AdminQuoteDetail() {
           )}
 
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <User className="w-5 h-5 text-gray-400" />
-              Customer Information
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <User className="w-5 h-5 text-gray-400" />
+                Customer Information
+              </h2>
+              {quote.customer_id && (
+                <button
+                  onClick={handleViewAsCustomer}
+                  disabled={impersonating}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-md transition-colors disabled:opacity-60"
+                  title="Open the customer portal as this customer (30 min)"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  {impersonating ? "Opening…" : "View as customer"}
+                </button>
+              )}
+            </div>
 
             {quote.customer ? (
               <div className="grid grid-cols-2 gap-4">
