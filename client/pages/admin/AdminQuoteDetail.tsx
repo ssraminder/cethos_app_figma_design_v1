@@ -1842,11 +1842,13 @@ export default function AdminQuoteDetail() {
   };
 
   // Bulk handler used by the panel-header "Run OCR for all source files" button.
-  // Filters to files that still need OCR (pending or failed) and are PDFs.
+  // Filters to files that are PDFs and not actively being processed — includes
+  // 'completed' so admins can re-run when the process-quote-documents stub
+  // wrote placeholder analysis (see canRunOcr comment above).
   const handleRunPreprocessOcrAll = async () => {
     const eligible = files.filter(f => {
       const status = f.ai_processing_status;
-      const isEligibleStatus = status === 'pending' || status === 'failed' || !status;
+      const isEligibleStatus = status !== 'processing';
       const isPdf = f.mime_type === 'application/pdf';
       return isEligibleStatus && isPdf;
     });
@@ -4119,29 +4121,33 @@ export default function AdminQuoteDetail() {
                     <div className="flex items-center gap-2">
                       {(() => {
                         // Show the bulk OCR button when at least one source file
-                        // still needs OCR (pending/failed) — restores the
-                        // pre-regression "1 quote → 1 batch" behavior. We're
-                        // intentionally permissive: any in-flight file pauses
-                        // the button.
+                        // still needs OCR or is eligible for re-run — restores
+                        // the pre-regression "1 quote → 1 batch" behavior. We
+                        // include 'completed' so admins can recover from the
+                        // process-quote-documents placeholder stub (which writes
+                        // 'completed' with fake analysis); the handler prompts
+                        // on existing batches before recreating one.
                         const bulkEligible = files.filter(f => {
                           const status = f.ai_processing_status;
-                          const isEligibleStatus =
-                            status === 'pending' || status === 'failed' || !status;
+                          const isEligibleStatus = status !== 'processing';
                           return isEligibleStatus && f.mime_type === 'application/pdf';
                         });
                         const anyBusy = Object.values(ocrRunState).some(
                           s => s && !['idle', 'done', 'error'].includes(s.status),
                         );
                         if (bulkEligible.length < 2) return null;
+                        const anyCompleted = bulkEligible.some(
+                          f => f.ai_processing_status === 'completed',
+                        );
                         return (
                           <button
                             onClick={handleRunPreprocessOcrAll}
                             disabled={anyBusy}
                             className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-700 border border-orange-300 rounded hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            title={`Run Preprocess & OCR for all ${bulkEligible.length} source PDFs in one batch`}
+                            title={`${anyCompleted ? 'Re-run' : 'Run'} Preprocess & OCR for all ${bulkEligible.length} source PDFs in one batch`}
                           >
                             <Cpu className="w-3.5 h-3.5" />
-                            Run OCR for all {bulkEligible.length} files
+                            {anyCompleted ? 'Re-run' : 'Run'} OCR for all {bulkEligible.length} files
                           </button>
                         );
                       })()}
@@ -4187,7 +4193,14 @@ export default function AdminQuoteDetail() {
                       {translateFiles.map((file) => {
                         const rawFile = files.find(f => f.id === file.id);
                         const aiStatus = rawFile?.ai_processing_status;
-                        const canRunOcr = aiStatus === 'pending' || aiStatus === 'failed';
+                        // Allow re-running OCR even when status is 'completed' —
+                        // the customer-facing process-quote-documents stub writes
+                        // 'completed' with placeholder analysis (350w / 1pg / $65),
+                        // which would otherwise lock admins out of re-running real
+                        // OCR. The handler already prompts when an ocr_batches row
+                        // exists, so re-runs are explicitly confirmed.
+                        const canRunOcr = aiStatus !== 'processing';
+                        const isRerun = aiStatus === 'completed';
                         const ocrState = ocrRunState[file.id];
                         const ocrBusy = ocrState && !['idle', 'done', 'error'].includes(ocrState.status);
 
@@ -4225,10 +4238,10 @@ export default function AdminQuoteDetail() {
                                       if (rawFile) handleRunPreprocessOcr(rawFile);
                                     }}
                                     className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-700 border border-orange-300 rounded hover:bg-orange-50 transition-colors"
-                                    title="Run Preprocess & OCR"
+                                    title={isRerun ? "Re-run Preprocess & OCR (current analysis will be superseded)" : "Run Preprocess & OCR"}
                                   >
                                     <Cpu className="w-3.5 h-3.5" />
-                                    Run Preprocess & OCR
+                                    {isRerun ? "Re-run Preprocess & OCR" : "Run Preprocess & OCR"}
                                   </button>
                                 )}
                                 {ocrBusy && (
