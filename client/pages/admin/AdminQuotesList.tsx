@@ -287,7 +287,9 @@ export default function AdminQuotesList() {
     } else {
       params.delete(key);
     }
-    params.set("page", "1"); // Reset to page 1 on filter change
+    if (key !== "page") {
+      params.set("page", "1"); // Reset to page 1 on filter change
+    }
     setSearchParams(params);
   };
 
