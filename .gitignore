@@ -33,3 +33,7 @@ dist-ssr
 # Supabase CLI temp files
 supabase/.temp/
 scripts/out/
+
+# Claude Code worktrees + local test debris
+.claude/worktrees/
+zz-test-*
