@@ -372,13 +372,18 @@ export const PROCESSING_STATUS_DISPLAY: Record<FileProcessingStatus, { label: st
 // ============================================
 
 /**
- * Calculate billable pages from word count
+ * Calculate billable pages from word count.
+ * Floored at 1 page — matches the GREATEST(..., 1.0) guard in
+ * recalculate_document_group (migration 20260513) and the floors applied
+ * in analyse-ocr-batch / process-quote-documents. Every document bills
+ * at least one page.
  */
 export function calculateBillablePages(
   wordCount: number,
   wordsPerPage: number = DEFAULT_WORDS_PER_PAGE
 ): number {
-  return Math.round((wordCount / wordsPerPage) * 100) / 100;
+  const raw = Math.round((wordCount / wordsPerPage) * 100) / 100;
+  return Math.max(raw, 1.0);
 }
 
 /**

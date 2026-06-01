@@ -225,10 +225,15 @@ serve(async (req) => {
               : 1.0;
 
         // Calculate billable pages (words / 225 * complexity multiplier)
-        const billablePages =
+        // Floor at 1.0 to match the GREATEST(..., 1.0) guard in
+        // recalculate_document_group (migration 20260513) — every document
+        // must bill at least one page.
+        const billablePages = Math.max(
           Math.ceil(
             ((analysisResult.wordCount / 225) * complexityMultiplier) * 100,
-          ) / 100;
+          ) / 100,
+          1.0,
+        );
         const baseRate = 65.0;
         const lineTotal = Math.round(billablePages * baseRate * 100) / 100;
 

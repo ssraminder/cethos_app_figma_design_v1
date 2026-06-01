@@ -17,6 +17,16 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// Business rule: every document must bill at least one page. Mirrors the
+// GREATEST(..., 1.0) floor in recalculate_document_group (migration
+// 20260513_pricing_recalc_safety.sql) so analysis-flow writes stay consistent
+// with the SQL recompute path. Display formula in the modal already enforces
+// this for fresh recomputes; this guard catches values that come from the
+// LLM-analysis edge function before they're persisted.
+const MIN_BILLABLE_PAGES = 1.0;
+const floorBillable = (raw: number): number =>
+  Math.max(parseFloat((raw ?? 0).toFixed(2)), MIN_BILLABLE_PAGES);
+
 // Anthropic API config
 const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 const MAX_SYNC_TOKENS = 150000; // ~150K tokens = process synchronously
@@ -328,7 +338,7 @@ serve(async (req) => {
         original_filename: doc.originalFilename,
         ocr_word_count: doc.totalWordCount,
         ocr_page_count: doc.totalPageCount,
-        billable_pages: parseFloat((doc.totalWordCount / wpp).toFixed(2)),
+        billable_pages: floorBillable(doc.totalWordCount / wpp),
         processing_status: isBackground ? "pending" : "processing",
       };
     });
@@ -707,9 +717,7 @@ Use null for any field you cannot determine. Return ONLY valid JSON, no markdown
           issuingCountry: null,
           complexity: null,
           wordCount: doc.totalWordCount,
-          billablePages: parseFloat(
-            (doc.totalWordCount / failWpp).toFixed(2)
-          ),
+          billablePages: floorBillable(doc.totalWordCount / failWpp),
           documentCount: 1,
           subDocuments: null,
           actionableItems: [],
@@ -788,9 +796,7 @@ Use null for any field you cannot determine. Return ONLY valid JSON, no markdown
         issuingCountry: result.issuingCountry || null,
         complexity: result.complexity || null,
         wordCount: doc.totalWordCount,
-        billablePages: parseFloat(
-          (doc.totalWordCount / successWpp).toFixed(2)
-        ),
+        billablePages: floorBillable(doc.totalWordCount / successWpp),
         documentCount: result.documentCount || 1,
         subDocuments: result.subDocuments || null,
         actionableItems: result.actionableItems || [],

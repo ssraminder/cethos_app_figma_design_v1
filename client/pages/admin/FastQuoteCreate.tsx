@@ -560,6 +560,10 @@ export default function FastQuoteCreate() {
       } else {
         autoBillablePages = Math.ceil(pc * complexityMult * 10) / 10;
       }
+      // Floor every document at 1 billable page (matches the GREATEST guard
+      // in recalculate_document_group + analyse-ocr-batch). Admin can still
+      // override via billablePagesOverride if they need to bill less.
+      autoBillablePages = Math.max(autoBillablePages, 1.0);
 
       const billablePages = doc.billablePagesOverride ?? autoBillablePages;
 
