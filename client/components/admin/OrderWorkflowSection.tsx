@@ -1467,6 +1467,12 @@ function VendorAssignModal({
                       <option key={c.code} value={c.code}>{c.code}</option>
                     ))}
                   </select>
+                  {vendor?.preferred_rate_currency &&
+                    vendor.preferred_rate_currency !== vendorCurrency && (
+                      <p className="text-[11px] text-amber-700 mt-1">
+                        Vendor prefers {vendor.preferred_rate_currency}
+                      </p>
+                    )}
                 </div>
               </div>
             ) : (
@@ -1508,6 +1514,12 @@ function VendorAssignModal({
                         <option key={c.code} value={c.code}>{c.code}</option>
                       ))}
                     </select>
+                    {vendor?.preferred_rate_currency &&
+                      vendor.preferred_rate_currency !== vendorCurrency && (
+                        <p className="text-[11px] text-amber-700 mt-1">
+                          Vendor prefers {vendor.preferred_rate_currency}
+                        </p>
+                      )}
                   </div>
                 </div>
                 {suggestedRate && (
