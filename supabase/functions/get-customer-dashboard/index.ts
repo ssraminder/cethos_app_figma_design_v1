@@ -58,9 +58,14 @@ serve(async (req: Request) => {
 
     // Fetch orders + quotes + recent status transitions in parallel.
     // History tables use `created_at` (not `changed_at`).
+    // NB: order_status_history is sparsely populated — no trigger writes to it
+    // on every status change (only `fn_auto_complete_on_invoiced` does, for
+    // the invoiced→completed transition). We synthesise events from
+    // orders.paid_at / actual_delivery_date / completed_at / created_at below
+    // so the dashboard surfaces activity even when history is missing.
     const [ordersRes, quotesRes, orderHistRes, quoteHistRes] = await Promise.all([
       sb.from("orders")
-        .select("id, order_number, status, total_amount, amount_paid, created_at, updated_at")
+        .select("id, order_number, status, total_amount, amount_paid, created_at, updated_at, paid_at, actual_delivery_date, completed_at")
         .eq("customer_id", customerId)
         // Exclude multi-language work-unit child orders ($0, vendor-only)
         .is("parent_order_id", null),
@@ -98,21 +103,73 @@ serve(async (req: Request) => {
       .reduce((sum: number, o: any) => sum + Number(o.amount_paid ?? 0), 0);
 
     // Recent activity: merge order + quote status transitions, sort by time.
-    const orderEvents = (orderHistRes.data ?? []).map((row: any) => ({
-      id: `o-${row.order_id}-${row.created_at}`,
+    // History tables are the primary source when populated.
+    const orderHistEvents = (orderHistRes.data ?? []).map((row: any) => ({
+      id: `oh-${row.order_id}-${row.created_at}`,
+      orderId: row.order_id,
       type: "order" as const,
       number: row.orders?.order_number ?? "",
       action: humanizeStatus(row.new_status),
       timestamp: row.created_at,
     }));
-    const quoteEvents = (quoteHistRes.data ?? []).map((row: any) => ({
-      id: `q-${row.quote_id}-${row.created_at}`,
+    const quoteHistEvents = (quoteHistRes.data ?? []).map((row: any) => ({
+      id: `qh-${row.quote_id}-${row.created_at}`,
       type: "quote" as const,
       number: row.quotes?.quote_number ?? "",
       action: humanizeStatus(row.new_status),
       timestamp: row.created_at,
     }));
-    const recentActivity = [...orderEvents, ...quoteEvents]
+
+    // Synthesise events from orders fields for any order with no history row
+    // — this covers the common case where order_status_history is sparse
+    // because no trigger writes to it on every transition.
+    const ordersWithHistory = new Set(orderHistEvents.map((e) => e.orderId));
+    const synthesisedOrderEvents: any[] = [];
+    for (const o of orders as any[]) {
+      if (ordersWithHistory.has(o.id)) continue; // already covered by history
+      // Emit the most informative event we have for this order. Prefer the
+      // most-recent terminal-ish event so the dashboard shows the latest
+      // status, not the first one.
+      if (o.completed_at && (o.status === "completed" || o.status === "invoiced")) {
+        synthesisedOrderEvents.push({
+          id: `os-${o.id}-completed`,
+          type: "order",
+          number: o.order_number,
+          action: humanizeStatus("completed"),
+          timestamp: o.completed_at,
+        });
+      } else if (o.actual_delivery_date && (o.status === "delivered" || o.status === "completed" || o.status === "invoiced")) {
+        synthesisedOrderEvents.push({
+          id: `os-${o.id}-delivered`,
+          type: "order",
+          number: o.order_number,
+          action: humanizeStatus("delivered"),
+          timestamp: `${o.actual_delivery_date}T12:00:00Z`,
+        });
+      } else if (o.paid_at && (o.status === "paid" || o.status === "in_production" || o.status === "draft_review" || o.status === "balance_due")) {
+        synthesisedOrderEvents.push({
+          id: `os-${o.id}-paid`,
+          type: "order",
+          number: o.order_number,
+          action: humanizeStatus(o.status === "paid" ? "paid" : o.status),
+          timestamp: o.paid_at,
+        });
+      } else if (o.status) {
+        synthesisedOrderEvents.push({
+          id: `os-${o.id}-${o.status}`,
+          type: "order",
+          number: o.order_number,
+          action: humanizeStatus(o.status),
+          timestamp: o.updated_at || o.created_at,
+        });
+      }
+    }
+
+    const recentActivity = [
+      ...orderHistEvents.map(({ orderId: _o, ...rest }) => rest),
+      ...synthesisedOrderEvents,
+      ...quoteHistEvents,
+    ]
       .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
       .slice(0, 5);
 
