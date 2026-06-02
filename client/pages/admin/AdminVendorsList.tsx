@@ -17,6 +17,8 @@ import {
   XCircle,
   Send,
   Loader2,
+  FileText,
+  ShieldCheck,
 } from "lucide-react";
 import { StatCard } from "@/components/admin/StatCard";
 import { VendorActivationEmailModal } from "@/components/admin/VendorActivationEmailModal";
@@ -261,6 +263,13 @@ export default function AdminVendorsList() {
   // newly-uploaded CVs / signed NDAs appear without a full reload.
   const [vendorsWithCv, setVendorsWithCv] = useState<string[] | null>(null);
   const [vendorsWithNda, setVendorsWithNda] = useState<string[] | null>(null);
+  // Per-row doc metadata for the CV + NDA columns. Keyed by vendor_id.
+  // The CV map gives us the storage path so we can mint signed URLs on
+  // demand; the NDA map gives us the HTML snapshot to render inline
+  // without a round trip.
+  const [cvDocs, setCvDocs] = useState<Record<string, { path: string; name: string; version: number; uploaded_at: string }>>({});
+  const [ndaDocs, setNdaDocs] = useState<Record<string, { signed_at: string; signed_full_name: string; html: string; signed_email: string | null }>>({});
+  const [docLoadingId, setDocLoadingId] = useState<string | null>(null);
 
   // Fetch distinct countries and summary stats on mount
   useEffect(() => {
@@ -280,18 +289,52 @@ export default function AdminVendorsList() {
     // Pre-load the vendor IDs that have at least one CV and a current NDA.
     // Both sides of the join are small (~300 of 1500), so we materialize
     // them once and apply them as .in()/.not(in) on the main vendor query.
+    // We also keep the latest-CV + signed-NDA metadata per vendor so the
+    // inline doc-download / NDA-view affordances render without extra
+    // round trips when the table renders.
     supabase
       .from("vendor_cvs")
-      .select("vendor_id")
+      .select("vendor_id, file_storage_path, file_name, version, created_at, is_current")
+      .eq("is_current", true)
       .then(({ data }) => {
-        setVendorsWithCv([...new Set((data ?? []).map((r) => r.vendor_id as string))]);
+        const map: Record<string, { path: string; name: string; version: number; uploaded_at: string }> = {};
+        const ids = new Set<string>();
+        for (const r of data ?? []) {
+          const vid = (r as { vendor_id: string }).vendor_id;
+          if (!vid || !r.file_storage_path) continue;
+          ids.add(vid);
+          map[vid] = {
+            path: r.file_storage_path as string,
+            name: (r.file_name as string) || "cv",
+            version: (r.version as number) ?? 1,
+            uploaded_at: (r.created_at as string) ?? "",
+          };
+        }
+        setCvDocs(map);
+        // Also seed the filter set from the same payload so the page
+        // doesn't have to round-trip a second time.
+        setVendorsWithCv([...ids]);
       });
     supabase
       .from("vendor_nda_signatures")
-      .select("vendor_id")
+      .select("vendor_id, signed_at, signed_full_name, signed_email, signed_html_snapshot")
       .eq("is_current", true)
       .then(({ data }) => {
-        setVendorsWithNda([...new Set((data ?? []).map((r) => r.vendor_id as string))]);
+        const map: Record<string, { signed_at: string; signed_full_name: string; html: string; signed_email: string | null }> = {};
+        const ids = new Set<string>();
+        for (const r of data ?? []) {
+          const vid = (r as { vendor_id: string }).vendor_id;
+          if (!vid) continue;
+          ids.add(vid);
+          map[vid] = {
+            signed_at: r.signed_at as string,
+            signed_full_name: (r.signed_full_name as string) ?? "",
+            html: (r.signed_html_snapshot as string) ?? "",
+            signed_email: (r.signed_email as string) ?? null,
+          };
+        }
+        setNdaDocs(map);
+        setVendorsWithNda([...ids]);
       });
 
     Promise.all([
@@ -473,6 +516,54 @@ export default function AdminVendorsList() {
   useEffect(() => {
     fetchVendors();
   }, [fetchVendors]);
+
+  // Open the latest CV file in a new tab via a short-lived signed URL.
+  // The bucket is private, so direct getPublicUrl() would 404 — sign it.
+  async function handleOpenCv(vendorId: string) {
+    const meta = cvDocs[vendorId];
+    if (!meta) return;
+    setDocLoadingId(vendorId);
+    try {
+      const { data, error } = await supabase.storage
+        .from("vendor-cvs")
+        .createSignedUrl(meta.path, 600);
+      if (error || !data?.signedUrl) {
+        showToast(`CV link error: ${error?.message ?? "unknown"}`, "error");
+        return;
+      }
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } finally {
+      setDocLoadingId(null);
+    }
+  }
+
+  // Render the signed NDA HTML snapshot in a new tab. The snapshot
+  // captures the full NDA + the typed signature + verification metadata
+  // (signer name, email, signed_at). Matches the per-vendor "Download
+  // signed copy" button in VendorNdaTab.tsx, just inlined here so admin
+  // can review the signed NDA without leaving the list view.
+  function handleOpenNda(vendorId: string, vendorName: string) {
+    const meta = ndaDocs[vendorId];
+    if (!meta) return;
+    const safeName = (vendorName || "").replace(/[<>&"']/g, (c) =>
+      ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c] ?? c)
+    );
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Cethos NDA — signed copy (${safeName})</title>
+<style>body{font-family:Georgia,serif;max-width:780px;margin:40px auto;padding:0 24px;line-height:1.55;color:#222}h1,h2,h3{font-family:-apple-system,BlinkMacSystemFont,sans-serif}.meta{background:#f6f6f6;padding:14px 18px;border-left:3px solid #888;margin:24px 0;font-family:-apple-system,monospace;font-size:13px}.meta b{display:inline-block;width:140px}</style>
+</head><body>
+<div class="meta">
+  <div><b>Signed by:</b> ${(meta.signed_full_name || "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c] ?? c))}</div>
+  <div><b>Email:</b> ${(meta.signed_email ?? "—").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c] ?? c))}</div>
+  <div><b>Signed at:</b> ${new Date(meta.signed_at).toUTCString()}</div>
+</div>
+${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for the full record.</em></p>"}
+</body></html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    // Defer revoke so the newly opened tab has time to load the blob.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
 
   const clearFilters = () => {
     setSearch("");
@@ -751,6 +842,9 @@ export default function AdminVendorsList() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Country
                 </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Docs
+                </th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Jobs
                 </th>
@@ -777,14 +871,14 @@ export default function AdminVendorsList() {
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="text-center py-12 text-gray-400">
+                  <td colSpan={13} className="text-center py-12 text-gray-400">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
                     Loading vendors...
                   </td>
                 </tr>
               ) : vendors.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="text-center py-12 text-gray-400">
+                  <td colSpan={13} className="text-center py-12 text-gray-400">
                     No vendors found
                   </td>
                 </tr>
@@ -836,6 +930,53 @@ export default function AdminVendorsList() {
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        {cvDocs[v.id] ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCv(v.id)}
+                            disabled={docLoadingId === v.id}
+                            title={`CV v${cvDocs[v.id].version} — ${cvDocs[v.id].name}${cvDocs[v.id].uploaded_at ? ` (uploaded ${new Date(cvDocs[v.id].uploaded_at).toLocaleDateString()})` : ""}`}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                          >
+                            {docLoadingId === v.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <FileText className="w-3 h-3" />
+                            )}
+                            CV
+                          </button>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-400"
+                            title="No CV on file"
+                          >
+                            <FileText className="w-3 h-3" />
+                            CV
+                          </span>
+                        )}
+                        {ndaDocs[v.id] ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenNda(v.id, v.full_name)}
+                            title={`NDA signed by ${ndaDocs[v.id].signed_full_name || v.full_name}${ndaDocs[v.id].signed_at ? ` on ${new Date(ndaDocs[v.id].signed_at).toLocaleDateString()}` : ""}`}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 hover:bg-green-100"
+                          >
+                            <ShieldCheck className="w-3 h-3" />
+                            NDA
+                          </button>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-400"
+                            title="NDA not signed"
+                          >
+                            <ShieldCheck className="w-3 h-3" />
+                            NDA
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-sm text-gray-700">
                       {v.total_projects}
