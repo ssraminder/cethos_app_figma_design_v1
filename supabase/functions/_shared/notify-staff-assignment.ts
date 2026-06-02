@@ -19,6 +19,7 @@ import {
   title,
   type TemplateMeta,
 } from "./email-shell.ts";
+import { buildEmailSubject } from "./email-subject.ts";
 
 const TEMPLATE: TemplateMeta = {
   name: "Staff — Internal Assignment",
@@ -110,7 +111,7 @@ export async function notifyStaffAssignment(args: NotifyArgs): Promise<void> {
         .maybeSingle(),
       supabase
         .from("orders")
-        .select("id, order_number, internal_project_id")
+        .select("id, order_number, internal_project:internal_projects(project_number), customer:customers(company_name)")
         .eq("id", workflow?.order_id)
         .maybeSingle(),
     ]);
@@ -120,7 +121,13 @@ export async function notifyStaffAssignment(args: NotifyArgs): Promise<void> {
       return;
     }
 
-    const subject = `Assigned: ${order?.order_number ?? "Order"} — ${step?.name ?? "step"}`;
+    const subject = buildEmailSubject({
+      eventLabel: "Assigned",
+      orderNumber: order?.order_number ?? null,
+      projectNumber: (order as any)?.internal_project?.project_number ?? null,
+      companyName: (order as any)?.customer?.company_name ?? null,
+      stepName: step?.name ?? null,
+    });
     const adminLink = order?.id
       ? `${ADMIN_PORTAL_URL}/admin/orders/${order.id}`
       : `${ADMIN_PORTAL_URL}/admin`;

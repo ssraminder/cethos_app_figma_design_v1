@@ -9,6 +9,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { HTML_TEMPLATE, TEXT_TEMPLATE } from "./templates.ts";
+import { prefixWithProject } from "../_shared/email-subject.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -67,7 +68,7 @@ serve(async (req: Request) => {
 
     const { data: order, error: orderErr } = await supabase
       .from("orders")
-      .select("id, order_number, client_project_number")
+      .select("id, order_number, client_project_number, internal_project:internal_projects(project_number), customer:customers(company_name)")
       .eq("id", row.order_id)
       .single();
     if (orderErr || !order) throw new Error(`Order not found: ${orderErr?.message}`);
@@ -159,7 +160,10 @@ serve(async (req: Request) => {
               name: "Cethos Translation Services",
               email: "donotreply@cethos.com",
             },
-            subject: `Updated instructions for ${order.order_number}`,
+            subject: prefixWithProject(
+              `Updated instructions for ${order.order_number}`,
+              { companyName: (order as any)?.customer?.company_name ?? null, projectNumber: (order as any)?.internal_project?.project_number ?? null },
+            ),
             htmlContent: html,
             textContent: text,
           }),
