@@ -64,6 +64,10 @@ interface Order {
   xtrf_project_number: string | null;
   xtrf_project_status: string | null;
   internal_project_number: string | null;
+  source_language_name: string | null;
+  target_language_name: string | null;
+  active_vendor_name: string | null;
+  assignment_bucket: string | null;
 }
 
 interface CompanyOption {
@@ -101,6 +105,9 @@ const COLUMN_SETTINGS_KEY = "adminOrdersColumnSettings";
 type ColumnKey =
   | "orderDetails"
   | "customer"
+  | "languagePair"
+  | "vendor"
+  | "assignment"
   | "status"
   | "total"
   | "clientTotal"
@@ -121,6 +128,9 @@ interface ColumnDef {
 const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: "orderDetails", label: "Order Details", ui: true, export: true },
   { key: "customer", label: "Customer", ui: true, export: true },
+  { key: "languagePair", label: "Languages", ui: true, export: true },
+  { key: "vendor", label: "Vendor", ui: true, export: true },
+  { key: "assignment", label: "Assignment", ui: true, export: true },
   { key: "status", label: "Status", ui: true, export: true },
   { key: "total", label: "Total", ui: true, export: true },
   { key: "clientTotal", label: "Client Total", ui: true, export: true },
@@ -381,7 +391,7 @@ export default function AdminOrdersList() {
     setLoading(true);
     try {
       const select =
-        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,service_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,internal_project_id,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code),internal_project:internal_projects!internal_project_id(project_number)";
+        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,service_id,quote_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,internal_project_id,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code),internal_project:internal_projects!internal_project_id(project_number),quote:quotes(source_language:languages!source_language_id(name),target_language:languages!target_language_id(name))";
 
       const filters: string[] = [];
 
@@ -465,6 +475,48 @@ export default function AdminOrdersList() {
       const count = parseInt(contentRange.split("/")[1] || "0", 10);
       const data: any[] = await res.json();
 
+      // Batched per-page fetch of workflow steps so we can derive:
+      // - the active vendor's name (first non-completed external_vendor step
+      //   with a vendor_id, else most-recent completed external_vendor step)
+      // - the assignment bucket (Unassigned / Partially / Fully / Completed)
+      // PostgREST embedded join would explode row counts; a single IN() batch
+      // mirrors the pattern get-order-workflow uses.
+      const orderIds = (data ?? []).map((o: any) => o.id).filter(Boolean);
+      let stepsByOrder = new Map<string, any[]>();
+      if (orderIds.length > 0) {
+        const stepsQs = `order_workflow_steps?select=order_id,actor_type,status,vendor_id,assigned_at,step_number,vendor:vendors!vendor_id(full_name)&order_id=in.(${orderIds.join(",")})`;
+        const stepsRes = await sbGet(stepsQs);
+        if (stepsRes.ok) {
+          const stepsRows: any[] = await stepsRes.json();
+          for (const s of stepsRows) {
+            const arr = stepsByOrder.get(s.order_id) || [];
+            arr.push(s);
+            stepsByOrder.set(s.order_id, arr);
+          }
+        }
+      }
+
+      function deriveVendorAndAssignment(rows: any[]): { vendorName: string | null; bucket: string } {
+        const vendorSteps = rows.filter((r) => r.actor_type === "external_vendor");
+        if (vendorSteps.length === 0) return { vendorName: null, bucket: "—" };
+        const terminal = new Set(["approved", "skipped", "cancelled"]);
+        const liveVendorSteps = vendorSteps.filter((r) => !terminal.has(r.status));
+        const allDone = liveVendorSteps.length === 0;
+        const assignedCount = vendorSteps.filter((r) => r.vendor_id).length;
+        let bucket: string;
+        if (allDone) bucket = "Completed";
+        else if (assignedCount === 0) bucket = "Unassigned";
+        else if (assignedCount < vendorSteps.length) bucket = "Partially assigned";
+        else bucket = "Fully assigned";
+        // Active vendor: first non-completed vendor step with vendor_id,
+        // ordered by step_number asc.
+        const candidates = liveVendorSteps
+          .filter((r) => r.vendor_id)
+          .sort((a, b) => (a.step_number ?? 0) - (b.step_number ?? 0));
+        const pick = candidates[0] ?? vendorSteps.filter((r) => r.vendor_id).sort((a, b) => (b.assigned_at || "").localeCompare(a.assigned_at || ""))[0];
+        return { vendorName: pick?.vendor?.full_name ?? null, bucket };
+      }
+
       // Transform data
       const transformedOrders =
         data?.map((order) => ({
@@ -493,6 +545,12 @@ export default function AdminOrdersList() {
           xtrf_project_currency_code: order.xtrf_project_currency_code,
           xtrf_project_status: order.xtrf_project_status,
           internal_project_number: (order.internal_project as any)?.project_number ?? null,
+          source_language_name: (order.quote as any)?.source_language?.name ?? null,
+          target_language_name: (order.quote as any)?.target_language?.name ?? null,
+          ...(() => {
+            const va = deriveVendorAndAssignment(stepsByOrder.get(order.id) || []);
+            return { active_vendor_name: va.vendorName, assignment_bucket: va.bucket };
+          })(),
         })) || [];
 
       setOrders(transformedOrders);
@@ -548,6 +606,9 @@ export default function AdminOrdersList() {
     const exportColumns: { key: ColumnKey; headers: string[]; values: (o: Order) => string[] }[] = [
       { key: "orderDetails", headers: ["Order Number", "Rush", "Created"], values: (o) => [o.order_number, o.is_rush ? "Yes" : "No", format(new Date(o.created_at), "yyyy-MM-dd")] },
       { key: "customer", headers: ["Customer Name", "Customer Email"], values: (o) => [o.customer_name, o.customer_email] },
+      { key: "languagePair", headers: ["Source Language", "Target Language"], values: (o) => [o.source_language_name || "", o.target_language_name || ""] },
+      { key: "vendor", headers: ["Active Vendor"], values: (o) => [o.active_vendor_name || ""] },
+      { key: "assignment", headers: ["Assignment Status"], values: (o) => [o.assignment_bucket || ""] },
       { key: "status", headers: ["Status", "Work Status"], values: (o) => [o.status, o.work_status] },
       { key: "total", headers: ["Total"], values: (o) => [(o.total_amount || 0).toFixed(2)] },
       { key: "clientTotal", headers: ["Client Total"], values: (o) => [o.xtrf_project_total_agreed != null ? o.xtrf_project_total_agreed.toFixed(2) : ""] },
@@ -988,6 +1049,9 @@ export default function AdminOrdersList() {
                 <tr>
                   {isColVisible("orderDetails") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Order Details</th>}
                   {isColVisible("customer") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Customer</th>}
+                  {isColVisible("languagePair") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Languages</th>}
+                  {isColVisible("vendor") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Vendor</th>}
+                  {isColVisible("assignment") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Assignment</th>}
                   {isColVisible("status") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>}
                   {isColVisible("total") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>}
                   {isColVisible("clientTotal") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client Total</th>}
@@ -1063,6 +1127,33 @@ export default function AdminOrdersList() {
                             </p>
                           )}
                           <p className="text-xs text-gray-500 mt-0.5">{order.customer_email || "—"}</p>
+                        </td>
+                      )}
+                      {/* Languages */}
+                      {isColVisible("languagePair") && (
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                          {order.source_language_name && order.target_language_name
+                            ? `${order.source_language_name} → ${order.target_language_name}`
+                            : (order.source_language_name || order.target_language_name || "—")}
+                        </td>
+                      )}
+                      {/* Vendor */}
+                      {isColVisible("vendor") && (
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {order.active_vendor_name || <span className="text-gray-400 italic text-xs">—</span>}
+                        </td>
+                      )}
+                      {/* Assignment */}
+                      {isColVisible("assignment") && (
+                        <td className="px-4 py-3 text-xs whitespace-nowrap">
+                          {(() => {
+                            const b = order.assignment_bucket;
+                            if (b === "Fully assigned") return <span className="inline-flex px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">Fully assigned</span>;
+                            if (b === "Partially assigned") return <span className="inline-flex px-2 py-0.5 rounded bg-amber-100 text-amber-800">Partially assigned</span>;
+                            if (b === "Unassigned") return <span className="inline-flex px-2 py-0.5 rounded bg-red-100 text-red-800">Unassigned</span>;
+                            if (b === "Completed") return <span className="inline-flex px-2 py-0.5 rounded bg-gray-100 text-gray-700">Completed</span>;
+                            return <span className="text-gray-400">—</span>;
+                          })()}
                         </td>
                       )}
                       {/* Status */}
