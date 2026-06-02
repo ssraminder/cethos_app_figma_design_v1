@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — customer dashboard unreadMessages wired to real rollup (R7)
+- **What:** [get-customer-dashboard/index.ts:186](supabase/functions/get-customer-dashboard/index.ts) had `unreadMessages: 0` hardcoded. Now sums `customer_conversations.unread_count_customer` (trigger-maintained rollup). PR [#839](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/839).
+- **Verified live:** Pui Kei Chong (7 unread per DB) returns `unreadMessages: 7` from deployed endpoint. ZZ TEST DirectOrder Co (0 unread) returns 0.
+- **Affects:** [supabase/functions/get-customer-dashboard/index.ts](supabase/functions/get-customer-dashboard/index.ts).
+
 ### 2026-06-02 — customer workflow_completed email CTA → customer route (R6)
 - **What:** `notifyCustomerWorkflowCompleted` CTA in [_shared/notify-step-lifecycle.ts:607](supabase/functions/_shared/notify-step-lifecycle.ts) pointed to `/orders/:id` (admin route, staff-auth). Customers clicking through hit a login wall. Now `/dashboard/orders/:id` (customer route, same host). PR [#838](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/838). Redeployed the 3 consumers (update-workflow-step, manage-vendor-payables, expire-stale-offers).
 - **Verified:** code-level only — diff is literal URL path substitution, no behavioral risk surface.
