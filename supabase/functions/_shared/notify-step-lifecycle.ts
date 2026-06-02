@@ -604,7 +604,10 @@ export async function notifyCustomerWorkflowCompleted(ctx: WorkflowCompletedCont
       ["Order", ctx.order.order_number],
       ["Status", "Completed"],
     ]),
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(ADMIN_PORTAL_URL + "/orders/" + ctx.order.id)}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">Open order</a></td></tr></tbody></table>`,
+    // Customer-facing CTA — must hit the customer route, not /orders/:id
+    // which sits behind staff auth. The customer portal lives at
+    // /dashboard/orders/:id on the same host.
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;"><tbody><tr><td align="center" bgcolor="#0891B2" style="background:#0891B2;border-radius:8px;"><a href="${esc(ADMIN_PORTAL_URL + "/dashboard/orders/" + ctx.order.id)}" target="_blank" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;border-radius:8px;">Open order</a></td></tr></tbody></table>`,
   ].join("");
 
   await sendOne({
