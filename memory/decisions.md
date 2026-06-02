@@ -18,6 +18,17 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Audit-queue tail: Tier 4 emails + R12 + R11 followup (PRs #863-#865)
+- **PR #863 (#2.1 Tier 4):** PRJ-prefix added to notify-customer-quote-ack, notify-customer-order-confirmed, send-invoice-email, send-final-deliverable, review-draft-file. send-payment-reminders skipped (cross-invoice emails — single project prefix would mislead).
+- **PR #864 (R12):** Soft-retired software_localization + subtitling workflow templates (zero usage since seeding 8+ weeks). mtpe_review left active (R8+R24 just touched) and harmonization_review left active (1 historical use).
+- **PR #865 (R11 followup):** UnassignVendorModal extracted to its own file (~250 lines). VendorAssignModal + WorkflowPipeline still inline — heavier parent-state coupling warrants its own focused PR.
+
+### 2026-06-02 — R14+R17 deferred (audit-defensible path)
+- **Decision:** R14 (backfill qms.role_qualifications from history) + R17 (flip qms gating from `warn` to `block`) stay deferred until a per-vendor QMS evidence-entry admin UI exists.
+- **Rationale:** Flipping R17 to `block` without R14 data populated would brick every vendor assignment (no qualifications → gate denies). Bulk backfill of historical assignments without per-vendor signoff is ISO-audit-sensitive per the classifier's denial on 2026-06-02. The defensible path is an admin UI that lets staff record qualifications at the moment of assignment, plus a "Mark vendor qualified" action on the vendor profile. R14 then populates incrementally as orders flow through. Only after that data exists does R17 flip become safe.
+- **Status:** active (deferred until QMS evidence-entry UI ships)
+- **Affects:** Will touch `client/pages/admin/AdminVendorProfile.tsx` (new tab), a new `qms-add-qualification` edge function, and the existing `qms_check_assignment` RPC (no schema change needed).
+
 ### 2026-06-02 — #2.2b orders list filters: vendor / language pair / assignment (PR #862)
 - **Decision:** Four new filters on `/admin/orders`: Vendor (typeahead), Source language, Target language, Assignment status. Vendor + assignment use 2-stage queries (`order_workflow_steps` → `orders WHERE id IN (…)`); languages resolve via `quotes` table (`quote_id IN (…)`).
 - **Rationale:** Closes #2.2 — columns shipped in #2.2a were not usable as filters. 2-stage pattern picked because vendor and assignment are derived across steps; PostgREST embedded-resource filters require inner joins we don't want to force on legacy orders without a quote.
