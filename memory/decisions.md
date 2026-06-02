@@ -18,6 +18,12 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — CAT receivable parity shipped (#2.5 Phase B 1-3)
+- **Phase B-1 (#849):** New `receivable_cat_lines` table, parallel to `vendor_payable_cat_lines`. RLS staff-only.
+- **Phase B-2 (#850):** New `manage-receivables` edge function with `create_receivable` (flat/per_word/per_hour/per_page/cat), `adjust_receivable`, `cancel_receivable`. Same deterministic CAT math as payable side. Locks at invoiced/voided (`RECEIVABLE_LOCKED` 409). Required follow-on migration to allow `pricing_mode='cat'` on order_receivables (constraint was per_unit/target only).
+- **Phase B-3 (#851):** New `ManageReceivableModal` UI + Finance tab wiring. Focused on CAT-tier creation (6 default buckets, live preview). Existing inline `+ Add line` handles flat/per-unit. Respects the existing `hasIssuedInvoice` lock.
+- **Verified live (Phase B-2):** create_receivable CAT 200w×100% + 100w×50% + 50w×25% × $0.10 base → subtotal **$26.25**, units 350. Same shape as payable side verified earlier today.
+
 ### 2026-06-02 — Payable lock once invoiced/paid + currency mismatch warning (#2.4 + R21)
 - **Server:** [manage-vendor-payables.adjust_payable](supabase/functions/manage-vendor-payables/index.ts) now refuses status IN ('invoiced','paid','cancelled') with `PAYABLE_LOCKED` 409 (was paid+cancelled only). `create_payable` Replace flow refuses when prior payable is invoiced/paid with `PAYABLE_LOCKED` + `prior_payable_status`.
 - **UI:** [OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx) — Adjust inline hidden when invoiced/paid; Manage Payable / + Add Payable button replaced with 🔒 chip showing locked amount + status.
