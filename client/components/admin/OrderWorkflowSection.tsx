@@ -28,6 +28,7 @@ import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { ADMIN_CURRENCIES } from "@/lib/currencies";
 import BrevoEmailLogsModal from "./BrevoEmailLogsModal";
 import ManagePayableModal from "./ManagePayableModal";
+import { ConfirmDialog, useConfirmDialog } from "./ConfirmDialog";
 import OrderFinancialSummary, {
   type VendorFinancials,
   type MarginData,
@@ -2494,6 +2495,15 @@ function WorkflowPipeline({
   const [negotiatingOfferId, setNegotiatingOfferId] = useState<string | null>(null);
   const [negotiationError, setNegotiationError] = useState<Record<string, string>>({});
 
+  // Styled confirm() replacement — see ./ConfirmDialog. Rendered at the bottom
+  // of the pipeline. Native window.confirm() was inconsistent with the rest
+  // of the admin UI and is blocked-by-default in some browsers.
+  const {
+    confirm: confirmDialog,
+    state: confirmState,
+    handleAnswer: handleConfirmAnswer,
+  } = useConfirmDialog();
+
   const fetchNegotiationRec = async (offerId: string) => {
     setNegotiatingOfferId(offerId);
     setNegotiationError((m) => ({ ...m, [offerId]: "" }));
@@ -3049,9 +3059,15 @@ function WorkflowPipeline({
                       <button
                         className="text-gray-400 hover:text-red-500 text-xs p-1"
                         title="Remove step"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          if (confirm(`Remove step "${step.name}"? This cannot be undone.`)) {
+                          const ok = await confirmDialog({
+                            title: "Remove step?",
+                            message: `Remove step "${step.name}"? This cannot be undone.`,
+                            confirmLabel: "Remove step",
+                            tone: "danger",
+                          });
+                          if (ok) {
                             handleManageSteps("remove_step", { step_id: step.id });
                           }
                         }}
@@ -3367,8 +3383,13 @@ function WorkflowPipeline({
                                   <div className="pt-1 flex items-center gap-2">
                                     {negotiationRecs[offer.id].action === "accept" && (
                                       <button
-                                        onClick={() => {
-                                          if (confirm(`Apply AI recommendation: accept the counter as-is?`)) {
+                                        onClick={async () => {
+                                          const ok = await confirmDialog({
+                                            title: "Apply AI recommendation?",
+                                            message: "Accept the counter as-is per the AI recommendation?",
+                                            confirmLabel: "Accept counter",
+                                          });
+                                          if (ok) {
                                             handleRespondCounter(offer.id, "accept");
                                           }
                                         }}
@@ -3406,8 +3427,13 @@ function WorkflowPipeline({
                               <button
                                 className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded inline-flex items-center gap-1 disabled:opacity-50"
                                 disabled={counterLoadingId === offer.id}
-                                onClick={() => {
-                                  if (confirm(`Accept counter-proposal from ${offer.vendor_name}? This will assign them to the step at the new rate.`)) {
+                                onClick={async () => {
+                                  const ok = await confirmDialog({
+                                    title: "Accept counter-proposal?",
+                                    message: `Accept counter-proposal from ${offer.vendor_name}? This will assign them to the step at the new rate.`,
+                                    confirmLabel: "Accept & assign",
+                                  });
+                                  if (ok) {
                                     handleRespondCounter(offer.id, 'accept');
                                   }
                                 }}
@@ -3953,10 +3979,16 @@ function WorkflowPipeline({
                         <button
                           className="text-xs px-2 py-1 border border-red-300 text-red-600 rounded hover:bg-red-50"
                           disabled={actionLoading === step.id}
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
                             const activeCount = step.offers!.filter((o: any) => ['pending', 'accepted'].includes(o.status)).length;
-                            if (confirm(`Retract all ${activeCount} offer(s) and reset step to Pending? All associated payables will be cancelled.`)) {
+                            const ok = await confirmDialog({
+                              title: "Retract all offers?",
+                              message: `Retract all ${activeCount} offer(s) and reset step to Pending? All associated payables will be cancelled.`,
+                              confirmLabel: "Retract all",
+                              tone: "danger",
+                            });
+                            if (ok) {
                               handleStepAction(step.id, "retract_offers", {});
                             }
                           }}
@@ -4007,14 +4039,20 @@ function WorkflowPipeline({
                     <button
                       className="text-xs px-2 py-1 border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
                       disabled={actionLoading === step.id}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         const name = step.assigned_staff_name || "this staff member";
                         const hasFiles = (step.delivered_file_paths?.length ?? 0) > 0;
                         const msg = hasFiles
                           ? `Unassign ${name} from this step? Already-delivered files will be cleared. The step will reset to Pending.`
                           : `Unassign ${name} from this step? The step will reset to Pending.`;
-                        if (confirm(msg)) {
+                        const ok = await confirmDialog({
+                          title: "Unassign staff?",
+                          message: msg,
+                          confirmLabel: "Unassign",
+                          tone: "danger",
+                        });
+                        if (ok) {
                           handleStepAction(step.id, "unassign_staff", { reason: "reassigning" });
                         }
                       }}
@@ -4237,9 +4275,14 @@ function WorkflowPipeline({
                     <button
                       className="text-xs px-3 py-1 border border-gray-400 text-gray-600 rounded hover:bg-gray-50"
                       disabled={actionLoading === step.id}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        if (confirm("Skip this optional step?")) {
+                        const ok = await confirmDialog({
+                          title: "Skip optional step?",
+                          message: "Skip this optional step?",
+                          confirmLabel: "Skip",
+                        });
+                        if (ok) {
                           handleStepAction(step.id, "skip_step", {});
                         }
                       }}
@@ -5222,6 +5265,7 @@ function WorkflowPipeline({
           }}
         />
       )}
+      <ConfirmDialog state={confirmState} onAnswer={handleConfirmAnswer} />
     </div>
   );
 }
@@ -5482,6 +5526,12 @@ function UnassignVendorModal({ isOpen, onClose, step, onConfirm }: UnassignVendo
 // ── Main Exported Section Component ──
 
 export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refreshKey, onUploadFinalDeliverable, onDraftPromoted }: { orderId: string; onWorkflowLoaded?: (data: any) => void; refreshKey?: number; onUploadFinalDeliverable?: () => void; onDraftPromoted?: (params: { stepId: string; quoteFileId: string; reviewVersion: number; sourceFilename: string }) => Promise<void> | void }) {
+  // Styled confirm() replacement — see ./ConfirmDialog. Rendered below.
+  const {
+    confirm: confirmDialog,
+    state: confirmState,
+    handleAnswer: handleConfirmAnswer,
+  } = useConfirmDialog();
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -5743,7 +5793,13 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
   };
 
   const handleRetractSingleOffer = async (stepId: string, offerId: string, vendorName: string) => {
-    if (!confirm(`Retract offer to ${vendorName}? This will also cancel their payable if one exists.`)) return;
+    const ok = await confirmDialog({
+      title: "Retract offer?",
+      message: `Retract offer to ${vendorName}? This will also cancel their payable if one exists.`,
+      confirmLabel: "Retract offer",
+      tone: "danger",
+    });
+    if (!ok) return;
 
     try {
       const { data: result, error } = await supabase.functions.invoke('update-workflow-step', {
@@ -6040,6 +6096,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
           }
         }}
       />
+      <ConfirmDialog state={confirmState} onAnswer={handleConfirmAnswer} />
     </div>
   );
 }
