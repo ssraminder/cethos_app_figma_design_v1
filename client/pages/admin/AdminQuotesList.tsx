@@ -167,8 +167,25 @@ export default function AdminQuotesList() {
         .is("parent_quote_id", null);
 
       // Apply filters
+      // The search input now matches across quote_number AND customer
+      // name/email/phone. We resolve matching customer IDs first (2-stage
+      // query — PostgREST embedded-resource ilike on the customer join would
+      // require an inner join we don't want to force), then OR the quote-
+      // number ilike with customer_id.in.(ids).
       if (search) {
-        query = query.ilike("quote_number", `%${search}%`);
+        const escaped = search.replace(/[*,%()]/g, "").trim();
+        const orFilter = `full_name.ilike.*${escaped}*,email.ilike.*${escaped}*,phone.ilike.*${escaped}*`;
+        const { data: matching } = await supabase
+          .from("customers")
+          .select("id")
+          .or(orFilter)
+          .limit(500);
+        const ids = (matching || []).map((c: any) => c.id);
+        if (ids.length > 0) {
+          query = query.or(`quote_number.ilike.%${escaped}%,customer_id.in.(${ids.join(",")})`);
+        } else {
+          query = query.ilike("quote_number", `%${escaped}%`);
+        }
       }
 
       if (customerName) {
@@ -487,7 +504,7 @@ export default function AdminQuotesList() {
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search quotes..."
+                  placeholder="Search by quote #, name, email, or phone…"
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
               </div>
