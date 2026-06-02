@@ -18,6 +18,12 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — R11 full split complete + R12b template cleanup (PRs #866-#868)
+- **PR #866 (R12b):** Soft-retired `mtpe_review` + `harmonization_review` workflow templates (low/zero usage). All 4 originally-flagged unused templates now retired.
+- **PR #867 (R11 followup):** VendorAssignModal (~950 lines) extracted to its own file.
+- **PR #868 (R11 final):** WorkflowPipeline (~2,870 lines) + 5 helper components (StepStatusBadge, ActorIcon, CounterBackForm, ActorTypeBadge, StaffPickerDropdown) extracted; new `workflowTypes.ts` holds shared types + status-styling constants. **OrderWorkflowSection.tsx: 4,441 → 957 lines** — focused on data fetching + section composition now.
+- **Status:** active. R11 split is complete. R14+R17 remain deferred per earlier entry.
+
 ### 2026-06-02 — Audit-queue tail: Tier 4 emails + R12 + R11 followup (PRs #863-#865)
 - **PR #863 (#2.1 Tier 4):** PRJ-prefix added to notify-customer-quote-ack, notify-customer-order-confirmed, send-invoice-email, send-final-deliverable, review-draft-file. send-payment-reminders skipped (cross-invoice emails — single project prefix would mislead).
 - **PR #864 (R12):** Soft-retired software_localization + subtitling workflow templates (zero usage since seeding 8+ weeks). mtpe_review left active (R8+R24 just touched) and harmonization_review left active (1 historical use).
