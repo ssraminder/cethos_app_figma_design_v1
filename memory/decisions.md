@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Step actor badge follows the actual assignee, not the template (R1)
+- **What:** `ActorTypeBadge` in [OrderWorkflowSection.tsx:277](client/components/admin/OrderWorkflowSection.tsx) previously rendered the label from `step.actor_type` (template intent). When a staff member filled an external_vendor-actor step via `allowed_actor_types`, the badge still said "Vendor". Now resolves from `vendor_id` → `assigned_staff_id` → template fallback. PR [#840](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/840).
+- **Verified live:** ORD-2026-10254 (Standard TEP). Before: Bobby Rawat showed as "Vendor" on Steps 2+3 and "Internal (Review)" on Step 4 (same person, 3 visual identities). After: "Internal (Work)" on Steps 2+3, "Internal (Review)" on Step 4, "Vendor Abhinav Dang" on Step 1 (unchanged).
+- **Affects:** [client/components/admin/OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx). Universal across all 10 workflow templates because the badge is a shared component.
+
 ### 2026-06-02 — customer dashboard unreadMessages wired to real rollup (R7)
 - **What:** [get-customer-dashboard/index.ts:186](supabase/functions/get-customer-dashboard/index.ts) had `unreadMessages: 0` hardcoded. Now sums `customer_conversations.unread_count_customer` (trigger-maintained rollup). PR [#839](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/839).
 - **Verified live:** Pui Kei Chong (7 unread per DB) returns `unreadMessages: 7` from deployed endpoint. ZZ TEST DirectOrder Co (0 unread) returns 0.
