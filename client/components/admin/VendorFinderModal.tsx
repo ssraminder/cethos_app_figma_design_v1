@@ -578,8 +578,22 @@ export default function VendorFinderModal({
               />
               Select all (for batch offer)
             </label>
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-gray-500 flex items-center gap-3">
               {searching ? "Searching..." : `${totalMatches} vendor(s) found`}
+              {/* R19 — source new vendor: link to recruitment with the
+                  current language pair + service pre-filled so staff can
+                  prioritise the applicant pipeline for this exact gap. */}
+              {!searching && (
+                <a
+                  href={`/admin/recruitment?source=${encodeURIComponent(sourceLanguage || "")}&target=${encodeURIComponent(targetLanguage || "")}&service=${encodeURIComponent(serviceId || "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-2 py-0.5 border border-indigo-300 text-indigo-700 rounded hover:bg-indigo-50"
+                  title="Open Recruitment filtered to this language pair + service so you can source a new vendor for it"
+                >
+                  Source new vendor →
+                </a>
+              )}
             </span>
           </div>
 
@@ -589,7 +603,17 @@ export default function VendorFinderModal({
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
           ) : vendors.length === 0 ? (
-            <p className="text-center py-8 text-sm text-gray-400">No vendors found. Adjust filters and search again.</p>
+            <div className="py-8 text-center space-y-2">
+              <p className="text-sm text-gray-400">No vendors found. Adjust filters and search again, or:</p>
+              <a
+                href={`/admin/recruitment?source=${encodeURIComponent(sourceLanguage || "")}&target=${encodeURIComponent(targetLanguage || "")}&service=${encodeURIComponent(serviceId || "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 border border-indigo-300 text-indigo-700 rounded hover:bg-indigo-50"
+              >
+                Source a new vendor for {sourceLanguage} → {targetLanguage} →
+              </a>
+            </div>
           ) : (
             <div className="space-y-2">
               {vendors.map((v: any) => (
