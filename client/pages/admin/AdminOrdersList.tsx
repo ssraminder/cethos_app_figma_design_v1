@@ -177,7 +177,7 @@ export default function AdminOrdersList() {
 
   const filterKeys = [
     "search", "status", "work_status", "from", "to", "rush",
-    "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus",
+    "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus", "po",
     "service", "company",
   ];
 
