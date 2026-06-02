@@ -29,6 +29,18 @@ import {
   title,
   type TemplateMeta,
 } from "./email-shell.ts";
+import { buildEmailSubject, prefixWithProject } from "./email-subject.ts";
+
+// Helper: extract the project/company/lang fields from either context type
+// so we can call buildEmailSubject() without listing them at every call site.
+function subjectCtxFromStep(ctx: any) {
+  return {
+    projectNumber: ctx.project_number ?? null,
+    companyName: ctx.company_name ?? null,
+    sourceLangName: ctx.source_lang_name ?? null,
+    targetLangName: ctx.target_lang_name ?? null,
+  };
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Per-event template metadata. Bump version + updatedAt when you change copy
@@ -202,6 +214,13 @@ export interface StepLifecycleContext {
   vendor: VendorRow;
   order: { id: string; order_number: string };
   step: { id: string; name: string | null; step_number?: number | null };
+  // Optional fields used by buildEmailSubject() to lead with the project
+  // number on business-customer emails (#2.1). Callers should populate them
+  // when available; subjects gracefully fall back when missing.
+  project_number?: string | null;
+  company_name?: string | null;
+  source_lang_name?: string | null;
+  target_lang_name?: string | null;
   payable?: {
     id: string;
     total: number | null;
@@ -217,7 +236,12 @@ export interface StepLifecycleContext {
 // 1. notifyVendorStepApproved
 // ──────────────────────────────────────────────────────────────────────────
 export async function notifyVendorStepApproved(ctx: StepLifecycleContext): Promise<void> {
-  const subject = `Step approved: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
+  const subject = buildEmailSubject({
+    eventLabel: "Step approved",
+    orderNumber: ctx.order.order_number,
+    stepName: ctx.step.name,
+    ...subjectCtxFromStep(ctx),
+  });
   const rows: Array<[string, string]> = [
     ["Order", ctx.order.order_number],
     ["Step", ctx.step.name || "—"],
@@ -262,7 +286,12 @@ export async function notifyVendorStepApproved(ctx: StepLifecycleContext): Promi
 export async function notifyVendorRevisionRequested(
   ctx: StepLifecycleContext & { reason: string | null },
 ): Promise<void> {
-  const subject = `Revision requested: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
+  const subject = buildEmailSubject({
+    eventLabel: "Revision requested",
+    orderNumber: ctx.order.order_number,
+    stepName: ctx.step.name,
+    ...subjectCtxFromStep(ctx),
+  });
   const reasonCallout = ctx.reason
     ? callout({ tone: "warn", title: "Reviewer feedback", body: esc(ctx.reason) })
     : "";
@@ -301,7 +330,10 @@ export async function notifyVendorRevisionRequested(
 // ──────────────────────────────────────────────────────────────────────────
 export async function notifyVendorPayableInvoiced(ctx: StepLifecycleContext): Promise<void> {
   if (!ctx.payable) return;
-  const subject = `Invoice recorded: ${ctx.order.order_number}`;
+  const subject = prefixWithProject(
+    `Invoice recorded: ${ctx.order.order_number}`,
+    { companyName: ctx.company_name, projectNumber: ctx.project_number },
+  );
 
   const rows: Array<[string, string]> = [
     ["Order", ctx.order.order_number],
@@ -345,7 +377,10 @@ export async function notifyVendorPayableInvoiced(ctx: StepLifecycleContext): Pr
 // ──────────────────────────────────────────────────────────────────────────
 export async function notifyVendorPayablePaid(ctx: StepLifecycleContext): Promise<void> {
   if (!ctx.payable) return;
-  const subject = `Payment sent: ${ctx.order.order_number}`;
+  const subject = prefixWithProject(
+    `Payment sent: ${ctx.order.order_number}`,
+    { companyName: ctx.company_name, projectNumber: ctx.project_number },
+  );
 
   const rows: Array<[string, string]> = [
     ["Order", ctx.order.order_number],
@@ -396,7 +431,12 @@ export async function notifyVendorUnassigned(ctx: UnassignedContext): Promise<vo
   const reasonLabel = ctx.reason
     ? UNASSIGN_REASON_LABELS[ctx.reason] ?? ctx.reason
     : "Not specified";
-  const subject = `Assignment removed: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
+  const subject = buildEmailSubject({
+    eventLabel: "Assignment removed",
+    orderNumber: ctx.order.order_number,
+    stepName: ctx.step.name,
+    ...subjectCtxFromStep(ctx),
+  });
   const notesCallout = ctx.notes
     ? callout({ tone: "info", title: "Notes from project manager", body: esc(ctx.notes) })
     : "";
@@ -445,7 +485,12 @@ export interface DeadlineChangedContext extends StepLifecycleContext {
 }
 
 export async function notifyVendorDeadlineChanged(ctx: DeadlineChangedContext): Promise<void> {
-  const subject = `Deadline updated: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
+  const subject = buildEmailSubject({
+    eventLabel: "Deadline updated",
+    orderNumber: ctx.order.order_number,
+    stepName: ctx.step.name,
+    ...subjectCtxFromStep(ctx),
+  });
   const now = Date.now();
   const oldMs = ctx.old_deadline ? new Date(ctx.old_deadline).getTime() : null;
   const newMs = new Date(ctx.new_deadline).getTime();
@@ -519,7 +564,12 @@ export interface PayableAdjustedContext extends StepLifecycleContext {
 }
 
 export async function notifyVendorPayableAdjusted(ctx: PayableAdjustedContext): Promise<void> {
-  const subject = `Payable adjusted: ${ctx.order.order_number} — ${ctx.step.name || "step"}`;
+  const subject = buildEmailSubject({
+    eventLabel: "Payable adjusted",
+    orderNumber: ctx.order.order_number,
+    stepName: ctx.step.name,
+    ...subjectCtxFromStep(ctx),
+  });
   const direction: "increased" | "decreased" | "unchanged" | null =
     ctx.old_subtotal != null && ctx.new_subtotal != null
       ? ctx.new_subtotal > ctx.old_subtotal ? "increased"
@@ -589,7 +639,10 @@ export interface WorkflowCompletedContext {
 }
 
 export async function notifyCustomerWorkflowCompleted(ctx: WorkflowCompletedContext): Promise<void> {
-  const subject = `Order complete: ${ctx.order.order_number}`;
+  const subject = prefixWithProject(
+    `Order complete: ${ctx.order.order_number}`,
+    { companyName: (ctx as any).company_name, projectNumber: (ctx as any).project_number },
+  );
   const greeting = ctx.customer.full_name
     ? `Hi ${esc(firstName(ctx.customer.full_name))},`
     : "Hi,";

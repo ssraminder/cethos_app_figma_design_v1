@@ -44,13 +44,13 @@ async function loadWorkflowCompletedContext(supabase: any, step: any): Promise<a
     if (!step?.order_id) return null;
     const { data: orderRow } = await supabase
       .from("orders")
-      .select("id, order_number, customer_id")
+      .select("id, order_number, customer_id, internal_project:internal_projects(project_number)")
       .eq("id", step.order_id)
       .maybeSingle();
     if (!orderRow?.customer_id) return null;
     const { data: customer } = await supabase
       .from("customers")
-      .select("id, full_name, email")
+      .select("id, full_name, email, company_name")
       .eq("id", orderRow.customer_id)
       .maybeSingle();
     if (!customer?.email) return null;
@@ -58,6 +58,8 @@ async function loadWorkflowCompletedContext(supabase: any, step: any): Promise<a
       supabase,
       customer: { id: customer.id, full_name: customer.full_name, email: customer.email },
       order: { id: orderRow.id, order_number: orderRow.order_number },
+      project_number: (orderRow as any)?.internal_project?.project_number ?? null,
+      company_name: (customer as any)?.company_name ?? null,
       workflowId: step.workflow_id,
     };
   } catch (e: any) {
@@ -74,10 +76,14 @@ async function loadWorkflowCompletedContext(supabase: any, step: any): Promise<a
 async function loadStepLifecycleContext(supabase: any, step: any): Promise<any | null> {
   try {
     if (!step?.vendor_id) return null;
-    const [{ data: vendor }, { data: orderRow }, { data: payable }] = await Promise.all([
+    const [{ data: vendor }, { data: orderRow }, { data: payable }, langPair] = await Promise.all([
       supabase.from("vendors").select("id, full_name, email, additional_emails").eq("id", step.vendor_id).maybeSingle(),
       step.order_id
-        ? supabase.from("orders").select("id, order_number").eq("id", step.order_id).maybeSingle()
+        ? supabase
+            .from("orders")
+            .select("id, order_number, internal_project:internal_projects(project_number), customer:customers(company_name)")
+            .eq("id", step.order_id)
+            .maybeSingle()
         : Promise.resolve({ data: null }),
       supabase
         .from("vendor_payables")
@@ -87,6 +93,23 @@ async function loadStepLifecycleContext(supabase: any, step: any): Promise<any |
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      // Resolve language pair (UUIDs → names) so subjects can include it.
+      step?.source_language || step?.target_language
+        ? (async () => {
+            const ids = [step?.source_language, step?.target_language].filter((v: any) => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v));
+            const map = new Map<string, string>();
+            if (ids.length > 0) {
+              const { data: rows } = await supabase.from("languages").select("id, name").in("id", ids);
+              for (const r of (rows ?? []) as Array<{ id: string; name: string }>) map.set(r.id, r.name);
+            }
+            const resolve = (v: any): string | null => {
+              if (!v) return null;
+              if (typeof v === "string" && map.has(v)) return map.get(v) ?? null;
+              return typeof v === "string" ? v : null;
+            };
+            return { source: resolve(step?.source_language), target: resolve(step?.target_language) };
+          })()
+        : Promise.resolve({ source: null, target: null }),
     ]);
     if (!vendor?.email || !orderRow) return null;
     return {
@@ -99,6 +122,10 @@ async function loadStepLifecycleContext(supabase: any, step: any): Promise<any |
       },
       order: { id: orderRow.id, order_number: orderRow.order_number },
       step: { id: step.id, name: step.name ?? null, step_number: step.step_number ?? null },
+      project_number: (orderRow as any)?.internal_project?.project_number ?? null,
+      company_name: (orderRow as any)?.customer?.company_name ?? null,
+      source_lang_name: (langPair as any)?.source ?? null,
+      target_lang_name: (langPair as any)?.target ?? null,
       payable: payable
         ? {
             id: payable.id,
