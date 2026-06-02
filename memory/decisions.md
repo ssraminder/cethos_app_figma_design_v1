@@ -18,6 +18,10 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Sprint 7+8 partials: VendorFinderModal extraction + WORM (R11p, R18)
+- **R11 partial (#857):** VendorFinderModal (~700 lines) + its local SearchableSelect extracted from OrderWorkflowSection.tsx (5,995 → 5,412 lines). No behavior change. Sets up cleaner ground for R9 counter-back UI + R13 per-vendor rate to land on top. VendorAssignModal / UnassignVendorModal / WorkflowPipeline stay in the original file.
+- **R18 (#858):** WORM `enforce_worm_no_delete()` SECURITY DEFINER trigger on notification_log + order_workflow_steps + qms.assignment_eligibility_events. service_role + postgres bypass; everything else raises 42501. Bypass attempts logged via NOTICE.
+
 ### 2026-06-02 — Sprint 6: universal Customer Draft Review + service-aware customer copy (R8+R24, R10)
 - **R8+R24 (#855):** Customer Draft Review step added to standard_tep, translation_review, mtpe_review (was only on certified_translation). Reverse `approval_depends_on_step` pattern from Phase B-E finding promoted: the last vendor step's approval blocks until the customer signs off. step_number renumbering via +100/-99 hop to dodge unique-key collision. In-flight orders unaffected. §6.2 constraints from R15 preserved.
 - **R10 (#856):** [get-customer-order-detail](supabase/functions/get-customer-order-detail/index.ts) now joins services and returns service_name + service_code. [CustomerOrderDetail.tsx](client/pages/customer/CustomerOrderDetail.tsx) "Translation Details" header swaps to "<Service> Details" (or "Order Details" fallback); file-category label uses the service name instead of hardcoded "Certified Translation".
