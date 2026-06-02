@@ -63,7 +63,7 @@ serve(async (req: Request) => {
     // the invoiced→completed transition). We synthesise events from
     // orders.paid_at / actual_delivery_date / completed_at / created_at below
     // so the dashboard surfaces activity even when history is missing.
-    const [ordersRes, quotesRes, orderHistRes, quoteHistRes] = await Promise.all([
+    const [ordersRes, quotesRes, orderHistRes, quoteHistRes, conversationsRes] = await Promise.all([
       sb.from("orders")
         .select("id, order_number, status, total_amount, amount_paid, created_at, updated_at, paid_at, actual_delivery_date, completed_at")
         .eq("customer_id", customerId)
@@ -86,6 +86,11 @@ serve(async (req: Request) => {
         .is("quotes.parent_quote_id", null)
         .order("created_at", { ascending: false })
         .limit(10),
+      // Unread customer-facing messages — sum the per-conversation rollup
+      // maintained by trigger on conversation_messages.
+      sb.from("customer_conversations")
+        .select("unread_count_customer")
+        .eq("customer_id", customerId),
     ]);
 
     if (ordersRes.error) return json({ success: false, error: ordersRes.error.message }, 500);
@@ -183,7 +188,10 @@ serve(async (req: Request) => {
           completedOrders,
           totalSpent,
           recentActivity,
-          unreadMessages: 0,
+          unreadMessages: (conversationsRes.data ?? []).reduce(
+            (sum: number, row: any) => sum + (Number(row?.unread_count_customer) || 0),
+            0,
+          ),
         },
       },
     });
