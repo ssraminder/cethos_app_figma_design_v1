@@ -58,6 +58,7 @@ import SendLinkConfirmModal from "../../components/admin/SendLinkConfirmModal";
 import OcrAnalysisModal from "../../components/admin/OcrAnalysisModal";
 import OriginalsModal from "../../components/admin/OriginalsModal";
 import QuoteActivityFeed from "../../components/admin/QuoteActivityFeed";
+import StaffNotesPanel from "../../components/admin/StaffNotesPanel";
 import { logQuoteActivity } from "../../utils/quoteActivityLog";
 import { compressPdfIfNeeded, needsCompression } from "@/utils/compressPdf";
 import { formatEntryPoint, entryPointBadgeColor } from "../../utils/quoteUtils";
@@ -6072,6 +6073,9 @@ export default function AdminQuoteDetail() {
               </div>
             </div>
           )}
+
+          {/* Staff-only internal notes */}
+          <StaffNotesPanel entityType="quote" entityId={id} />
 
           {/* ============ UNIFIED ACTIVITY FEED ============ */}
           <QuoteActivityFeed quoteId={id!} quote={quote} supabase={supabase} />

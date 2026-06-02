@@ -74,6 +74,7 @@ import OrderFinanceSection from "@/components/admin/OrderFinanceSection";
 import OrderFinanceTab from "@/components/admin/OrderFinanceTab";
 import OrderInvoiceCard from "@/components/admin/OrderInvoiceCard";
 import OrderCommunicationsTab from "@/components/admin/OrderCommunicationsTab";
+import StaffNotesPanel from "@/components/admin/StaffNotesPanel";
 
 interface OrderDetail {
   id: string;
@@ -3698,6 +3699,9 @@ export default function AdminOrderDetail() {
               </div>
             )}
           </div>
+
+          {/* Staff-only internal notes */}
+          {id && <StaffNotesPanel entityType="order" entityId={id} />}
 
           {/* Workflow / Finance Tab Bar */}
           <div className="bg-white rounded-lg border">
