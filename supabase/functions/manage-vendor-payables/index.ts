@@ -315,11 +315,20 @@ serve(async (req: Request) => {
           return json({ success: false, error: "Payable not found" }, 404);
         }
 
-        if (payable.status === "paid" || payable.status === "cancelled") {
+        // Lock rate / total / currency once the payable hits an end-of-line
+        // state: the vendor has billed us (invoiced), we've paid them (paid),
+        // or it's cancelled. Audit #2.4 — without this gate, a paid payable
+        // could be silently re-rated and the audit trail desynced.
+        if (
+          payable.status === "paid" ||
+          payable.status === "invoiced" ||
+          payable.status === "cancelled"
+        ) {
           return json({
             success: false,
             error: `Cannot adjust a ${payable.status} payable`,
-          }, 400);
+            code: "PAYABLE_LOCKED",
+          }, 409);
         }
 
         // Snapshot the pre-adjustment values so the vendor email can show
@@ -538,6 +547,28 @@ serve(async (req: Request) => {
         const taxAmount = Math.round(computedSubtotal * taxRateNum * 100) / 100;
         const total = Math.round((computedSubtotal + taxAmount) * 100) / 100;
         const cur = (currency || "CAD").toUpperCase();
+
+        // Refuse Replace when the prior payable is invoiced or paid. Audit
+        // #2.4 — silently cancelling a paid/invoiced payable and inserting
+        // a new one drops the audit trail. Staff must void the vendor
+        // invoice (or refund the payment) first.
+        const { data: priorActive } = await supabase
+          .from("vendor_payables")
+          .select("id, status")
+          .eq("workflow_step_id", workflow_step_id)
+          .neq("status", "cancelled")
+          .maybeSingle();
+        if (
+          priorActive &&
+          (priorActive.status === "invoiced" || priorActive.status === "paid")
+        ) {
+          return json({
+            success: false,
+            error: `Cannot replace a ${priorActive.status} payable. Void the vendor invoice (or refund the payment) before editing.`,
+            code: "PAYABLE_LOCKED",
+            prior_payable_status: priorActive.status,
+          }, 409);
+        }
 
         // Cancel any existing non-cancelled payable on this step (unique-step
         // index requires this). Matches the cancel-then-insert pattern in

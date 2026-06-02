@@ -3558,8 +3558,8 @@ function WorkflowPipeline({
                         {step.vendor_total?.toFixed(2)}
                       </>
                     )}
-                    {/* Adjust payable link */}
-                    {step.payable && !['paid', 'cancelled'].includes(step.payable.status) && onAdjustPayable && (
+                    {/* Adjust payable link — locked once invoiced/paid (#2.4) */}
+                    {step.payable && !['paid', 'invoiced', 'cancelled'].includes(step.payable.status) && onAdjustPayable && (
                       <button
                         className="ml-2 text-gray-400 hover:text-blue-600 cursor-pointer text-xs"
                         title="Adjust payable"
@@ -4003,22 +4003,32 @@ function WorkflowPipeline({
                       assigned, not paid/cancelled. Opens the per-step
                       payable modal (flat / per-word / per-hour / per-page /
                       CAT analysis). Button label depends on whether a
-                      payable already exists. */}
+                      payable already exists. Locked once invoiced/paid
+                      (#2.4) — show a small lock chip instead. */}
                   {step.vendor_id &&
                     step.actor_type === "external_vendor" &&
                     !["approved", "skipped", "cancelled"].includes(step.status) && (
-                      <button
-                        className="text-xs px-3 py-1 border border-emerald-400 text-emerald-700 rounded hover:bg-emerald-50"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setManagePayableStep(step);
-                        }}
-                        title="Add or replace the payable for this step"
-                      >
-                        {step.payable && !["cancelled"].includes(step.payable.status)
-                          ? `Manage Payable (${(step.payable.total ?? 0).toFixed(2)} ${step.payable.currency})`
-                          : "+ Add Payable"}
-                      </button>
+                      step.payable && ["invoiced", "paid"].includes(step.payable.status) ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-xs px-3 py-1 border border-gray-300 text-gray-600 rounded bg-gray-50"
+                          title="Payable is locked — void the vendor invoice (or refund the payment) before editing."
+                        >
+                          🔒 {step.payable.status === "paid" ? "Paid" : "Invoiced"} · {(step.payable.total ?? 0).toFixed(2)} {step.payable.currency}
+                        </span>
+                      ) : (
+                        <button
+                          className="text-xs px-3 py-1 border border-emerald-400 text-emerald-700 rounded hover:bg-emerald-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setManagePayableStep(step);
+                          }}
+                          title="Add or replace the payable for this step"
+                        >
+                          {step.payable && !["cancelled"].includes(step.payable.status)
+                            ? `Manage Payable (${(step.payable.total ?? 0).toFixed(2)} ${step.payable.currency})`
+                            : "+ Add Payable"}
+                        </button>
+                      )
                     )}
 
                   {/* Unassign Vendor: any step with vendor assigned, not approved/skipped */}
