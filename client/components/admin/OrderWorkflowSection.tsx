@@ -926,6 +926,22 @@ function VendorFinderModal({
                             ↪ {v.prior_project_tasks} prior task{v.prior_project_tasks === 1 ? "" : "s"} on this project
                           </span>
                         )}
+                        {v.qms_eligible === false && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-800 border border-amber-200"
+                            title={v.qms_reason ? `ISO 17100 check: ${v.qms_reason}` : "ISO 17100 competence check did not pass"}
+                          >
+                            ⚠ QMS {v.qms_required_role ? `(${v.qms_required_role})` : ""}
+                          </span>
+                        )}
+                        {v.qms_eligible === true && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-emerald-100 text-emerald-800 border border-emerald-200"
+                            title={`ISO 17100 ${v.qms_required_role || "competence"} check passed`}
+                          >
+                            ✓ QMS
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
                         {v.matching_pairs && v.matching_pairs.length > 0 && (
