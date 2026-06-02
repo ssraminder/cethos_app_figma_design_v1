@@ -21,7 +21,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { notifyVendorAssignment } from "../_shared/notify-vendor-assignment.ts";
+import { notifyVendorAssignment, notifyVendorOfferBatchSummary } from "../_shared/notify-vendor-assignment.ts";
 import { notifyStaffAssignment } from "../_shared/notify-staff-assignment.ts";
 import {
   notifyVendorStepApproved,
@@ -359,7 +359,8 @@ serve(async (req: Request) => {
         }
         await supabase.from("order_workflow_steps").update({ status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions, pricing_mode: pricing_mode || "per_unit" }).eq("id", step_id);
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
-        await Promise.all(vendorList.map((v: any) => notifyVendorAssignment({ supabase, vendor_id: v.vendor_id, step, workflow, kind: "offer_vendor", offer_id: insertedOffersByVendor[v.vendor_id] ?? null, vendor_rate: v.vendor_rate ?? vendor_rate, vendor_rate_unit, vendor_currency, vendor_total: v.vendor_total ?? vendor_total, deadline, expires_at: expiresAt, instructions })));
+        await Promise.all(vendorList.map((v: any) => notifyVendorAssignment({ supabase, vendor_id: v.vendor_id, step, workflow, kind: "offer_vendor", offer_id: insertedOffersByVendor[v.vendor_id] ?? null, vendor_rate: v.vendor_rate ?? vendor_rate, vendor_rate_unit, vendor_currency, vendor_total: v.vendor_total ?? vendor_total, deadline, expires_at: expiresAt, instructions, suppressPmCc: true })));
+        await notifyVendorOfferBatchSummary({ supabase, step, workflow, vendorList, vendor_rate, vendor_rate_unit, vendor_currency, vendor_total, deadline, expires_at: expiresAt });
         return json({ success: true, offers_sent: vendorList.length });
       }
       case "resend_notification": {

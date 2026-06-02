@@ -30,3 +30,16 @@ These come from accumulated session experience — full rationale in `memory/pre
 - **Two repos:** admin (`cethos_app_figma_design_v1` — temp worktree at `C:\Users\…\Temp\elastic-kapitsa`) + vendor (`D:\cethos-vendor`). Both deploy to Supabase project `lmzoyezvsjgsxveoakdr`. Some features cross both repos in the same PR cycle.
 - **Pricing convention:** `subtotal = translation only`, certification always carried separately. Display code: `pre_tax = total − tax_amount`.
 - **PR cadence:** per phase / per fix. Open + merge in the same session unless the user pauses.
+
+## Per-change loop (admin + vendor portal changes)
+
+When the user is sending a series of portal changes (admin at `D:\cethos\portal\cethos_app_figma_design_v1`, vendor at `D:\cethos-vendor`), run this loop for **each** change before moving to the next one:
+
+1. **Plan first.** Explore the relevant code, propose the approach, and confirm with the user before editing. Skip only for trivial one-line fixes.
+2. **Implement** in the affected repo(s). Some changes cross both — same Supabase project (`lmzoyezvsjgsxveoakdr`).
+3. **Open a PR** in each affected repo via `gh pr create`.
+4. **Merge the PR(s)** in the same session unless the user pauses.
+5. **Verify on the live production site using Chrome MCP** (`mcp__Claude_in_Chrome__*`) — admin → `https://portal.cethos.com`, vendor → `https://vendor.cethos.com`. Not local dev, not preview. Drive the actual flow that was changed and observe the result. If verification fails, file a follow-up fix in the same loop.
+6. **Update memory** (`memory/decisions.md` or a dedicated feedback/feature file) describing what shipped and what the live-site verification showed, then signal ready for the next change.
+
+If a change spans both repos, verify both live sites before declaring done. See `feedback_per_change_loop_2026_06_02.md` in user memory for the durable form of this rule.
