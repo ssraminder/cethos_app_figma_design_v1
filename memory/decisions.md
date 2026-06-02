@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — update-workflow-step.unassign_vendor clears assigned_at + assigned_by (R20)
+- **What:** Audit C2 found unassign cleared `vendor_id` but left `assigned_at` populated. Workflow audit queries ("when was this step last assigned?") then returned stale historical timestamps. PR [#836](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/836) nulls `assigned_at` + `assigned_by` alongside the lifecycle timestamps already cleared in that case.
+- **Verified live:** ORD-2026-10289 (verify-only test) — direct_assign → unassign → all lifecycle timestamps NULL, `unassigned_at` preserved. Order cancelled after verify.
+- **Affects:** [supabase/functions/update-workflow-step/index.ts](supabase/functions/update-workflow-step/index.ts) `unassign_vendor` case.
+
 ### 2026-06-02 — manage-vendor-payables mirrors rate/total/currency into order_workflow_steps + vendor_step_offers (ORD-10242 drift closed)
 - **What:** `create_payable` (Replace flow) and `adjust_payable` previously wrote ONLY to `vendor_payables`. Two downstream caches drifted on every Replace/Adjust: `order_workflow_steps.vendor_{rate,rate_unit,total,currency}` (read by the admin step-card header in `OrderWorkflowSection.tsx`) and `vendor_step_offers.vendor_{rate,rate_unit,total,currency}` (read by the vendor portal "My Jobs" view). ORD-2026-10242 step `51328dfe-...` (Translation, Alina Chiteala) showed `$0.05` in the admin step header while the actual approved payable was `$12.65` — vendor saw `$0.05` (offer-time amount) too. Audit D in the 2026-06-02 batch identified the divergence; this PR closes it at the source for new mutations.
 - **Where:** [supabase/functions/manage-vendor-payables/index.ts](supabase/functions/manage-vendor-payables/index.ts) — new `mirrorPayableToStepAndOffer()` helper. `vendor_step_offers` filter uses `step_id` (NOT `workflow_step_id` — that column doesn't exist) AND `vendor_id` AND `status IN ('pending','accepted','approved')`. Mirror is fire-and-forget — failures log but never block the underlying payable write. PR [#833](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/833), CLI-deployed via `--no-verify-jwt`.
