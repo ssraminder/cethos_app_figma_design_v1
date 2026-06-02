@@ -431,6 +431,15 @@ serve(async (req: Request) => {
             unassigned_at: new Date().toISOString(),
             vendor_id: null,
             status: "pending",
+            // Clear lifecycle timestamps so the step truly looks fresh
+            // for the next assignment. Leaving `assigned_at` populated
+            // confuses the workflow audit query
+            // ("when was this last assigned?") because the historical
+            // assignment isn't actually live anymore; the answer should
+            // come from `notification_log` / `qms.assignment_eligibility_events`
+            // instead.
+            assigned_at: null,
+            assigned_by: null,
             accepted_at: null,
             started_at: null,
             delivered_at: null,
