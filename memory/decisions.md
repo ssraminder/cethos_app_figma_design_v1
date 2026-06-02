@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — staff_users dedupe + retire Raminder Test (R3+R4)
+- **What:** Deactivated 2 stray staff_users rows that polluted the workflow staff dropdown: duplicate Raminder Shah (ss.raminder@gmail.com, 0 activity) + Raminder Test fixture (raminder@cethoscorp.com, 0 activity). Canonical raminder@cethos.com row (11 step assignments, 4 payables) preserved. Dropdown query already filters by is_active=true so no UI change needed. PR [#837](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/837), migration `20260602_staff_users_dedupe_test_cleanup.sql`.
+- **Verified live:** Chrome MCP on ORD-2026-10279 (translation_only) — staff dropdown went from 3 "Raminder" occurrences (twice "Shah" + once "Test") to exactly 1 "Raminder Shah".
+- **Affects:** `staff_users` table; rendered via `OrderWorkflowSection.tsx:2188-2204` StaffPicker.
+
 ### 2026-06-02 — update-workflow-step.unassign_vendor clears assigned_at + assigned_by (R20)
 - **What:** Audit C2 found unassign cleared `vendor_id` but left `assigned_at` populated. Workflow audit queries ("when was this step last assigned?") then returned stale historical timestamps. PR [#836](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/836) nulls `assigned_at` + `assigned_by` alongside the lifecycle timestamps already cleared in that case.
 - **Verified live:** ORD-2026-10289 (verify-only test) — direct_assign → unassign → all lifecycle timestamps NULL, `unassigned_at` preserved. Order cancelled after verify.
