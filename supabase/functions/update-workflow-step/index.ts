@@ -503,7 +503,7 @@ serve(async (req: Request) => {
         // in order_workflow_steps_status_check (fixed in migration
         // 20260525_order_workflow_steps_allow_assigned_status.sql) is the
         // exact failure mode this guard was added to catch.
-        const { error: updErr } = await supabase.from("order_workflow_steps").update({ vendor_id, status: "assigned", pricing_mode: pricing_mode || "per_unit", vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null, vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD", deadline: deadline || null, instructions: instructions || null, assigned_at: new Date().toISOString(), assigned_by: body.staff_id || null }).eq("id", step_id);
+        const { error: updErr } = await supabase.from("order_workflow_steps").update({ vendor_id, status: "assigned", pricing_mode: pricing_mode || "per_unit", vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null, vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD", deadline: deadline || null, instructions: instructions || null, assigned_at: new Date().toISOString(), assigned_by: body.staff_id || null, competence_basis_cited_id: body.competence_basis_cited_id ?? null }).eq("id", step_id);
         if (updErr) {
           console.error("direct_assign step update failed:", updErr);
           return json({ success: false, error: `Failed to assign step: ${updErr.message}` }, 500);
