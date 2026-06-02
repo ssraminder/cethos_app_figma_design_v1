@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — #2.2b orders list filters: vendor / language pair / assignment (PR #862)
+- **Decision:** Four new filters on `/admin/orders`: Vendor (typeahead), Source language, Target language, Assignment status. Vendor + assignment use 2-stage queries (`order_workflow_steps` → `orders WHERE id IN (…)`); languages resolve via `quotes` table (`quote_id IN (…)`).
+- **Rationale:** Closes #2.2 — columns shipped in #2.2a were not usable as filters. 2-stage pattern picked because vendor and assignment are derived across steps; PostgREST embedded-resource filters require inner joins we don't want to force on legacy orders without a quote.
+- **Alternatives considered:** SQL view + custom RPC — rejected as overkill for an admin-only page. PostgREST `quote!inner` filter — rejected because it would silently drop quote-less orders from results.
+- **Status:** active
+- **Affects:** [AdminOrdersList.tsx](client/pages/admin/AdminOrdersList.tsx) — adds vendor / language list / assignment filter state, 2-stage fetch logic, four UI controls in the filter panel.
+
 ### 2026-06-02 — R9 counter-back action + UI (PR #861)
 - **Decision:** Admin-side counter to a vendor counter-offer is implemented as `admin-respond-counter-offer{action:'counter_back'}` overwriting the offer's `vendor_*` terms with admin's new rate/total/deadline and clearing the `counter_*` fields, plus bumping `counter_round`. The vendor portal's existing Accept/Negotiate buttons pick the new terms up unchanged (Negotiate is gated on `counter_status === 'proposed'`, so clearing it re-enables negotiate). Vendor is notified via `notifyVendorCounterBack` (`event_type='counter_back'` in notification_log).
 - **Rationale:** Closes the dead "Counter-back not yet wired" italic from the AI-rec block (Audit B finding). Admins previously had to Reject + re-Offer, losing the round context and burning a Brevo round trip.
