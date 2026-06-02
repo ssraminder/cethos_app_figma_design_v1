@@ -390,7 +390,7 @@ serve(async (req: Request) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: step, error: stepErr } = await supabase
       .from("order_workflow_steps")
-      .select("*, order_workflows!workflow_id(id, order_id, status, current_step_number)")
+      .select("*, order_workflows!workflow_id(id, order_id, status, current_step_number, template_id)")
       .eq("id", step_id).single();
     if (stepErr || !step) return json({ success: false, error: "Step not found" }, 404);
     const workflow = step.order_workflows as any;
