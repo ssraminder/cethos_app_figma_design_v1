@@ -78,6 +78,70 @@ async function loadPayableLifecycleContext(supabase: any, payable_id: string): P
   }
 }
 
+// Mirror a payable's rate/total/currency into the upstream caches that
+// the workflow-step card and the vendor portal both read from. Today
+// (pre-2026-06-02) `manage-vendor-payables` only wrote to `vendor_payables`,
+// so the admin step header (which reads `order_workflow_steps.vendor_*`) and
+// the vendor portal "My Jobs" view (which reads `vendor_step_offers.vendor_*`)
+// silently disagreed with the actual payable after every Replace/Adjust. See
+// ORD-2026-10242 step 51328dfe — admin step header showed $0.05 while the
+// real payable was $12.65. This helper is fire-and-forget: errors are logged
+// but never surface back to the admin write.
+async function mirrorPayableToStepAndOffer(
+  supabase: any,
+  args: {
+    workflow_step_id: string;
+    vendor_id: string;
+    rate: number;
+    rate_unit: string;
+    total: number;
+    currency: string;
+  },
+): Promise<void> {
+  const { workflow_step_id, vendor_id, rate, rate_unit, total, currency } = args;
+  try {
+    const { error: stepErr } = await supabase
+      .from("order_workflow_steps")
+      .update({
+        vendor_rate: rate,
+        vendor_rate_unit: rate_unit,
+        vendor_total: total,
+        vendor_currency: currency,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", workflow_step_id);
+    if (stepErr) {
+      console.error(
+        `mirrorPayableToStepAndOffer: order_workflow_steps update failed for ${workflow_step_id}: ${stepErr.message}`,
+      );
+    }
+  } catch (e: any) {
+    console.error("mirrorPayableToStepAndOffer step update threw:", e?.message || e);
+  }
+
+  try {
+    const { error: offerErr } = await supabase
+      .from("vendor_step_offers")
+      .update({
+        vendor_rate: rate,
+        vendor_rate_unit: rate_unit,
+        vendor_total: total,
+        vendor_currency: currency,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("step_id", workflow_step_id)
+      .eq("vendor_id", vendor_id)
+      .in("status", ["pending", "accepted", "approved"]);
+    if (offerErr) {
+      console.error(
+        `mirrorPayableToStepAndOffer: vendor_step_offers update failed for step=${workflow_step_id} vendor=${vendor_id}: ${offerErr.message}`,
+      );
+    }
+  } catch (e: any) {
+    console.error("mirrorPayableToStepAndOffer offer update threw:", e?.message || e);
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
@@ -223,7 +287,7 @@ serve(async (req: Request) => {
         // are read so we don't clobber a prior adjustment baseline.
         const { data: payable, error: fetchErr } = await supabase
           .from("vendor_payables")
-          .select("id, rate, rate_unit, units, subtotal, total, status, currency, original_subtotal, original_total")
+          .select("id, rate, rate_unit, units, subtotal, total, status, currency, original_subtotal, original_total, workflow_step_id, vendor_id")
           .eq("id", payable_id)
           .single();
 
@@ -278,6 +342,22 @@ serve(async (req: Request) => {
         }
 
         console.log(`Payable ${payable_id} adjusted: reason=${adjustment_reason}`);
+
+        // Mirror the new rate/total/currency into order_workflow_steps and
+        // vendor_step_offers so the admin step header + vendor portal stay
+        // in sync with the canonical payable row.
+        if (payable.workflow_step_id && payable.vendor_id) {
+          const mirroredRate = Number(updateData.rate ?? payable.rate ?? 0);
+          const mirroredTotal = Number(updateData.total ?? payable.total ?? 0);
+          await mirrorPayableToStepAndOffer(supabase, {
+            workflow_step_id: payable.workflow_step_id,
+            vendor_id: payable.vendor_id,
+            rate: mirroredRate,
+            rate_unit: payable.rate_unit || "flat",
+            total: mirroredTotal,
+            currency: payable.currency || "CAD",
+          });
+        }
 
         // Vendor email — fire-and-forget. The adjustment write is already
         // committed; a Brevo / lookup failure must never surface to admin UI.
@@ -494,6 +574,17 @@ serve(async (req: Request) => {
         }
 
         console.log(`Payable created (${mode}): ${inserted.id} step=${workflow_step_id} subtotal=${computedSubtotal} ${cur}`);
+
+        // Mirror to order_workflow_steps + vendor_step_offers (admin step
+        // header + vendor portal both read these caches).
+        await mirrorPayableToStepAndOffer(supabase, {
+          workflow_step_id,
+          vendor_id: effectiveVendorId,
+          rate: computedRate,
+          rate_unit: computedRateUnit,
+          total,
+          currency: cur,
+        });
 
         return json({
           success: true,
