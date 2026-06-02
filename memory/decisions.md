@@ -18,6 +18,10 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Styled ConfirmDialog replaces native confirm() in admin workflow (R5)
+- **What:** 7 native `window.confirm()` calls in [OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx) replaced with a styled `ConfirmDialog` (Promise-based `useConfirmDialog` hook + component pair, new file [client/components/admin/ConfirmDialog.tsx](client/components/admin/ConfirmDialog.tsx)). Danger actions render red button (Remove step / Retract / Unassign staff), default actions teal. Native confirm was inconsistent with rest of admin UI + blocked in some browsers. PR [#842](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/842).
+- **Affects:** [client/components/admin/ConfirmDialog.tsx](client/components/admin/ConfirmDialog.tsx) (new), [OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx) (7 sites).
+
 ### 2026-06-02 — QMS annotations surfaced in vendor finder + qms_warnings in API (R2+R25)
 - **What:** `VendorFinderModal` in [OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx) now renders an amber "⚠ QMS" badge with the failure reason in tooltip for ineligible vendors, emerald "✓ QMS" for eligible. Plus `update-workflow-step` returns `qms_warnings: [...]` from `direct_assign` / `offer_vendor` / `offer_multiple` success responses. PR [#841](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/841).
 - **Verified live:** API direct_assign of Test Vendor (0 qualifications) returned `qms_warnings: [{vendor_id, eligible: false, reason: "vendor lacks an active qualified translator role qualification", required_role: "translator", gating_mode: "warn"}]`.
