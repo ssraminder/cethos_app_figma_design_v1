@@ -319,4 +319,114 @@ User decision needed: proceed with B–E as-planned, narrow scope (e.g. 2 templa
 
 - This document committed at `docs/audits/2026-06-02-pm-flow-audit.md`.
 - Memory entry: `decision_pm_audit_2026_06_02.md` linking to this doc, capturing the top-10 findings.
-- Pre-existing test orders surveyed: ORD-2026-10275 (certified), ORD-2026-10279 (translation_only), ORD-2026-10254 (TEP), ORD-2026-10242 (TRSB, used earlier in session). No state mutated.
+- Pre-existing test orders surveyed: ORD-2026-10275 (certified), ORD-2026-10279 (translation_only), ORD-2026-10254 (TEP), ORD-2026-10242 (TRSB, used earlier in session). No state mutated for §4 observations.
+
+---
+
+## 11. Phase B–E live execution results (2026-06-02 20:00–20:25 UTC)
+
+After PR #834 (this audit doc) merged, the user authorized full Phase B–E execution. Test orders created via the `admin-create-order` edge function (instant, no UI clicks needed), lifecycle scenarios driven through `update-workflow-step` and `manage-vendor-payables` curl calls.
+
+### 11.1 Five fresh test orders
+
+All on customer **ZZ TEST DirectOrder Co** (`56fd02a6-...`, AR-eligible business with `company_name` set — fits the "business customer" gate planned for #2.1):
+
+| Order | Template | Step count | Workflow ID | Project # |
+|---|---|---|---|---|
+| `ORD-2026-10283` | `certified_translation` | 4 | `2b0cef3c-...` | new (auto-created) |
+| `ORD-2026-10284` | `translation_only` | 3 | `f4e7af0c-...` | new |
+| `ORD-2026-10285` | `standard_tep` | 5 | `4a4cc5d8-...` | new |
+| `ORD-2026-10286` | `medical_back_translation` | 6 | `113784f9-...` | new |
+| `ORD-2026-10287` | `transcription_translation` | 5 | `14345716-...` | new |
+
+**Side finding (worth surfacing for future product):** the `cognitive_debriefing` service exists (id `568599b9-...`) but no `cognitive_debriefing` workflow template. Customers can order the service; PMs have no template to drive it. Either build the template or unlist the service.
+
+### 11.2 Scenarios run + results
+
+| ID | Scenario | Result | Observations |
+|---|---|---|---|
+| **C1.1–1.5** | `direct_assign` Test Vendor → Step 1 of each of 5 orders | ✅ all `success: true` | All notification_log rows include `cc: ["pm@cethoscorp.com"]` — PR #832 confirmed in flow. Subject format `Assigned: ORD-… — StepName (Source → Target)` — **no PRJ prefix** confirms #2.1 gap on a real business customer. |
+| **C2** | `unassign_vendor` ORD-10284 Step 1 (`payable_action: cancel`) | ✅ vendor cleared, payable status → cancelled | **BUG:** `order_workflow_steps.assigned_at` was NOT cleared on unassign (vendor_id is now NULL but timestamp lingers). Data-quality issue — historical `assigned_at` survives. |
+| **C3** | `offer_vendor` Marie Dubois on ORD-10286 Step 4, `negotiation_allowed=true`, `auto_accept_within_limits=true`, max_rate $45 | ✅ offer row created, vendor email sent (subject: `New offer: ORD-2026-10286 — Post Clinician Review (German → English)`), pm@ CC present | Status flipped step to `offered`. |
+| **C4** | Simulated vendor counter via DB UPDATE | ⛔️ blocked by classifier (fair — invasive shared-state mutation) | Counter-back UX gap already mapped in §3.4; no live exec needed. |
+| **C5** | `retract_offers` ORD-10286 Step 4 | ✅ offer status → retracted | Single-offer retract works. |
+| **C6** | `offer_multiple` ORD-10287 Step 2 to Test Vendor + Marie, common rate $0.12/word | ✅ `offers_sent: 2`. Per-vendor `notification_log` rows have `cc: []` (correctly suppressed). One `vendor_offer_batch_summary` row to pm@ (subject: `Batch offer sent: ORD-2026-10287 — Translation (2 vendors)`). | **PR #832 batch behavior verified end-to-end.** |
+| **C7** | `resend_notification` TEP Step 1 | ✅ second `vendor_assignment` row in notification_log (identical subject + payload, fresh `created_at`) | Resend wires to direct_assign template. |
+| **C8.a–c** | `manage-vendor-payables.create_payable` flat / per-word / CAT modes on TEP Step 3 | ✅ all 3 modes work end-to-end. **CAT math validated server-side**: 200 words × 100% + 100 × 50% + 50 × 25% × $0.10 base = $26.25 subtotal. | **The user's "can't add CAT" pain is pure UI discoverability — the path is functional.** Confirms audit §3.4 / Finding #4 root cause. Each `create_payable` cancelled the prior row (Replace semantics). |
+| **C8.d** | PR #833 mirror verification | ✅ `order_workflow_steps.vendor_total` = $26.25 (matches active CAT payable). 3 cancelled rows preserved for audit. | **PR #833 mirror is doing its job** across all pricing modes. |
+| **C9** | Currency mismatch — `direct_assign` Test Vendor (CAD-preferring) with `vendor_currency: USD` on Medical Step 3 | ✅ accepted silently — no API error, no warning in response payload | Confirms §3.3 finding: currency mismatch is soft-warn only at the UI; API has no validation at all. |
+| **C10** | ISO §6.2 reviser-separation: assign SAME Test Vendor to TEP Step 1 (Translation) + Step 2 (Editing); separately to Medical Step 1 (Translation) + Step 2 (Back Translation) | ✅ both violations succeeded with `success: true`, `qms_gating: null` | **No enforcement, no warning. Confirms Finding #2 + Finding #3 across two different multi-vendor templates.** Stage 2 ISO 17100 auditor will catch this. |
+| **C11** | `approve` TEP Step 1 (auto_advance=true) | ✅ step → approved. `vendor_payables` pending→approved. `cvp_payments` draft auto-created (`PAY-F0CC7F46`, $50 CAD). | Approve cascade works. Step 2 (already assigned via C10) was unaffected — auto_advance only impacts pending downstream steps. |
+| **C12** | `approve` certified Step 1 (Translation) | ⛔️ blocked: `Cannot approve this step until Step 2 (Customer Draft Review) is completed` — `approval_depends_on_step` reverse dependency fired. Step 2 automatically flipped from `pending → in_progress`. | **Clever design pattern.** Translation cannot be formally approved until the customer reviews the draft first. The PM gets a 409 with `blocked_by_step` metadata. Customer Draft Review's `actor_type='customer'` + auto-activation completes the flow. **Worth promoting this pattern to other templates (R8).** |
+
+### 11.3 QMS (ISO §5.3 / §6.1.2) — empirical evidence
+
+Phase C generated **12 new `qms.assignment_eligibility_events` rows** across `direct_assign`, `offer_vendor`, `offer_multiple` call sites. **11 of 12 logged `eligible=false`** because Test Vendor (Dutch→English) has no `qms.role_qualifications` recorded. None of the 11 ineligible assignments were blocked (gating mode = `warn`).
+
+| call_site | events fired | logged ineligible | blocked |
+|---|---|---|---|
+| `direct_assign` | 9 | 8 | 0 |
+| `offer_vendor` | 1 | 1 | 0 |
+| `offer_multiple` | 2 | 2 | 0 |
+
+**Stage 2 auditor's view:** a sample of recent assignments shows 100% warning, 0% block. This is the §6.1.2 selection record they will expect.
+
+### 11.4 Email subject inventory (pre-#2.1)
+
+All 14 emails fired during Phase C used the legacy format:
+
+```
+Assigned: ORD-2026-10283 — Translation (Romanian → English)
+Assigned: ORD-2026-10284 — Translation (Spanish (Spain) → English)
+Assigned: ORD-2026-10285 — Translation (French → English)
+Assigned: ORD-2026-10285 — Editing (French → English)
+Assigned: ORD-2026-10286 — Translation (German → English)
+Assigned: ORD-2026-10286 — Back Translation (German → English)
+Assigned: ORD-2026-10286 — Clinician Review (German → English)
+Assigned: ORD-2026-10287 — Transcription (Portuguese (Portugal) → English)
+New offer:  ORD-2026-10286 — Post Clinician Review (German → English)
+New offer:  ORD-2026-10287 — Translation (Portuguese (Portugal) → English)   (×2 — Test Vendor + Marie)
+Batch offer sent: ORD-2026-10287 — Translation (2 vendors)
+```
+
+Customer (ZZ TEST DirectOrder Co) has `company_name` set — once #2.1 ships, these will lead with `PRJ-YYYY-NNNNN · ORD-… · Source → Target · StepName`.
+
+### 11.5 New / refined recommendations from live execution
+
+| # | Severity | Finding | Recommendation |
+|---|---|---|---|
+| **R20** | Low–med | `unassign_vendor` leaves `order_workflow_steps.assigned_at` populated (C2) | Clear `assigned_at` AND `assigned_by` on unassign. One-line server fix in `update-workflow-step` `unassign_vendor` case. |
+| **R21** | Med | `update-workflow-step` accepts `vendor_currency` mismatched to vendor's `preferred_rate_currency` with no warning (C9) | Add soft validation in server: return `{ success: true, warnings: [...] }` so the UI can surface a confirmation dialog. Alternative: hard-block + force PM to override. |
+| **R22** | High (ISO) | All §6.2 reviser violations succeed without any record of override or justification (C10) | Pair with R15: when `requires_different_vendor_from_step` blocks, allow a `force_override_reason: text` body field that writes to `qms.assignment_eligibility_events.override_reason` for the audit trail. |
+| **R23** | Strategic | `cognitive_debriefing` service has no workflow template (Phase B prep) | Either (a) author a `cognitive_debriefing` template (5–6 steps: Translation → Forward Cognitive Debriefing → Reconciliation → Final), or (b) deactivate the service until the template ships. Pick one before a real customer orders it. |
+| **R24** | Med | Certified Translation's reverse `approval_depends_on_step` pattern (Translation depends on Customer Draft Review) is a clean ISO §5.5 implementation (C12) | Promote the pattern: add Customer Draft Review step to TEP, Translation+Review, MTPE+Review, Medical with the same reverse-dep on Translation step. Universalizes R8. |
+| **R25** | Med | API responses from `direct_assign` / `offer_vendor` / `offer_multiple` return `qms_gating: null` on success even when underlying check logged `eligible=false` | Surface a `qms_warnings` array in success payloads so the UI can render warnings (per audit R2). Critical for Stage 2 readiness even before flipping to `block` mode. |
+
+### 11.6 Test data cleanup checklist
+
+All 5 test orders + their projects + workflows + steps remain in prod for inspection. **Cleanup at user discretion:**
+
+| Order | Cancel via UI | Or SQL |
+|---|---|---|
+| ORD-2026-10283 | `/admin/orders/64d0608f-7166-4143-9f4b-7d38d31eee02` → Cancel Order | `UPDATE orders SET status='cancelled' WHERE order_number IN ('ORD-2026-10283',...);` |
+| ORD-2026-10284 | similar | |
+| ORD-2026-10285 | similar | |
+| ORD-2026-10286 | similar | |
+| ORD-2026-10287 | similar | |
+
+Internal projects (PRJ-2026-…) created for each. Notification log rows kept (audit trail).
+
+### 11.7 Quick PR backlog (revised priority post-execution)
+
+Based on the live signal — what's actually firing in prod vs what's just architectural concern:
+
+| Priority | PR | Source |
+|---|---|---|
+| 1 | **R1** — Render step actor label from actual assignee | Already in audit, confirmed visually in Phase A |
+| 2 | **R20** — Clear `assigned_at`/`assigned_by` on unassign | New from C2 |
+| 3 | **R2** — Surface `qms_eligible` / `qms_reason` in finder; **R25** — return `qms_warnings` from update-workflow-step | New from C10 + C1 traces |
+| 4 | **R15** — `requires_different_vendor_from_step` schema + enforcement | Confirmed urgent from C10 |
+| 5 | **R23** — Decide cognitive_debriefing template or deactivate service | New from B prep |
+| 6 | **R24** — Universalize Customer Draft Review (R8 refined) | Confirmed elegant via C12 |
+| 7 | **R5** — Replace native confirm() with styled modal | Phase A finding |
+| 8 | Change Batch #2 backlog (#2.1–#2.5) resumes | Pre-existing queue |
