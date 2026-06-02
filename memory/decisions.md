@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — customer workflow_completed email CTA → customer route (R6)
+- **What:** `notifyCustomerWorkflowCompleted` CTA in [_shared/notify-step-lifecycle.ts:607](supabase/functions/_shared/notify-step-lifecycle.ts) pointed to `/orders/:id` (admin route, staff-auth). Customers clicking through hit a login wall. Now `/dashboard/orders/:id` (customer route, same host). PR [#838](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/838). Redeployed the 3 consumers (update-workflow-step, manage-vendor-payables, expire-stale-offers).
+- **Verified:** code-level only — diff is literal URL path substitution, no behavioral risk surface.
+- **Affects:** [_shared/notify-step-lifecycle.ts](supabase/functions/_shared/notify-step-lifecycle.ts).
+
 ### 2026-06-02 — staff_users dedupe + retire Raminder Test (R3+R4)
 - **What:** Deactivated 2 stray staff_users rows that polluted the workflow staff dropdown: duplicate Raminder Shah (ss.raminder@gmail.com, 0 activity) + Raminder Test fixture (raminder@cethoscorp.com, 0 activity). Canonical raminder@cethos.com row (11 step assignments, 4 payables) preserved. Dropdown query already filters by is_active=true so no UI change needed. PR [#837](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/837), migration `20260602_staff_users_dedupe_test_cleanup.sql`.
 - **Verified live:** Chrome MCP on ORD-2026-10279 (translation_only) — staff dropdown went from 3 "Raminder" occurrences (twice "Shah" + once "Test") to exactly 1 "Raminder Shah".
