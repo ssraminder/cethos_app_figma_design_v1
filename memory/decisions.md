@@ -18,6 +18,12 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — R14 QMS qualification entry UI shipped, R17 gated on data (PR #869)
+- **Decision:** Built the per-vendor admin QMS tab and `qms.record_qualification` RPC that atomically writes NDA + verified evidence + role qualification + language-pair qualifications, satisfying the existing precondition trigger. Did NOT flip `qms.config.assignment_gating_mode` from `warn` to `block` — the role_qualifications table is empty, so flipping would deny every vendor assignment.
+- **Rationale:** The earlier classifier denial on bulk backfill stands. The defensible path was: ship a per-vendor entry UI so staff record qualifications case-by-case as they review CVs/NDAs. `qms.v_retroactive_qualification_candidates` view lists vendors needing records. R17 flip becomes safe once the active roster has been processed.
+- **Status:** active. R14 done. R17 deferred to a one-line follow-up: `UPDATE qms.config SET value = '"block"'::jsonb WHERE key = 'assignment_gating_mode';`
+- **Affects:** [supabase/migrations/20260602_qms_record_qualification_rpc_r14.sql](supabase/migrations/20260602_qms_record_qualification_rpc_r14.sql), [supabase/functions/admin-record-qualification](supabase/functions/admin-record-qualification/index.ts), [client/pages/admin/vendor-detail/VendorQmsTab.tsx](client/pages/admin/vendor-detail/VendorQmsTab.tsx), [client/pages/admin/AdminVendorDetail.tsx](client/pages/admin/AdminVendorDetail.tsx)
+
 ### 2026-06-02 — R11 full split complete + R12b template cleanup (PRs #866-#868)
 - **PR #866 (R12b):** Soft-retired `mtpe_review` + `harmonization_review` workflow templates (low/zero usage). All 4 originally-flagged unused templates now retired.
 - **PR #867 (R11 followup):** VendorAssignModal (~950 lines) extracted to its own file.
