@@ -30,11 +30,15 @@ serve(async (req) => {
 
     console.log(`📦 get-customer-order-detail: order=${orderId}, customer=${customerId}`);
 
-    // Fetch order with quote join for language and intended use data
+    // Fetch order with quote join for language and intended use data.
+    // R10: also pull service.name so the customer page can swap the
+    // hardcoded "Translation Details" / "Certified Translation" labels for
+    // service-specific copy (Cognitive Debriefing, Transcription, etc.).
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .select(`
         *,
+        service:services(id, code, name),
         quotes (
           id,
           quote_number,
@@ -92,8 +96,14 @@ serve(async (req) => {
     }
 
     // Format response
+    const svc = (order as any).service as { code?: string; name?: string } | null;
     const responseData = {
       ...order,
+      // R10 — service-aware copy. Frontend reads service_name / service_code
+      // to swap the hardcoded "Translation Details" / "Certified Translation"
+      // labels for the right service.
+      service_name: svc?.name ?? null,
+      service_code: svc?.code ?? null,
       // Flatten quote details for easier frontend access
       quote_number: quote?.quote_number || null,
       source_language: sourceLanguage ? sourceLanguage.name : null,
@@ -105,8 +115,9 @@ serve(async (req) => {
       document_count: quote?.document_count || null,
     };
 
-    // Remove nested quotes object to keep response flat
+    // Remove nested quotes + service objects to keep response flat
     delete responseData.quotes;
+    delete (responseData as any).service;
 
     console.log(`✅ Returning order ${order.order_number} for customer ${customerId}`);
 

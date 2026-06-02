@@ -41,6 +41,9 @@ interface Order {
   certification_type?: string;
   special_instructions?: string;
   document_count?: number;
+  // R10: service-aware copy.
+  service_name?: string;
+  service_code?: string;
 }
 
 const STATUS_TIMELINE = [
@@ -635,11 +638,15 @@ export default function CustomerOrderDetail() {
           </div>
         </div>
 
-        {/* Translation Details */}
+        {/* Service Details — R10: heading follows the actual service so
+            non-translation orders (Cognitive Debriefing, Transcription,
+            Subtitling, etc.) don't read as "Translation Details". */}
         {(order.source_language || order.target_language || order.intended_use) && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-              <h2 className="font-semibold text-gray-900">Translation Details</h2>
+              <h2 className="font-semibold text-gray-900">
+                {order.service_name ? `${order.service_name} Details` : "Order Details"}
+              </h2>
             </div>
             <div className="px-6 py-4 space-y-3">
               {order.source_language && order.target_language && (
@@ -837,7 +844,7 @@ export default function CustomerOrderDetail() {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{file.filename}</div>
                       <div style={{ fontSize: 11, color: "#059669", marginTop: 2, fontWeight: 600 }}>
-                        Certified Translation · {new Date(file.created_at).toLocaleDateString()}
+                        {order.service_name || "Final deliverable"} · {new Date(file.created_at).toLocaleDateString()}
                       </div>
                     </div>
                     {file.signed_url && (
