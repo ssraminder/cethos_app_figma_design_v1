@@ -393,6 +393,9 @@ function VendorAssignModal({
   const [vendorRate, setVendorRate] = useState<string>("");
   const [vendorRateUnit, setVendorRateUnit] = useState("per_word");
   const [units, setUnits] = useState<string>("1");
+  // R13 — per-vendor rate override for offer_multiple. Empty string means
+  // "use the parent rate". Server already accepts v.vendor_rate per row.
+  const [perVendorRates, setPerVendorRates] = useState<Record<string, string>>({});
   const [vendorCurrency, setVendorCurrency] = useState(initialCurrency);
   const [deadline, setDeadline] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -636,10 +639,23 @@ function VendorAssignModal({
     } else if (mode === "offer" && vendor) {
       onSubmit({ ...baseParams, action: "offer_vendor", vendor_id: vendor.id });
     } else if (mode === "offer_multiple" && vendors) {
+      const parsedUnits = Number(units) || 1;
       onSubmit({
         ...baseParams,
         action: "offer_multiple",
-        vendors: vendors.map((v) => ({ vendor_id: v.id })),
+        vendors: vendors.map((v) => {
+          const raw = perVendorRates[v.id];
+          const per = raw && raw.trim() ? Number(raw) : NaN;
+          // Empty / non-numeric falls back to the parent rate (server reads
+          // v.vendor_rate ?? vendor_rate).
+          return Number.isFinite(per) && per > 0
+            ? {
+                vendor_id: v.id,
+                vendor_rate: per,
+                vendor_total: Math.round(per * parsedUnits * 100) / 100,
+              }
+            : { vendor_id: v.id };
+        }),
       });
     }
   };
@@ -679,18 +695,56 @@ function VendorAssignModal({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Vendor{mode === "offer_multiple" ? "s" : ""}</label>
             {mode === "offer_multiple" && vendors ? (
-              <div className="flex flex-wrap gap-1">
-                {vendors.map((v) => (
-                  <span key={v.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full text-xs font-medium">
-                    {v.full_name}
-                    {v.rating != null && (
-                      <span className="flex items-center gap-0.5">
-                        <Star className="w-2.5 h-2.5 text-yellow-400 fill-yellow-400" />
-                        {v.rating}
-                      </span>
-                    )}
-                  </span>
-                ))}
+              <div className="border border-gray-200 rounded overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left py-1.5 px-2 text-gray-500 font-medium">Vendor</th>
+                      <th className="text-right py-1.5 px-2 text-gray-500 font-medium">
+                        Rate ({vendorCurrency})
+                        <div className="text-[10px] text-gray-400 font-normal">blank = use parent</div>
+                      </th>
+                      <th className="text-right py-1.5 px-2 text-gray-500 font-medium">Total ({vendorCurrency})</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vendors.map((v) => {
+                      const raw = perVendorRates[v.id] ?? "";
+                      const parentRate = Number(vendorRate) || 0;
+                      const u = Number(units) || 1;
+                      const effective = raw.trim() && Number.isFinite(Number(raw)) && Number(raw) > 0 ? Number(raw) : parentRate;
+                      const total = effective * u;
+                      return (
+                        <tr key={v.id} className="border-b border-gray-100 last:border-0">
+                          <td className="py-1.5 px-2">
+                            <span className="inline-flex items-center gap-1">
+                              {v.full_name}
+                              {v.rating != null && (
+                                <span className="flex items-center gap-0.5 text-gray-400">
+                                  <Star className="w-2.5 h-2.5 text-yellow-400 fill-yellow-400" />
+                                  {v.rating}
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="py-1 px-2">
+                            <input
+                              type="number"
+                              step="0.0001"
+                              value={raw}
+                              onChange={(e) => setPerVendorRates((p) => ({ ...p, [v.id]: e.target.value }))}
+                              placeholder={parentRate ? String(parentRate) : ""}
+                              className="w-24 text-right border border-gray-200 rounded px-2 py-0.5 text-xs tabular-nums"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2 text-right tabular-nums text-gray-700">
+                            {total > 0 ? total.toFixed(2) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             ) : vendor ? (
               <div className="space-y-2">
