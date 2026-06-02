@@ -236,6 +236,31 @@ function gateToWarnings(gate: any, vendor_id: string): Array<Record<string, unkn
   ];
 }
 
+// Currency mismatch warning (audit R21). Returns [] when the chosen
+// vendor_currency matches the vendor's preferred_rate_currency (or when
+// the vendor has no preference). Otherwise returns a single warning row
+// so the admin UI can surface a confirmation chip / toast.
+async function currencyMismatchWarnings(
+  supabase: any,
+  vendor_id: string,
+  vendor_currency: string | null | undefined,
+): Promise<Array<Record<string, unknown>>> {
+  if (!vendor_currency) return [];
+  const { data: v } = await supabase
+    .from("vendors")
+    .select("preferred_rate_currency")
+    .eq("id", vendor_id)
+    .maybeSingle();
+  const preferred = v?.preferred_rate_currency;
+  if (!preferred || preferred === vendor_currency) return [];
+  return [{
+    vendor_id,
+    chosen_currency: vendor_currency,
+    preferred_currency: preferred,
+    message: `Vendor prefers ${preferred} but assignment uses ${vendor_currency}.`,
+  }];
+}
+
 function validateDeadlineAndExpiry(action: string, body: any): string | null {
   if (action !== "direct_assign" && action !== "offer_vendor" && action !== "offer_multiple") return null;
   const deadline = body?.deadline ? new Date(body.deadline) : null;
@@ -366,7 +391,8 @@ serve(async (req: Request) => {
         }
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
         await notifyVendorAssignment({ supabase, vendor_id, step, workflow, kind: "direct_assign", vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions });
-        return json({ success: true, qms_warnings: gateToWarnings(gate, vendor_id) });
+        const currency_warnings_da = await currencyMismatchWarnings(supabase, vendor_id, vendor_currency);
+        return json({ success: true, qms_warnings: gateToWarnings(gate, vendor_id), currency_warnings: currency_warnings_da });
       }
       case "offer_vendor": {
         const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode } = body;
@@ -384,7 +410,8 @@ serve(async (req: Request) => {
         }
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
         await notifyVendorAssignment({ supabase, vendor_id, step, workflow, kind: "offer_vendor", offer_id: insertedOffer?.id ?? null, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, expires_at: expiresAt, instructions });
-        return json({ success: true, qms_warnings: gateToWarnings(gate, vendor_id) });
+        const currency_warnings_ov = await currencyMismatchWarnings(supabase, vendor_id, vendor_currency);
+        return json({ success: true, qms_warnings: gateToWarnings(gate, vendor_id), currency_warnings: currency_warnings_ov });
       }
       case "offer_multiple": {
         const { vendors: vendorList, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode } = body;
@@ -405,7 +432,12 @@ serve(async (req: Request) => {
         await Promise.all(vendorList.map((v: any) => notifyVendorAssignment({ supabase, vendor_id: v.vendor_id, step, workflow, kind: "offer_vendor", offer_id: insertedOffersByVendor[v.vendor_id] ?? null, vendor_rate: v.vendor_rate ?? vendor_rate, vendor_rate_unit, vendor_currency, vendor_total: v.vendor_total ?? vendor_total, deadline, expires_at: expiresAt, instructions, suppressPmCc: true })));
         await notifyVendorOfferBatchSummary({ supabase, step, workflow, vendorList, vendor_rate, vendor_rate_unit, vendor_currency, vendor_total, deadline, expires_at: expiresAt });
         const qms_warnings = gateResults.flatMap((g) => gateToWarnings(g.gate, g.vendor_id));
-        return json({ success: true, offers_sent: vendorList.length, qms_warnings });
+        const currency_warnings_om: Array<Record<string, unknown>> = [];
+        for (const v of vendorList) {
+          const w = await currencyMismatchWarnings(supabase, v.vendor_id, vendor_currency);
+          for (const row of w) currency_warnings_om.push(row);
+        }
+        return json({ success: true, offers_sent: vendorList.length, qms_warnings, currency_warnings: currency_warnings_om });
       }
       case "resend_notification": {
         const targetVendorId = step.vendor_id;
