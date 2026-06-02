@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Orders list: Language pair + Vendor + Assignment columns (#2.2a + PO filterKey)
+- **What:** [AdminOrdersList.tsx](client/pages/admin/AdminOrdersList.tsx) gains 3 new columns: Languages (Source → Target), Vendor (active external_vendor step's vendor), Assignment (Unassigned / Partially assigned / Fully assigned / Completed). PR [#846](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/846). Also persists PO Status filter to sessionStorage (one-line audit side-fix on main).
+- **Implementation:** Extends fetchOrders SELECT to embed `quote.source_language/target_language`. Batched IN() fetch of order_workflow_steps per page derives the bucket + active vendor. Bucket aggregates over all external_vendor template steps.
+- **Deferred (#2.2b):** Vendor typeahead + Language pair filter + Assignment filter UI. Requires 2-stage query (filter → order_ids → orders.in(...)), separate scope.
+
 ### 2026-06-02 — Email subjects #2.1 tier 2+3 (step lifecycle + staff + reminders + instructions)
 - **Tier 2 (#844):** Wired into all 8 notify-step-lifecycle subjects (step_approved, revision_requested, payable_invoiced, payable_paid, payable_adjusted, unassigned, deadline_changed, workflow_completed). StepLifecycleContext extended with project_number, company_name, source/target lang names. Loaders enriched in update-workflow-step + manage-vendor-payables.
 - **Tier 3 (#845):** notify-staff-assignment, vendor-deadline-reminders (4 subjects), vendor-acceptance-reminders (URGENT + Reminder), notify-vendor-instructions-changed. All deployed.
