@@ -18,6 +18,12 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — QMS annotations surfaced in vendor finder + qms_warnings in API (R2+R25)
+- **What:** `VendorFinderModal` in [OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx) now renders an amber "⚠ QMS" badge with the failure reason in tooltip for ineligible vendors, emerald "✓ QMS" for eligible. Plus `update-workflow-step` returns `qms_warnings: [...]` from `direct_assign` / `offer_vendor` / `offer_multiple` success responses. PR [#841](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/841).
+- **Verified live:** API direct_assign of Test Vendor (0 qualifications) returned `qms_warnings: [{vendor_id, eligible: false, reason: "vendor lacks an active qualified translator role qualification", required_role: "translator", gating_mode: "warn"}]`.
+- **ISO context:** Closes the §5.3 / §6.1.2 visibility gap audit C identified (1,165 warn-mode events, 0 UI feedback). PMs now see the qualification gap BEFORE Stage 2 audit flips gating to block.
+- **Affects:** [client/components/admin/OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx), [supabase/functions/update-workflow-step/index.ts](supabase/functions/update-workflow-step/index.ts).
+
 ### 2026-06-02 — Step actor badge follows the actual assignee, not the template (R1)
 - **What:** `ActorTypeBadge` in [OrderWorkflowSection.tsx:277](client/components/admin/OrderWorkflowSection.tsx) previously rendered the label from `step.actor_type` (template intent). When a staff member filled an external_vendor-actor step via `allowed_actor_types`, the badge still said "Vendor". Now resolves from `vendor_id` → `assigned_staff_id` → template fallback. PR [#840](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/840).
 - **Verified live:** ORD-2026-10254 (Standard TEP). Before: Bobby Rawat showed as "Vendor" on Steps 2+3 and "Internal (Review)" on Step 4 (same person, 3 visual identities). After: "Internal (Work)" on Steps 2+3, "Internal (Review)" on Step 4, "Vendor Abhinav Dang" on Step 1 (unchanged).
