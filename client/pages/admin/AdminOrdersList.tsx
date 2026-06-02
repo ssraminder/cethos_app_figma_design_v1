@@ -179,6 +179,7 @@ export default function AdminOrdersList() {
     "search", "status", "work_status", "from", "to", "rush",
     "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus", "po",
     "service", "company",
+    "vendor", "srcLang", "tgtLang", "assignment",
   ];
 
   // Restore filters from sessionStorage on mount if URL has no filter params
@@ -280,6 +281,14 @@ export default function AdminOrdersList() {
     | "certified"
     | "non_certified";
   const companyFilter = searchParams.get("company") || ""; // companies.id
+  // #2.2b — active-vendor / language pair / assignment-bucket filters.
+  // Vendor + assignment translate to a 2-stage query (order_workflow_steps
+  // → orders) since they're computed across steps; language filters use
+  // PostgREST embedded-resource filters on the existing quote join.
+  const vendorFilter = searchParams.get("vendor") || ""; // vendors.id
+  const srcLangFilter = searchParams.get("srcLang") || ""; // languages.id
+  const tgtLangFilter = searchParams.get("tgtLang") || ""; // languages.id
+  const assignmentFilter = searchParams.get("assignment") || ""; // bucket label
   const page = parseInt(searchParams.get("page") || "1", 10);
 
   // Certified service UUID (for "certified / non-certified" filtering)
@@ -341,6 +350,56 @@ export default function AdminOrdersList() {
     };
   }, [companyFilter]);
 
+  // #2.2b — vendor typeahead (mirrors company autocomplete pattern)
+  type VendorOption = { id: string; full_name: string };
+  const [vendors, setVendors] = useState<VendorOption[]>([]);
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [selectedVendorName, setSelectedVendorName] = useState<string>("");
+  const vendorDebounceRef = useRef<number | null>(null);
+  useEffect(() => {
+    const q = vendorSearch.trim();
+    if (vendorDebounceRef.current) window.clearTimeout(vendorDebounceRef.current);
+    if (q.length < 2) {
+      setVendors([]);
+      return;
+    }
+    vendorDebounceRef.current = window.setTimeout(async () => {
+      const esc = q.replace(/[*,%()]/g, "").trim();
+      const res = await sbGet(`vendors?select=id,full_name&full_name=ilike.*${esc}*&deleted_at=is.null&order=full_name&limit=10`);
+      setVendors(res.ok ? await res.json() : []);
+    }, 200);
+    return () => {
+      if (vendorDebounceRef.current) window.clearTimeout(vendorDebounceRef.current);
+    };
+  }, [vendorSearch]);
+  useEffect(() => {
+    if (!vendorFilter) {
+      setSelectedVendorName("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const res = await sbGet(`vendors?select=id,full_name&id=eq.${vendorFilter}&limit=1`);
+      if (!cancelled && res.ok) {
+        const rows: any[] = await res.json();
+        if (rows[0]) setSelectedVendorName(rows[0].full_name);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [vendorFilter]);
+
+  // #2.2b — languages cache for src/tgt dropdowns
+  type LanguageOption = { id: string; name: string; code: string };
+  const [languagesList, setLanguagesList] = useState<LanguageOption[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await sbGet("languages?select=id,name,code&order=name&limit=500");
+      if (!cancelled && res.ok) setLanguagesList(await res.json());
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Persist filters to sessionStorage whenever they change
   useEffect(() => {
     if (!restoredFromSession) return;
@@ -352,7 +411,7 @@ export default function AdminOrdersList() {
   const [searchInput, setSearchInput] = useState(search);
   const [showFilters, setShowFilters] = useState(() => {
     // Auto-open filter panel if there are active filters (from URL or session)
-    const filterKeys = ["status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus"];
+    const filterKeys = ["status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus", "vendor", "srcLang", "tgtLang", "assignment"];
     return filterKeys.some(k => searchParams.has(k));
   });
 
@@ -364,7 +423,7 @@ export default function AdminOrdersList() {
   // Auto-expand filter panel when filters become active
   useEffect(() => {
     if (restoredFromSession) {
-      const filterKeys = ["status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus"];
+      const filterKeys = ["status", "work_status", "from", "to", "rush", "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus", "vendor", "srcLang", "tgtLang", "assignment"];
       if (filterKeys.some(k => searchParams.has(k))) {
         setShowFilters(true);
       }
@@ -456,6 +515,66 @@ export default function AdminOrdersList() {
           return;
         }
         filters.push(`customer_id=in.(${custRows.map((c: any) => c.id).join(",")})`);
+      }
+
+      // #2.2b — vendor / assignment / language filters
+      // Vendor + assignment require a 2-stage query against order_workflow_steps.
+      // Language filters piggyback on the quote inner-join via PostgREST embed.
+      if (vendorFilter) {
+        const stRes = await sbGet(`order_workflow_steps?select=order_id&vendor_id=eq.${vendorFilter}&limit=2000`);
+        const stRows: any[] = stRes.ok ? await stRes.json() : [];
+        const ids = Array.from(new Set(stRows.map((s) => s.order_id))).filter(Boolean);
+        if (ids.length === 0) {
+          setOrders([]); setTotalCount(0); setLoading(false); return;
+        }
+        filters.push(`id=in.(${ids.join(",")})`);
+      }
+
+      if (assignmentFilter) {
+        // Pull all vendor-actor steps and bucket order_ids client-side, then
+        // intersect with orders. Step rows are small per order; limit=5000
+        // comfortably covers a year of active workflows.
+        const stRes = await sbGet(`order_workflow_steps?select=order_id,vendor_id,status&actor_type=eq.external_vendor&limit=5000`);
+        const stRows: any[] = stRes.ok ? await stRes.json() : [];
+        const terminal = new Set(["approved", "skipped", "cancelled"]);
+        const byOrder = new Map<string, { total: number; assigned: number; live: number }>();
+        for (const s of stRows) {
+          const cur = byOrder.get(s.order_id) || { total: 0, assigned: 0, live: 0 };
+          cur.total += 1;
+          if (s.vendor_id) cur.assigned += 1;
+          if (!terminal.has(s.status)) cur.live += 1;
+          byOrder.set(s.order_id, cur);
+        }
+        const matchOrderIds: string[] = [];
+        for (const [oid, agg] of byOrder.entries()) {
+          let bucket: string;
+          if (agg.live === 0) bucket = "Completed";
+          else if (agg.assigned === 0) bucket = "Unassigned";
+          else if (agg.assigned < agg.total) bucket = "Partially assigned";
+          else bucket = "Fully assigned";
+          if (bucket === assignmentFilter) matchOrderIds.push(oid);
+        }
+        if (matchOrderIds.length === 0) {
+          setOrders([]); setTotalCount(0); setLoading(false); return;
+        }
+        filters.push(`id=in.(${matchOrderIds.join(",")})`);
+      }
+
+      if (srcLangFilter || tgtLangFilter) {
+        // Resolve via quotes table directly → quote_id IN (). PostgREST
+        // filters on embedded resources require an inner-join embed, which
+        // we don't want to force here (some legacy orders have no quote_id).
+        const qFilters = [
+          srcLangFilter ? `source_language_id=eq.${srcLangFilter}` : null,
+          tgtLangFilter ? `target_language_id=eq.${tgtLangFilter}` : null,
+        ].filter(Boolean).join("&");
+        const qRes = await sbGet(`quotes?select=id&${qFilters}&limit=5000`);
+        const qRows: any[] = qRes.ok ? await qRes.json() : [];
+        const qIds = qRows.map((q) => q.id);
+        if (qIds.length === 0) {
+          setOrders([]); setTotalCount(0); setLoading(false); return;
+        }
+        filters.push(`quote_id=in.(${qIds.join(",")})`);
       }
 
       // Pagination
@@ -568,7 +687,7 @@ export default function AdminOrdersList() {
     // (null = still loading; once loaded, certifiedServiceLoaded flips true and we re-run)
     if (serviceFilter !== "all" && !certifiedServiceLoaded) return;
     fetchOrders();
-  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, certifiedServiceLoaded]);
+  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, vendorFilter, srcLangFilter, tgtLangFilter, assignmentFilter, certifiedServiceLoaded]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -973,6 +1092,109 @@ export default function AdminOrdersList() {
                     )}
                   </>
                 )}
+              </div>
+
+              {/* Vendor (active step) filter — #2.2b */}
+              <div className="relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Vendor
+                </label>
+                {vendorFilter && selectedVendorName ? (
+                  <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg bg-teal-50">
+                    <span className="text-sm text-teal-800 flex-1 truncate">{selectedVendorName}</span>
+                    <button
+                      type="button"
+                      onClick={() => updateFilter("vendor", "")}
+                      className="text-gray-400 hover:text-red-600"
+                      title="Clear vendor filter"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={vendorSearch}
+                      onChange={(e) => setVendorSearch(e.target.value)}
+                      placeholder="Search by vendor…"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    {vendors.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-56 overflow-y-auto">
+                        <ul className="divide-y divide-gray-100">
+                          {vendors.map((v) => (
+                            <li key={v.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateFilter("vendor", v.id);
+                                  setVendorSearch("");
+                                  setVendors([]);
+                                }}
+                                className="w-full text-left px-3 py-1.5 text-sm hover:bg-teal-50"
+                              >
+                                {v.full_name}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Source language filter — #2.2b */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Source language
+                </label>
+                <select
+                  value={srcLangFilter}
+                  onChange={(e) => updateFilter("srcLang", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="">Any source</option>
+                  {languagesList.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Target language filter — #2.2b */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Target language
+                </label>
+                <select
+                  value={tgtLangFilter}
+                  onChange={(e) => updateFilter("tgtLang", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="">Any target</option>
+                  {languagesList.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Assignment status filter — #2.2b */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Assignment status
+                </label>
+                <select
+                  value={assignmentFilter}
+                  onChange={(e) => updateFilter("assignment", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="">Any</option>
+                  <option value="Unassigned">Unassigned</option>
+                  <option value="Partially assigned">Partially assigned</option>
+                  <option value="Fully assigned">Fully assigned</option>
+                  <option value="Completed">Completed</option>
+                </select>
               </div>
 
               {/* Save current filters as personal default */}
