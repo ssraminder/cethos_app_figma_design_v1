@@ -18,6 +18,12 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Cognitive Debriefing workflow template + §6.2 enforcement (R23 + R15 + R22)
+- **R23 (#852):** New `cognitive_debriefing` workflow template — 5 steps (Translation → Cognitive Debriefing → Harmonization → QA Review → Final Deliverable) using the `cognitive_debriefing` service that existed since 2026-03-24 but had no template. Closes the audit gap.
+- **R15 (#853):** `workflow_template_steps.requires_different_vendor_from_step int[]` column. Seeded constraints on TEP (Step 2 ≠ 1, Step 3 ≠ 1,2), Translation+Review (Step 2 ≠ 1), MTPE+Review (Step 2 ≠ 1), Medical/Back Translation (Step 2 ≠ 1), Transcription+Translation (Step 3 ≠ 2). `update-workflow-step` direct_assign / offer_vendor / offer_multiple now block §6.2 violations with `SEPARATION_VIOLATION` 409 unless `force_override_reason` supplied.
+- **R22:** `qms.assignment_eligibility_events.override_reason` column + `qms_record_separation_override` SECURITY DEFINER RPC. Edge fn calls it whenever override fires. Two follow-up migrations needed (caught at verification): column names were `*_id` not `*_code`; id is `bigint` not `uuid`. Final RPC at `20260602_qms_record_separation_override_rpc_fix.sql`.
+- **Verified live (ORD-2026-10294 TEP):** Step 1 assign Test Vendor → success. Step 2 same vendor → 409 SEPARATION_VIOLATION with conflicting_step_number=1, conflicting_step_name="Translation". Step 2 same vendor + force_override_reason → success, audit row in qms.assignment_eligibility_events with override_reason populated. Cleanup done.
+
 ### 2026-06-02 — CAT receivable parity shipped (#2.5 Phase B 1-3)
 - **Phase B-1 (#849):** New `receivable_cat_lines` table, parallel to `vendor_payable_cat_lines`. RLS staff-only.
 - **Phase B-2 (#850):** New `manage-receivables` edge function with `create_receivable` (flat/per_word/per_hour/per_page/cat), `adjust_receivable`, `cancel_receivable`. Same deterministic CAT math as payable side. Locks at invoiced/voided (`RECEIVABLE_LOCKED` 409). Required follow-on migration to allow `pricing_mode='cat'` on order_receivables (constraint was per_unit/target only).
