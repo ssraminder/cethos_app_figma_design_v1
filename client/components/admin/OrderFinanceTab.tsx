@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import ManageReceivableModal from "./ManageReceivableModal";
 
 // ── Types ──
 
@@ -360,6 +361,8 @@ function EditableReceivablesBreakdown({
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // Phase B-3 of #2.5 — opens the focused CAT-receivable modal.
+  const [catModalOpen, setCatModalOpen] = useState(false);
   // Default tax rate from the customer profile (customers.default_tax_rate_id
   // → tax_rates.rate). Falls back to 5% (Canadian GST baseline) if the
   // customer has no default set.
@@ -587,25 +590,34 @@ function EditableReceivablesBreakdown({
           Receivable Breakdown
         </h3>
         {!hasIssuedInvoice && !adding && !editId && (
-          <button
-            onClick={() => {
-              setAdding(true);
-              setEditId(null);
-              setDraft({
-                description: "",
-                quantity: 1,
-                rate: 0,
-                tax_rate: defaultTaxRate,
-                surcharge_total: 0,
-                discount_total: 0,
-                po_number: "",
-                client_project_number: "",
-              });
-            }}
-            className="text-xs px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700"
-          >
-            + Add line
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCatModalOpen(true)}
+              className="text-xs px-3 py-1 border border-teal-500 text-teal-700 rounded hover:bg-teal-50"
+              title="Add a CAT analysis breakdown — opens a modal to enter tier rows + base rate"
+            >
+              + Add CAT line
+            </button>
+            <button
+              onClick={() => {
+                setAdding(true);
+                setEditId(null);
+                setDraft({
+                  description: "",
+                  quantity: 1,
+                  rate: 0,
+                  tax_rate: defaultTaxRate,
+                  surcharge_total: 0,
+                  discount_total: 0,
+                  po_number: "",
+                  client_project_number: "",
+                });
+              }}
+              className="text-xs px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700"
+            >
+              + Add line
+            </button>
+          </div>
         )}
       </div>
 
@@ -849,6 +861,17 @@ function EditableReceivablesBreakdown({
           </div>
         )}
       </div>
+      {catModalOpen && (
+        <ManageReceivableModal
+          isOpen={catModalOpen}
+          onClose={() => setCatModalOpen(false)}
+          orderId={orderId}
+          currency={currency}
+          defaultTaxRate={defaultTaxRate}
+          staffId={null}
+          onSaved={() => { void load(); onRefresh?.(); }}
+        />
+      )}
     </div>
   );
 }
