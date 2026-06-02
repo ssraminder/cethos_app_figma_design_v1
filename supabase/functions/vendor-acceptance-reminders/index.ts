@@ -30,6 +30,7 @@ import {
   title,
   type TemplateMeta,
 } from "../_shared/email-shell.ts";
+import { buildEmailSubject } from "../_shared/email-subject.ts";
 
 const TPL_ACCEPTANCE_NORMAL: TemplateMeta = {
   name: "Vendor — Acceptance Reminder (1h)",
@@ -145,7 +146,7 @@ serve(async (req: Request) => {
           .single(),
         supabase
           .from("orders")
-          .select("order_number")
+          .select("order_number, internal_project:internal_projects(project_number), customer:customers(company_name)")
           .eq("id", step.order_id)
           .single(),
       ]);
@@ -170,9 +171,13 @@ serve(async (req: Request) => {
           ? [{ email: vendor.email }, { email: ADMIN_EMAIL }]
           : [{ email: vendor.email }];
 
-        const subject = isUrgent
-          ? `URGENT: Please accept assignment — ${orderLabel} — ${escapeHtml(step.name)}`
-          : `Reminder: Please accept assignment — ${orderLabel} — ${escapeHtml(step.name)}`;
+        const subject = buildEmailSubject({
+          eventLabel: isUrgent ? "URGENT: Please accept assignment" : "Reminder: Please accept assignment",
+          orderNumber: order?.order_number ?? orderLabel,
+          projectNumber: (order as any)?.internal_project?.project_number ?? null,
+          companyName: (order as any)?.customer?.company_name ?? null,
+          stepName: step.name,
+        });
 
         const firstName = (vendor.full_name || "").trim().split(/\s+/)[0] || "there";
         const urgentCallout = isUrgent

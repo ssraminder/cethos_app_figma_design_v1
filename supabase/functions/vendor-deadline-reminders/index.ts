@@ -29,6 +29,7 @@ import {
   title,
   type TemplateMeta,
 } from "../_shared/email-shell.ts";
+import { buildEmailSubject } from "../_shared/email-subject.ts";
 
 const TPL = {
   reminder24h: { name: "Vendor — Deadline Reminder (24h)", version: "2.0", updatedAt: "2026-05-28" } as TemplateMeta,
@@ -279,8 +280,8 @@ serve(async (req: Request) => {
     const { data: steps, error: stepsErr } = await sb
       .from("order_workflow_steps")
       .select(
-        "id, name, step_number, status, deadline, vendor_id, order_id, " +
-          "orders!order_id(id, order_number), vendors!vendor_id(id, full_name, email)",
+        "id, name, step_number, status, deadline, vendor_id, order_id, source_language, target_language, " +
+          "orders!order_id(id, order_number, internal_project:internal_projects(project_number), customer:customers(company_name)), vendors!vendor_id(id, full_name, email)",
       )
       .in("status", ["assigned", "accepted", "in_progress", "revision_requested"])
       .not("vendor_id", "is", null)
@@ -324,7 +325,13 @@ serve(async (req: Request) => {
       if (isOverdue) {
         if (!(await alreadySent(sb, "deadline_overdue", step.id))) {
           const hoursLate = Math.round(-msUntilDeadline / (60 * 60 * 1000));
-          const subject = `Overdue: ${order.order_number} — ${step.name || "step"}`;
+          const subject = buildEmailSubject({
+            eventLabel: "Overdue",
+            orderNumber: order.order_number,
+            projectNumber: (order as any)?.internal_project?.project_number ?? null,
+            companyName: (order as any)?.customer?.company_name ?? null,
+            stepName: step.name,
+          });
           const html = buildEmail({
             tier: "overdue",
             vendorName: vendor.full_name,
@@ -350,7 +357,13 @@ serve(async (req: Request) => {
           summary.overdue_vendor++;
 
           if (!(await alreadySent(sb, "deadline_overdue_admin", step.id)) && adminRecipients.length > 0) {
-            const adminSubject = `Vendor overdue: ${order.order_number} — ${step.name || "step"}`;
+            const adminSubject = buildEmailSubject({
+              eventLabel: "Vendor overdue",
+              orderNumber: order.order_number,
+              projectNumber: (order as any)?.internal_project?.project_number ?? null,
+              companyName: (order as any)?.customer?.company_name ?? null,
+              stepName: step.name,
+            });
             const adminHtml = buildEmail({
               tier: "overdue_admin",
               vendorLabel: vendor.full_name || vendor.email,
@@ -384,7 +397,13 @@ serve(async (req: Request) => {
 
       if (within6h) {
         if (!(await alreadySent(sb, "deadline_reminder_6h", step.id))) {
-          const subject = `6 hours left: ${order.order_number} — ${step.name || "step"}`;
+          const subject = buildEmailSubject({
+            eventLabel: "6 hours left",
+            orderNumber: order.order_number,
+            projectNumber: (order as any)?.internal_project?.project_number ?? null,
+            companyName: (order as any)?.customer?.company_name ?? null,
+            stepName: step.name,
+          });
           const html = buildEmail({
             tier: "6h",
             vendorName: vendor.full_name,
@@ -415,7 +434,13 @@ serve(async (req: Request) => {
 
       if (within24h) {
         if (!(await alreadySent(sb, "deadline_reminder_24h", step.id))) {
-          const subject = `Reminder: ${order.order_number} — due in 24h`;
+          const subject = buildEmailSubject({
+            eventLabel: "Reminder — due in 24h",
+            orderNumber: order.order_number,
+            projectNumber: (order as any)?.internal_project?.project_number ?? null,
+            companyName: (order as any)?.customer?.company_name ?? null,
+            stepName: step.name,
+          });
           const html = buildEmail({
             tier: "24h",
             vendorName: vendor.full_name,
