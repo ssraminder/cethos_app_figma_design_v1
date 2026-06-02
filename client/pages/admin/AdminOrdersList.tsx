@@ -47,6 +47,7 @@ interface Order {
   is_rush: boolean;
   created_at: string;
   estimated_delivery_date: string;
+  estimated_delivery_at: string | null;
   customer_email: string;
   customer_name: string;
   customer_company_name: string | null;
@@ -139,7 +140,7 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: "profitPct", label: "% Profit", ui: true, export: true },
   { key: "xtrfProject", label: "XTRF Project", ui: true, export: true },
   { key: "xtrfInvoice", label: "XTRF Invoice", ui: true, export: true },
-  { key: "delivery", label: "Delivery", ui: true, export: true },
+  { key: "delivery", label: "Client Deadline", ui: true, export: true },
 ];
 
 function loadColumnSettings(): ColumnDef[] {
@@ -450,7 +451,7 @@ export default function AdminOrdersList() {
     setLoading(true);
     try {
       const select =
-        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,service_id,quote_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,internal_project_id,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code),internal_project:internal_projects!internal_project_id(project_number),quote:quotes(source_language:languages!source_language_id(name),target_language:languages!target_language_id(name))";
+        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,estimated_delivery_at,service_id,quote_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,internal_project_id,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code),internal_project:internal_projects!internal_project_id(project_number),quote:quotes(source_language:languages!source_language_id(name),target_language:languages!target_language_id(name))";
 
       const filters: string[] = [];
 
@@ -647,6 +648,7 @@ export default function AdminOrdersList() {
           is_rush: order.is_rush,
           created_at: order.created_at,
           estimated_delivery_date: order.estimated_delivery_date,
+          estimated_delivery_at: (order as any).estimated_delivery_at ?? null,
           customer_email: (order.customers as any)?.email || "",
           customer_name: (order.customers as any)?.full_name || "",
           customer_company_name: (order.customers as any)?.company_name || null,
@@ -747,7 +749,7 @@ export default function AdminOrdersList() {
       }},
       { key: "xtrfProject", headers: ["XTRF Project"], values: (o) => [o.xtrf_project_number ?? ""] },
       { key: "xtrfInvoice", headers: ["XTRF Invoice"], values: (o) => [o.xtrf_invoice_number ?? ""] },
-      { key: "delivery", headers: ["Estimated Delivery"], values: (o) => [o.estimated_delivery_date ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd") : ""] },
+      { key: "delivery", headers: ["Client Deadline"], values: (o) => [o.estimated_delivery_at ? new Date(o.estimated_delivery_at).toISOString() : (o.estimated_delivery_date ? format(new Date(o.estimated_delivery_date), "yyyy-MM-dd") : "")] },
     ];
 
     const visibleExportCols = exportColumns.filter((c) => isColExported(c.key));
@@ -1282,7 +1284,7 @@ export default function AdminOrdersList() {
                   {isColVisible("profitPct") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit %</th>}
                   {isColVisible("xtrfProject") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Project</th>}
                   {isColVisible("xtrfInvoice") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Invoice</th>}
-                  {isColVisible("delivery") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Delivery</th>}
+                  {isColVisible("delivery") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client Deadline</th>}
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -1483,10 +1485,21 @@ export default function AdminOrdersList() {
                           )}
                         </td>
                       )}
-                      {/* Delivery Date */}
+                      {/* Client deadline — shows time when estimated_delivery_at
+                         (timestamptz) is present so staff can see the
+                         customer-promised instant in their own timezone.
+                         Falls back to legacy date-only when older rows
+                         don't carry the timestamp. */}
                       {isColVisible("delivery") && (
                         <td className="px-4 py-3">
-                          {order.estimated_delivery_date ? (
+                          {order.estimated_delivery_at ? (
+                            <p className="text-sm text-gray-700">
+                              {new Date(order.estimated_delivery_at).toLocaleString(undefined, {
+                                month: "short", day: "numeric", year: "numeric",
+                                hour: "numeric", minute: "2-digit",
+                              })}
+                            </p>
+                          ) : order.estimated_delivery_date ? (
                             <p className="text-sm text-gray-700">
                               {format(new Date(order.estimated_delivery_date), "MMM d, yyyy")}
                             </p>

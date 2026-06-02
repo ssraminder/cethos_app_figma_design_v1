@@ -969,6 +969,12 @@ export default function AdminCreateOrder() {
   const validate = (): string | null => {
     if (!customer) return "Pick a customer";
     if (!serviceId) return "Pick a service";
+    // Client deadline is now mandatory for every order — staff needs to
+    // commit to a customer-facing delivery instant up front so the
+    // workflow + reminders + vendor offers can reference it.
+    if (!promisedDeliveryDate) return "Client deadline is required";
+    const dl = new Date(promisedDeliveryDate);
+    if (Number.isNaN(dl.getTime())) return "Client deadline is not a valid date/time";
     if (mode === "direct_order") {
       // Direct orders can span multiple language pairs; each becomes its own
       // order under one project. Every pair needs both source and target.
@@ -1876,13 +1882,14 @@ export default function AdminCreateOrder() {
               )}
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
-                  Standard delivery{" "}
+                  Standard delivery <span className="text-red-500">*</span>{" "}
                   <span className="font-normal text-gray-400">
                     ({Intl.DateTimeFormat().resolvedOptions().timeZone})
                   </span>
                 </label>
                 <input
                   type="datetime-local"
+                  required
                   value={promisedDeliveryDate}
                   onChange={(e) => setPromisedDeliveryDate(e.target.value)}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
