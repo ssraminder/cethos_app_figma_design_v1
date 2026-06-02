@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Sprint 6: universal Customer Draft Review + service-aware customer copy (R8+R24, R10)
+- **R8+R24 (#855):** Customer Draft Review step added to standard_tep, translation_review, mtpe_review (was only on certified_translation). Reverse `approval_depends_on_step` pattern from Phase B-E finding promoted: the last vendor step's approval blocks until the customer signs off. step_number renumbering via +100/-99 hop to dodge unique-key collision. In-flight orders unaffected. §6.2 constraints from R15 preserved.
+- **R10 (#856):** [get-customer-order-detail](supabase/functions/get-customer-order-detail/index.ts) now joins services and returns service_name + service_code. [CustomerOrderDetail.tsx](client/pages/customer/CustomerOrderDetail.tsx) "Translation Details" header swaps to "<Service> Details" (or "Order Details" fallback); file-category label uses the service name instead of hardcoded "Certified Translation".
+- **Why:** Phase A audit found these labels misleading for Cognitive Debriefing / Transcription / Subtitling orders.
+
 ### 2026-06-02 — R14 backfill deferred + R16 cite qualification (Sprint 5 partial close)
 - **R14 deferred:** Mass backfill of qms.role_qualifications + competence_evidence + nda_agreements for the 248 candidates in `qms.v_retroactive_qualification_candidates` is ISO-audit-sensitive (verified=true evidence + active NDAs under staff identity for vendors who haven't actually signed). Classifier correctly blocked the en-masse insert. Needs a staff-driven admin UI flow (per-vendor signoff with real auth user) — that's its own R14+UI sub-feature. Schema path mapped: nda_agreements → competence_evidence → role_qualifications (verified_by/created_by on first two reference auth.users not staff_users).
 - **R16 shipped (#854):** `order_workflow_steps.competence_basis_cited_id uuid REFERENCES qms.role_qualifications` added (NULLable, partial index). update-workflow-step direct_assign persists `body.competence_basis_cited_id` when supplied. UI to populate it lands with R14.
