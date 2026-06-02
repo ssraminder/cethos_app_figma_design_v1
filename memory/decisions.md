@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Email subjects PRJ prefix for business customers (#2.1 tier 1)
+- **What:** New shared helper [_shared/email-subject.ts](supabase/functions/_shared/email-subject.ts) with `buildEmailSubject({eventLabel,orderNumber,projectNumber,companyName,sourceLangName,targetLangName,stepName})`. For business customers (`company_name` AND `project_number` both set) emits `<PRJ> · <ORD> · <Source → Target> · <Step>`. Individual customers keep legacy shape. Wired into highest-traffic builder `notify-vendor-assignment.ts` (3 subjects: direct_assign + offer_vendor + batch summary). PR [#843](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/843).
+- **Verified live:** ORD-2026-10291 / ZZ TEST DirectOrder Co (business) → subject `PRJ-2026-00086 · ORD-2026-10291 · Romanian → English · Translation`. Previously `Assigned: ORD-2026-10291 — Translation (Romanian → English)`.
+- **Tier 2 follows:** notify-step-lifecycle (8 events), notify-staff-assignment, vendor-acceptance-reminders, vendor-deadline-reminders (4), notify-customer-order-confirmed, send-final-deliverable, review-draft-file (3), send-invoice-email, send-payment-reminders, notify-vendor-instructions-changed.
+
 ### 2026-06-02 — Styled ConfirmDialog replaces native confirm() in admin workflow (R5)
 - **What:** 7 native `window.confirm()` calls in [OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx) replaced with a styled `ConfirmDialog` (Promise-based `useConfirmDialog` hook + component pair, new file [client/components/admin/ConfirmDialog.tsx](client/components/admin/ConfirmDialog.tsx)). Danger actions render red button (Remove step / Retract / Unassign staff), default actions teal. Native confirm was inconsistent with rest of admin UI + blocked in some browsers. PR [#842](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/842).
 - **Affects:** [client/components/admin/ConfirmDialog.tsx](client/components/admin/ConfirmDialog.tsx) (new), [OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx) (7 sites).
