@@ -41,13 +41,29 @@ async function loadPayableLifecycleContext(supabase: any, payable_id: string): P
     const [{ data: vendor }, { data: orderRow }, { data: step }] = await Promise.all([
       supabase.from("vendors").select("id, full_name, email, additional_emails").eq("id", payable.vendor_id).maybeSingle(),
       payable.order_id
-        ? supabase.from("orders").select("id, order_number").eq("id", payable.order_id).maybeSingle()
+        ? supabase
+            .from("orders")
+            .select("id, order_number, internal_project:internal_projects(project_number), customer:customers(company_name)")
+            .eq("id", payable.order_id)
+            .maybeSingle()
         : Promise.resolve({ data: null }),
       payable.workflow_step_id
-        ? supabase.from("order_workflow_steps").select("id, name, step_number").eq("id", payable.workflow_step_id).maybeSingle()
+        ? supabase.from("order_workflow_steps").select("id, name, step_number, source_language, target_language").eq("id", payable.workflow_step_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
     if (!vendor?.email || !orderRow) return null;
+    // Resolve language pair names if both UUIDs are present on the step.
+    let sourceName: string | null = null, targetName: string | null = null;
+    if (step?.source_language || step?.target_language) {
+      const ids = [step.source_language, step.target_language].filter((v: any) => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v));
+      if (ids.length > 0) {
+        const { data: rows } = await supabase.from("languages").select("id, name").in("id", ids);
+        const m = new Map<string, string>();
+        for (const r of (rows ?? []) as Array<{ id: string; name: string }>) m.set(r.id, r.name);
+        sourceName = step.source_language && m.has(step.source_language) ? m.get(step.source_language) ?? null : (typeof step.source_language === "string" ? step.source_language : null);
+        targetName = step.target_language && m.has(step.target_language) ? m.get(step.target_language) ?? null : (typeof step.target_language === "string" ? step.target_language : null);
+      }
+    }
     return {
       supabase,
       vendor: {
@@ -62,6 +78,10 @@ async function loadPayableLifecycleContext(supabase: any, payable_id: string): P
         name: step?.name ?? null,
         step_number: step?.step_number ?? null,
       },
+      project_number: (orderRow as any)?.internal_project?.project_number ?? null,
+      company_name: (orderRow as any)?.customer?.company_name ?? null,
+      source_lang_name: sourceName,
+      target_lang_name: targetName,
       payable: {
         id: payable.id,
         total: payable.total == null ? null : Number(payable.total),
