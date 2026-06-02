@@ -236,6 +236,108 @@ function gateToWarnings(gate: any, vendor_id: string): Array<Record<string, unkn
   ];
 }
 
+// ISO 17100 §6.2 reviser-separation check (R15). Looks up the template's
+// requires_different_vendor_from_step array for this step, then verifies
+// none of the named prior steps already have the SAME vendor assigned.
+// Returns { violation: true, conflicting_step_number, conflicting_step_name }
+// on violation. Callers honor body.force_override_reason (R22) to allow
+// PMs to proceed when business reality demands it — the override is
+// captured in qms.assignment_eligibility_events for the audit trail.
+async function checkReviserSeparation(
+  supabase: any,
+  vendor_id: string,
+  step: any,
+  workflow: any,
+): Promise<{ violation: boolean; conflicting_step_number?: number; conflicting_step_name?: string | null }> {
+  try {
+    const stepNum: number | null = step?.step_number ?? null;
+    const workflowId: string | null = step?.workflow_id ?? workflow?.id ?? null;
+    const templateId: string | null = workflow?.template_id ?? null;
+    if (stepNum == null || !workflowId || !templateId) return { violation: false };
+    const { data: tplStep } = await supabase
+      .from("workflow_template_steps")
+      .select("requires_different_vendor_from_step")
+      .eq("template_id", templateId)
+      .eq("step_number", stepNum)
+      .maybeSingle();
+    const constraintSteps: number[] = Array.isArray(tplStep?.requires_different_vendor_from_step)
+      ? tplStep.requires_different_vendor_from_step
+      : [];
+    if (constraintSteps.length === 0) return { violation: false };
+    const { data: priorSteps } = await supabase
+      .from("order_workflow_steps")
+      .select("step_number, name, vendor_id")
+      .eq("workflow_id", workflowId)
+      .in("step_number", constraintSteps);
+    const hit = (priorSteps ?? []).find((p: any) => p.vendor_id === vendor_id);
+    if (!hit) return { violation: false };
+    return {
+      violation: true,
+      conflicting_step_number: hit.step_number,
+      conflicting_step_name: hit.name,
+    };
+  } catch (e: any) {
+    console.warn("checkReviserSeparation failed (treating as no-violation):", e?.message || e);
+    return { violation: false };
+  }
+}
+
+// Records the override + justification into qms.assignment_eligibility_events
+// so a Stage 2 auditor can sample "which §6.2 separations were bypassed and
+// why" against the same audit trail used for the QMS qualification checks.
+async function recordSeparationOverride(
+  supabase: any,
+  args: {
+    vendor_id: string;
+    step: any;
+    workflow: any;
+    call_site: string;
+    override_reason: string;
+    conflicting_step_number: number;
+    conflicting_step_name: string | null;
+  },
+): Promise<void> {
+  try {
+    await supabase.from("qms").schema?.("assignment_eligibility_events").insert({
+      vendor_id: args.vendor_id,
+      service_id: args.step?.service_id ?? null,
+      source_language_code: args.step?.source_language ?? null,
+      target_language_code: args.step?.target_language ?? null,
+      call_site: args.call_site,
+      order_id: args.workflow?.order_id ?? null,
+      workflow_step_id: args.step?.id ?? null,
+      eligible: false,
+      reason: `§6.2 separation overridden — conflicts with step ${args.conflicting_step_number} (${args.conflicting_step_name})`,
+      required_role: null,
+      gating_mode: "warn",
+      override_reason: args.override_reason,
+    });
+  } catch (e: any) {
+    // Fallback path — newer supabase-js doesn't expose .schema() in this
+    // shape; use the cross-schema RPC convention some helpers ship with.
+    try {
+      await supabase.rpc("qms_record_separation_override", {
+        p_vendor_id: args.vendor_id,
+        p_service_id: args.step?.service_id ?? null,
+        p_source_language_code: args.step?.source_language ?? null,
+        p_target_language_code: args.step?.target_language ?? null,
+        p_call_site: args.call_site,
+        p_order_id: args.workflow?.order_id ?? null,
+        p_workflow_step_id: args.step?.id ?? null,
+        p_conflicting_step_number: args.conflicting_step_number,
+        p_conflicting_step_name: args.conflicting_step_name,
+        p_override_reason: args.override_reason,
+      });
+    } catch (e2: any) {
+      console.warn(
+        "separation override audit log failed (non-fatal):",
+        e?.message || e,
+        e2?.message || e2,
+      );
+    }
+  }
+}
+
 // Currency mismatch warning (audit R21). Returns [] when the chosen
 // vendor_currency matches the vendor's preferred_rate_currency (or when
 // the vendor has no preference). Otherwise returns a single warning row
@@ -367,10 +469,33 @@ serve(async (req: Request) => {
         return json({ success: true, final_delivery_id: delivery_id ?? null });
       }
       case "direct_assign": {
-        const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, pricing_mode } = body;
+        const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, pricing_mode, force_override_reason } = body;
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
         const gate = await gateAssignment(supabase, "direct_assign", vendor_id, step, workflow);
         if (gate?.should_block) return json({ success: false, error: `QMS gating: ${gate.reason}`, qms_gating: gate }, 403);
+        // R15 §6.2 reviser-separation. Blocks unless body.force_override_reason
+        // is supplied; the override is logged for the Stage 2 audit (R22).
+        const sep_da = await checkReviserSeparation(supabase, vendor_id, step, workflow);
+        if (sep_da.violation) {
+          if (!force_override_reason || !String(force_override_reason).trim()) {
+            return json({
+              success: false,
+              error: `ISO 17100 §6.2: this step must be filled by a different vendor than Step ${sep_da.conflicting_step_number} (${sep_da.conflicting_step_name}). Add force_override_reason to the request to proceed.`,
+              code: "SEPARATION_VIOLATION",
+              conflicting_step_number: sep_da.conflicting_step_number,
+              conflicting_step_name: sep_da.conflicting_step_name,
+            }, 409);
+          }
+          await recordSeparationOverride(supabase, {
+            vendor_id,
+            step,
+            workflow,
+            call_site: "direct_assign",
+            override_reason: String(force_override_reason).trim(),
+            conflicting_step_number: sep_da.conflicting_step_number!,
+            conflicting_step_name: sep_da.conflicting_step_name ?? null,
+          });
+        }
         // IMPORTANT: surface UPDATE errors. Without this, a CHECK constraint
         // violation (e.g. an unexpected status value) returns success while
         // the row stays untouched — and we still send the vendor email for
@@ -395,10 +520,30 @@ serve(async (req: Request) => {
         return json({ success: true, qms_warnings: gateToWarnings(gate, vendor_id), currency_warnings: currency_warnings_da });
       }
       case "offer_vendor": {
-        const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode } = body;
+        const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode, force_override_reason } = body;
         if (!vendor_id) return json({ success: false, error: "Missing vendor_id" }, 400);
         const gate = await gateAssignment(supabase, "offer_vendor", vendor_id, step, workflow);
         if (gate?.should_block) return json({ success: false, error: `QMS gating: ${gate.reason}`, qms_gating: gate }, 403);
+        // R15 §6.2 reviser-separation.
+        const sep_ov = await checkReviserSeparation(supabase, vendor_id, step, workflow);
+        if (sep_ov.violation) {
+          if (!force_override_reason || !String(force_override_reason).trim()) {
+            return json({
+              success: false,
+              error: `ISO 17100 §6.2: this step must be filled by a different vendor than Step ${sep_ov.conflicting_step_number} (${sep_ov.conflicting_step_name}). Add force_override_reason to the request to proceed.`,
+              code: "SEPARATION_VIOLATION",
+              conflicting_step_number: sep_ov.conflicting_step_number,
+              conflicting_step_name: sep_ov.conflicting_step_name,
+            }, 409);
+          }
+          await recordSeparationOverride(supabase, {
+            vendor_id, step, workflow,
+            call_site: "offer_vendor",
+            override_reason: String(force_override_reason).trim(),
+            conflicting_step_number: sep_ov.conflicting_step_number!,
+            conflicting_step_name: sep_ov.conflicting_step_name ?? null,
+          });
+        }
         const expiresAt = expires_in_hours ? new Date(Date.now() + expires_in_hours * 3600000).toISOString() : null;
         const { data: insertedOffer } = await supabase.from("vendor_step_offers").insert({ step_id, vendor_id, status: "pending", pricing_mode: pricing_mode || "per_unit", vendor_rate: vendor_rate ?? null, vendor_rate_unit: vendor_rate_unit ?? null, vendor_total: vendor_total ?? null, vendor_currency: vendor_currency || "CAD", deadline: deadline || null, expires_at: expiresAt, offered_at: new Date().toISOString(), offered_by: body.staff_id || null, negotiation_allowed: negotiation_allowed ?? false, max_rate: max_rate ?? null, max_total: max_total ?? null, latest_deadline: latest_deadline ?? null, auto_accept_within_limits: auto_accept_within_limits ?? true }).select("id").single();
         await supabase.from("order_workflow_steps").update({ status: "offered", offered_at: new Date().toISOString(), instructions: instructions || step.instructions, pricing_mode: pricing_mode || "per_unit" }).eq("id", step_id);
@@ -414,12 +559,43 @@ serve(async (req: Request) => {
         return json({ success: true, qms_warnings: gateToWarnings(gate, vendor_id), currency_warnings: currency_warnings_ov });
       }
       case "offer_multiple": {
-        const { vendors: vendorList, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode } = body;
+        const { vendors: vendorList, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode, force_override_reason } = body;
         if (!vendorList?.length) return json({ success: false, error: "No vendors provided" }, 400);
         const gateResults = [] as Array<{ vendor_id: string, gate: any }>;
         for (const v of vendorList) { const gate = await gateAssignment(supabase, "offer_multiple", v.vendor_id, step, workflow); gateResults.push({ vendor_id: v.vendor_id, gate }); }
         const blocked = gateResults.filter((g) => g.gate?.should_block);
         if (blocked.length > 0) return json({ success: false, error: `QMS gating: ${blocked.length} of ${vendorList.length} vendors are ineligible`, qms_gating: { blocked } }, 403);
+        // R15 §6.2 — block if ANY of the offered vendors collides. Override
+        // applies across all of them (one justification covers the batch).
+        const sepResults: Array<{ vendor_id: string; sep: Awaited<ReturnType<typeof checkReviserSeparation>> }> = [];
+        for (const v of vendorList) {
+          const sep = await checkReviserSeparation(supabase, v.vendor_id, step, workflow);
+          sepResults.push({ vendor_id: v.vendor_id, sep });
+        }
+        const sepViolations = sepResults.filter((r) => r.sep.violation);
+        if (sepViolations.length > 0) {
+          if (!force_override_reason || !String(force_override_reason).trim()) {
+            return json({
+              success: false,
+              error: `ISO 17100 §6.2: ${sepViolations.length} of ${vendorList.length} vendor(s) conflict with a prior step. Add force_override_reason to proceed.`,
+              code: "SEPARATION_VIOLATION",
+              violations: sepViolations.map((v) => ({
+                vendor_id: v.vendor_id,
+                conflicting_step_number: v.sep.conflicting_step_number,
+                conflicting_step_name: v.sep.conflicting_step_name,
+              })),
+            }, 409);
+          }
+          for (const v of sepViolations) {
+            await recordSeparationOverride(supabase, {
+              vendor_id: v.vendor_id, step, workflow,
+              call_site: "offer_multiple",
+              override_reason: String(force_override_reason).trim(),
+              conflicting_step_number: v.sep.conflicting_step_number!,
+              conflicting_step_name: v.sep.conflicting_step_name ?? null,
+            });
+          }
+        }
         const expiresAt = expires_in_hours ? new Date(Date.now() + expires_in_hours * 3600000).toISOString() : null;
         const insertedOffersByVendor: Record<string, string> = {};
         for (const v of vendorList) {
