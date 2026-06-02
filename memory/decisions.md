@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Payable lock once invoiced/paid + currency mismatch warning (#2.4 + R21)
+- **Server:** [manage-vendor-payables.adjust_payable](supabase/functions/manage-vendor-payables/index.ts) now refuses status IN ('invoiced','paid','cancelled') with `PAYABLE_LOCKED` 409 (was paid+cancelled only). `create_payable` Replace flow refuses when prior payable is invoiced/paid with `PAYABLE_LOCKED` + `prior_payable_status`.
+- **UI:** [OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx) — Adjust inline hidden when invoiced/paid; Manage Payable / + Add Payable button replaced with 🔒 chip showing locked amount + status.
+- **R21 (#841 pattern):** `update-workflow-step` direct_assign / offer_vendor / offer_multiple now return `currency_warnings: [...]` when vendor.preferred_rate_currency mismatches the assignment currency.
+- **Verified live:** 1) adjust_payable on invoiced row → 409 PAYABLE_LOCKED ("Cannot adjust a invoiced payable"). 2) create_payable Replace on locked step → 409 PAYABLE_LOCKED with prior_payable_status="invoiced". 3) direct_assign USD on CAD-preferring vendor → `currency_warnings: [{chosen_currency:"USD", preferred_currency:"CAD", message:"Vendor prefers CAD but assignment uses USD."}]`.
+- **PR:** [#847](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/847).
+
 ### 2026-06-02 — Orders list: Language pair + Vendor + Assignment columns (#2.2a + PO filterKey)
 - **What:** [AdminOrdersList.tsx](client/pages/admin/AdminOrdersList.tsx) gains 3 new columns: Languages (Source → Target), Vendor (active external_vendor step's vendor), Assignment (Unassigned / Partially assigned / Fully assigned / Completed). PR [#846](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/846). Also persists PO Status filter to sessionStorage (one-line audit side-fix on main).
 - **Implementation:** Extends fetchOrders SELECT to embed `quote.source_language/target_language`. Batched IN() fetch of order_workflow_steps per page derives the bucket + active vendor. Bucket aggregates over all external_vendor template steps.
