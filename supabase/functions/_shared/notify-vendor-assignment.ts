@@ -21,8 +21,15 @@ import {
   type TemplateMeta,
 } from "./email-shell.ts";
 
-const TPL_OFFER:    TemplateMeta = { name: "Vendor — New Offer",      version: "2.0", updatedAt: "2026-05-28" };
-const TPL_ASSIGN:   TemplateMeta = { name: "Vendor — Direct Assign",  version: "2.0", updatedAt: "2026-05-28" };
+const TPL_OFFER:        TemplateMeta = { name: "Vendor — New Offer",         version: "2.0", updatedAt: "2026-05-28" };
+const TPL_ASSIGN:       TemplateMeta = { name: "Vendor — Direct Assign",     version: "2.0", updatedAt: "2026-05-28" };
+const TPL_BATCH_SUMMARY: TemplateMeta = { name: "Staff — Vendor Offer Batch", version: "1.0", updatedAt: "2026-06-02" };
+
+// Internal staff CC for every vendor job-assignment / offer email — the team
+// sees a copy so they know the vendor email actually went out. For batch
+// (offer_multiple) sends we suppress this per-vendor CC and send one summary
+// email instead — see notifyVendorOfferBatchSummary below.
+const PM_CC_EMAIL = "pm@cethoscorp.com";
 
 interface NotifyArgs {
   supabase: any;
@@ -38,6 +45,7 @@ interface NotifyArgs {
   deadline?: string | null;
   expires_at?: string | null;
   instructions?: string | null;
+  suppressPmCc?: boolean;
 }
 
 async function logNotification(
@@ -215,6 +223,15 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
           .filter((e: string) => e && e.toLowerCase() !== String(vendor.email).toLowerCase())
       : [];
 
+    if (!args.suppressPmCc) {
+      const vendorEmailLc = String(vendor.email).toLowerCase();
+      const pmLc = PM_CC_EMAIL.toLowerCase();
+      const alreadyInCc = ccList.some((e) => e.toLowerCase() === pmLc);
+      if (vendorEmailLc !== pmLc && !alreadyInCc) {
+        ccList.push(PM_CC_EMAIL);
+      }
+    }
+
     const isOffer = kind === "offer_vendor";
     const totalSteps: number | null =
       typeof totalStepsRaw === "number" && totalStepsRaw > 0 ? totalStepsRaw : null;
@@ -384,5 +401,235 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
     } catch {
       /* swallow */
     }
+  }
+}
+
+// ============================================================================
+// notifyVendorOfferBatchSummary
+// One staff-facing email to PM_CC_EMAIL summarising a batch offer_multiple
+// send. Called once per batch (after Promise.all of per-vendor notifies)
+// so the team gets a single notification regardless of how many vendors
+// were offered. Failures are swallowed.
+// ============================================================================
+
+interface BatchVendorEntry {
+  vendor_id: string;
+  vendor_rate?: number | null;
+  vendor_total?: number | null;
+}
+
+interface BatchSummaryArgs {
+  supabase: any;
+  step: any;
+  workflow: any;
+  vendorList: BatchVendorEntry[];
+  vendor_rate?: number | null;
+  vendor_rate_unit?: string | null;
+  vendor_currency?: string | null;
+  vendor_total?: number | null;
+  deadline?: string | null;
+  expires_at?: string | null;
+}
+
+export async function notifyVendorOfferBatchSummary(
+  args: BatchSummaryArgs,
+): Promise<void> {
+  try {
+    const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
+    if (!BREVO_API_KEY) {
+      console.warn("notifyVendorOfferBatchSummary: BREVO_API_KEY not set, skipping");
+      return;
+    }
+
+    const { supabase, step, workflow, vendorList } = args;
+    const serviceId: string | null = step?.service_id ?? null;
+    const workflowId: string | null = step?.workflow_id ?? workflow?.id ?? null;
+    const vendorIds = vendorList.map((v) => v.vendor_id).filter(Boolean);
+
+    const [
+      { data: vendors },
+      { data: order },
+      { data: service },
+      languagePair,
+      { count: totalStepsRaw },
+    ] = await Promise.all([
+      vendorIds.length > 0
+        ? supabase
+            .from("vendors")
+            .select("id, full_name, email")
+            .in("id", vendorIds)
+        : Promise.resolve({ data: [] }),
+      supabase
+        .from("orders")
+        .select("id, order_number, internal_project_id")
+        .eq("id", workflow?.order_id)
+        .maybeSingle(),
+      serviceId
+        ? supabase.from("services").select("name").eq("id", serviceId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      resolveLanguagePair(
+        supabase,
+        step?.source_language ?? null,
+        step?.target_language ?? null,
+      ),
+      workflowId
+        ? supabase
+            .from("order_workflow_steps")
+            .select("id", { count: "exact", head: true })
+            .eq("workflow_id", workflowId)
+        : Promise.resolve({ count: null }),
+    ]);
+
+    const vendorMap = new Map<string, { full_name: string | null; email: string | null }>();
+    for (const v of (vendors ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>) {
+      vendorMap.set(v.id, { full_name: v.full_name, email: v.email });
+    }
+
+    const totalSteps: number | null =
+      typeof totalStepsRaw === "number" && totalStepsRaw > 0 ? totalStepsRaw : null;
+    const stepNum = step?.step_number;
+    const stepPositionLabel =
+      stepNum != null && totalSteps != null
+        ? `${stepNum} of ${totalSteps}`
+        : stepNum != null
+          ? `Step ${stepNum}`
+          : null;
+    const stepDisplayName = step?.name ?? null;
+    const stepRowValue =
+      stepPositionLabel && stepDisplayName
+        ? `${stepPositionLabel} — ${stepDisplayName}`
+        : stepDisplayName ?? stepPositionLabel ?? "—";
+    const languagePairLabel =
+      languagePair.source && languagePair.target
+        ? `${languagePair.source} → ${languagePair.target}`
+        : languagePair.source || languagePair.target || null;
+
+    const n = vendorList.length;
+    const subject = `Batch offer sent: ${order?.order_number ?? "Order"} — ${stepDisplayName ?? "step"} (${n} vendor${n === 1 ? "" : "s"})`;
+
+    const detailRows: Array<[string, string]> = [
+      ["Order", order?.order_number ?? "—"],
+      ["Step", stepRowValue],
+    ];
+    if (languagePairLabel) detailRows.push(["Languages", languagePairLabel]);
+    if (service?.name) detailRows.push(["Service", service.name]);
+    if (args.deadline) detailRows.push(["Deadline", fmtDate(args.deadline)]);
+    if (args.expires_at) detailRows.push(["Offer expires", fmtDate(args.expires_at)]);
+    detailRows.push(["Vendors offered", String(n)]);
+
+    const rateUnitLabel = fmtRateUnit(args.vendor_rate_unit);
+    const vendorRowsHtml = vendorList
+      .map((v) => {
+        const profile = vendorMap.get(v.vendor_id) ?? { full_name: null, email: null };
+        const name = profile.full_name || "Unknown vendor";
+        const email = profile.email || "—";
+        const rateNum = v.vendor_rate ?? args.vendor_rate ?? null;
+        const totalNum = v.vendor_total ?? args.vendor_total ?? null;
+        const rateText =
+          rateNum != null
+            ? args.vendor_rate_unit === "flat"
+              ? `${fmtMoney(rateNum, args.vendor_currency)} (flat)`
+              : `${fmtMoney(rateNum, args.vendor_currency)} / ${rateUnitLabel}`
+            : "—";
+        const totalText = totalNum != null ? fmtMoney(totalNum, args.vendor_currency) : "—";
+        return `<tr><td style="padding:6px 12px 6px 0;color:#0C2340;font-weight:600;">${esc(name)}</td><td style="padding:6px 12px 6px 0;color:#4B5563;">${esc(email)}</td><td style="padding:6px 12px 6px 0;color:#4B5563;">${esc(rateText)}</td><td style="padding:6px 0;color:#4B5563;">${esc(totalText)}</td></tr>`;
+      })
+      .join("");
+
+    const vendorTableHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 22px;font-size:14px;"><thead><tr><th align="left" style="padding:6px 12px 6px 0;color:#64748B;font-weight:600;border-bottom:1px solid #E5E7EB;">Vendor</th><th align="left" style="padding:6px 12px 6px 0;color:#64748B;font-weight:600;border-bottom:1px solid #E5E7EB;">Email</th><th align="left" style="padding:6px 12px 6px 0;color:#64748B;font-weight:600;border-bottom:1px solid #E5E7EB;">Rate</th><th align="left" style="padding:6px 0;color:#64748B;font-weight:600;border-bottom:1px solid #E5E7EB;">Total</th></tr></thead><tbody>${vendorRowsHtml}</tbody></table>`;
+
+    const body = [
+      eyebrow("Batch offer sent", "teal"),
+      title(`Offer sent to ${n} vendor${n === 1 ? "" : "s"}`),
+      lead(`Order <strong>${esc(order?.order_number ?? "—")}</strong> — step <strong>${esc(stepDisplayName ?? "—")}</strong>. Vendors below received their offer emails individually; this is a single internal summary so the team knows the batch went out.`),
+      detailsTable(detailRows),
+      vendorTableHtml,
+    ].join("");
+
+    const htmlContent = emailShell(body, {
+      replyTo: REPLY.vendorMgmt,
+      template: TPL_BATCH_SUMMARY,
+    });
+
+    const payload = brevoPayload({
+      to: [{ email: PM_CC_EMAIL }],
+      subject,
+      html: htmlContent,
+      replyTo: REPLY.vendorMgmt,
+      senderName: "Cethos Translation Services",
+      tags: [
+        "vendor-assignment-batch-summary",
+        `order-${order?.order_number ?? "unknown"}`,
+      ],
+    });
+
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": BREVO_API_KEY,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error("notifyVendorOfferBatchSummary Brevo error:", JSON.stringify(result));
+      try {
+        await supabase.from("notification_log").insert({
+          event_type: "vendor_offer_batch_summary",
+          recipient_type: "staff",
+          recipient_email: PM_CC_EMAIL,
+          recipient_name: null,
+          recipient_id: null,
+          order_id: workflow?.order_id ?? null,
+          step_id: step?.id ?? null,
+          offer_id: null,
+          subject,
+          status: "failed",
+          error_message: `Brevo ${res.status}: ${JSON.stringify(result).slice(0, 500)}`,
+          metadata: {
+            order_number: order?.order_number ?? null,
+            step_name: step?.name ?? null,
+            vendor_count: n,
+            vendor_ids: vendorIds,
+          },
+        });
+      } catch (logErr: any) {
+        console.error("notifyVendorOfferBatchSummary notification_log insert failed:", logErr?.message || logErr);
+      }
+      return;
+    }
+
+    console.log(
+      `notifyVendorOfferBatchSummary sent to ${PM_CC_EMAIL} for ${n} vendors (msg ${result?.messageId})`,
+    );
+    try {
+      await supabase.from("notification_log").insert({
+        event_type: "vendor_offer_batch_summary",
+        recipient_type: "staff",
+        recipient_email: PM_CC_EMAIL,
+        recipient_name: null,
+        recipient_id: null,
+        order_id: workflow?.order_id ?? null,
+        step_id: step?.id ?? null,
+        offer_id: null,
+        subject,
+        status: "sent",
+        metadata: {
+          order_number: order?.order_number ?? null,
+          step_name: step?.name ?? null,
+          vendor_count: n,
+          vendor_ids: vendorIds,
+          brevo_message_id: result?.messageId ?? null,
+        },
+      });
+    } catch (logErr: any) {
+      console.error("notifyVendorOfferBatchSummary notification_log insert failed:", logErr?.message || logErr);
+    }
+  } catch (err: any) {
+    console.error("notifyVendorOfferBatchSummary threw:", err?.message || err);
   }
 }
