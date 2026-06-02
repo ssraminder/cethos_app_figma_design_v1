@@ -16,6 +16,7 @@ import VendorNdaTab from "./vendor-detail/VendorNdaTab";
 import VendorDocumentsTab from "./vendor-detail/VendorDocumentsTab";
 import VendorInvoicesTab from "./vendor-detail/VendorInvoicesTab";
 import VendorPaymentsTab from "./vendor-detail/VendorPaymentsTab";
+import VendorQmsTab from "./vendor-detail/VendorQmsTab";
 
 const TAB_KEYS = [
   "profile",
@@ -28,6 +29,7 @@ const TAB_KEYS = [
   "documents",
   "auth",
   "nda",
+  "qms",
   "jobs",
 ] as const;
 
@@ -44,6 +46,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   documents: "Documents",
   auth: "Auth / Invitation",
   nda: "NDA",
+  qms: "QMS",
   jobs: "Jobs",
 };
 
@@ -245,6 +248,13 @@ export default function AdminVendorDetail() {
 
         <TabsContent value="nda">
           <VendorNdaTab
+            vendorData={vendorData}
+            onRefresh={refreshVendorData}
+          />
+        </TabsContent>
+
+        <TabsContent value="qms">
+          <VendorQmsTab
             vendorData={vendorData}
             onRefresh={refreshVendorData}
           />
