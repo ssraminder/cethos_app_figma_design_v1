@@ -193,6 +193,22 @@ async function gateAssignment(
   return gate;
 }
 
+// Build a qms_warnings array returnable in success payloads so the admin
+// UI can render a soft warning chip even when the gate runs in warn mode
+// and proceeds. Eligible=true → no warning. Returns [] if gate is null.
+function gateToWarnings(gate: any, vendor_id: string): Array<Record<string, unknown>> {
+  if (!gate || gate.eligible === true) return [];
+  return [
+    {
+      vendor_id,
+      eligible: false,
+      reason: gate.reason ?? null,
+      required_role: gate.required_role ?? null,
+      gating_mode: gate.gating_mode ?? "warn",
+    },
+  ];
+}
+
 function validateDeadlineAndExpiry(action: string, body: any): string | null {
   if (action !== "direct_assign" && action !== "offer_vendor" && action !== "offer_multiple") return null;
   const deadline = body?.deadline ? new Date(body.deadline) : null;
@@ -323,7 +339,7 @@ serve(async (req: Request) => {
         }
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
         await notifyVendorAssignment({ supabase, vendor_id, step, workflow, kind: "direct_assign", vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions });
-        return json({ success: true });
+        return json({ success: true, qms_warnings: gateToWarnings(gate, vendor_id) });
       }
       case "offer_vendor": {
         const { vendor_id, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode } = body;
@@ -341,7 +357,7 @@ serve(async (req: Request) => {
         }
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
         await notifyVendorAssignment({ supabase, vendor_id, step, workflow, kind: "offer_vendor", offer_id: insertedOffer?.id ?? null, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, expires_at: expiresAt, instructions });
-        return json({ success: true });
+        return json({ success: true, qms_warnings: gateToWarnings(gate, vendor_id) });
       }
       case "offer_multiple": {
         const { vendors: vendorList, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, instructions, expires_in_hours, negotiation_allowed, max_rate, max_total, latest_deadline, auto_accept_within_limits, pricing_mode } = body;
@@ -361,7 +377,8 @@ serve(async (req: Request) => {
         if (workflow.status === "not_started") await supabase.from("order_workflows").update({ status: "in_progress" }).eq("id", step.workflow_id);
         await Promise.all(vendorList.map((v: any) => notifyVendorAssignment({ supabase, vendor_id: v.vendor_id, step, workflow, kind: "offer_vendor", offer_id: insertedOffersByVendor[v.vendor_id] ?? null, vendor_rate: v.vendor_rate ?? vendor_rate, vendor_rate_unit, vendor_currency, vendor_total: v.vendor_total ?? vendor_total, deadline, expires_at: expiresAt, instructions, suppressPmCc: true })));
         await notifyVendorOfferBatchSummary({ supabase, step, workflow, vendorList, vendor_rate, vendor_rate_unit, vendor_currency, vendor_total, deadline, expires_at: expiresAt });
-        return json({ success: true, offers_sent: vendorList.length });
+        const qms_warnings = gateResults.flatMap((g) => gateToWarnings(g.gate, g.vendor_id));
+        return json({ success: true, offers_sent: vendorList.length, qms_warnings });
       }
       case "resend_notification": {
         const targetVendorId = step.vendor_id;
