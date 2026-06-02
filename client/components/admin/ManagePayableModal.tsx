@@ -472,6 +472,12 @@ export default function ManagePayableModal({
                 <p className="text-[11px] text-gray-500 mt-1">
                   Each tier is billed at this rate × the tier's percentage from the vendor's CAT grid.
                 </p>
+                {!catBaseRate && (
+                  <p className="text-[11px] text-amber-700 mt-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    Fill in the base rate to enable Upload + Parse below.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -490,7 +496,7 @@ export default function ManagePayableModal({
                       onClick={() => fileInputRef.current?.click()}
                       disabled={parsing || !catBaseRate}
                       className="text-xs inline-flex items-center gap-1 px-3 py-1.5 border border-teal-500 text-teal-700 rounded hover:bg-teal-50 disabled:opacity-50"
-                      title="Upload CSV / TSV / TXT / XLSX / XML"
+                      title={!catBaseRate ? "Fill in the Base per-word rate above first" : "Upload CSV / TSV / TXT / XLSX / XML"}
                     >
                       <Upload className="w-3 h-3" />
                       Upload file
@@ -520,6 +526,13 @@ export default function ManagePayableModal({
                     onClick={handleParseCat}
                     disabled={parsing || !catPasteText.trim() || !catBaseRate}
                     className="text-xs inline-flex items-center gap-1 px-3 py-1.5 bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50"
+                    title={
+                      !catBaseRate
+                        ? "Fill in the Base per-word rate above first"
+                        : !catPasteText.trim()
+                        ? "Paste the analysis above (or upload a file) first"
+                        : "Parse the pasted analysis"
+                    }
                   >
                     {parsing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                     Parse
