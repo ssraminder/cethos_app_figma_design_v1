@@ -274,7 +274,23 @@ function ActorIcon({ type, className = "w-4 h-4" }: { type: string; className?: 
   }
 }
 
-function ActorTypeBadge({ actorType }: { actorType: string }) {
+// The label has to follow the ACTUAL assignee, not the template's actor_type.
+// Templates declare an intended actor_type (e.g. external_vendor for Editing
+// on Standard TEP) but staff can fill those slots via `allowed_actor_types`.
+// Rendering the template's "Vendor" label when an internal staff member
+// actually filled the step makes a single staff person look like 3 different
+// actors across the same workflow. We pass the whole step and resolve the
+// label from `vendor_id` / `assigned_staff_id` first, falling back to
+// `actor_type` only when no one is assigned yet (template-role preview).
+function ActorTypeBadge({
+  actorType,
+  vendorId,
+  assignedStaffId,
+}: {
+  actorType: string;
+  vendorId?: string | null;
+  assignedStaffId?: string | null;
+}) {
   const config: Record<string, { label: string; bg: string; text: string }> = {
     external_vendor: { label: "Vendor", bg: "bg-blue-100", text: "text-blue-700" },
     internal_work: { label: "Internal (Work)", bg: "bg-purple-100", text: "text-purple-700" },
@@ -282,7 +298,21 @@ function ActorTypeBadge({ actorType }: { actorType: string }) {
     customer: { label: "Customer", bg: "bg-green-100", text: "text-green-700" },
     automated: { label: "Auto", bg: "bg-gray-100", text: "text-gray-600" },
   };
-  const c = config[actorType] || config.automated;
+  // Pick a key based on who is ACTUALLY assigned, not the template:
+  // - vendor_id set → Vendor (blue), regardless of template
+  // - staff assigned to an external_vendor slot → render the template's
+  //   "Internal" flavour if it carries one; otherwise generic Internal (Work)
+  // - nothing assigned → preview the template role
+  let effectiveKey: string;
+  if (vendorId) {
+    effectiveKey = "external_vendor";
+  } else if (assignedStaffId) {
+    effectiveKey =
+      actorType === "internal_review" ? "internal_review" : "internal_work";
+  } else {
+    effectiveKey = actorType;
+  }
+  const c = config[effectiveKey] || config.automated;
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${c.bg} ${c.text}`}>
       {c.label}
@@ -3019,7 +3049,11 @@ function WorkflowPipeline({
 
                 {/* Line 2: Actor + assignment */}
                 <div className="flex items-center gap-2 mt-1">
-                  <ActorTypeBadge actorType={step.actor_type} />
+                  <ActorTypeBadge
+                    actorType={step.actor_type}
+                    vendorId={step.vendor_id}
+                    assignedStaffId={step.assigned_staff_id}
+                  />
                   <span className="text-sm text-gray-600">
                     {step.vendor_name ||
                       step.assigned_staff_name ||
