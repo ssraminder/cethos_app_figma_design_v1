@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Email subjects #2.1 tier 2+3 (step lifecycle + staff + reminders + instructions)
+- **Tier 2 (#844):** Wired into all 8 notify-step-lifecycle subjects (step_approved, revision_requested, payable_invoiced, payable_paid, payable_adjusted, unassigned, deadline_changed, workflow_completed). StepLifecycleContext extended with project_number, company_name, source/target lang names. Loaders enriched in update-workflow-step + manage-vendor-payables.
+- **Tier 3 (#845):** notify-staff-assignment, vendor-deadline-reminders (4 subjects), vendor-acceptance-reminders (URGENT + Reminder), notify-vendor-instructions-changed. All deployed.
+- **Tier 4 deferred:** Customer-facing subjects (review-draft-file, send-invoice-email, notify-customer-quote-ack, notify-customer-order-confirmed, send-payment-reminders) — lower traffic, customers don't typically file by PRJ.
+
 ### 2026-06-02 — Email subjects PRJ prefix for business customers (#2.1 tier 1)
 - **What:** New shared helper [_shared/email-subject.ts](supabase/functions/_shared/email-subject.ts) with `buildEmailSubject({eventLabel,orderNumber,projectNumber,companyName,sourceLangName,targetLangName,stepName})`. For business customers (`company_name` AND `project_number` both set) emits `<PRJ> · <ORD> · <Source → Target> · <Step>`. Individual customers keep legacy shape. Wired into highest-traffic builder `notify-vendor-assignment.ts` (3 subjects: direct_assign + offer_vendor + batch summary). PR [#843](https://github.com/ssraminder/cethos_app_figma_design_v1/pull/843).
 - **Verified live:** ORD-2026-10291 / ZZ TEST DirectOrder Co (business) → subject `PRJ-2026-00086 · ORD-2026-10291 · Romanian → English · Translation`. Previously `Assigned: ORD-2026-10291 — Translation (Romanian → English)`.
