@@ -42,6 +42,7 @@ import {
   type TemplateMeta,
 } from "../_shared/email-shell.ts";
 import { formatMoney } from "../_shared/rush-pricing.ts";
+import { prefixWithProject } from "../_shared/email-subject.ts";
 
 const TEMPLATE: TemplateMeta = {
   name: "Customer — Order Confirmation (AR / Net 30)",
@@ -106,9 +107,10 @@ serve(async (req: Request) => {
     .from("orders")
     .select(
       `id, order_number, total_amount, currency, estimated_delivery_date, amount_paid,
-       customer_id, quote_id,
-       customers (id, full_name, email, is_ar_customer, payment_terms, ar_contact_email),
-       quotes (id, quote_number, source_language_id, target_language_id, target_language_other, service_id)`,
+       customer_id, quote_id, internal_project_id,
+       customers (id, full_name, email, is_ar_customer, payment_terms, ar_contact_email, company_name),
+       quotes (id, quote_number, source_language_id, target_language_id, target_language_other, service_id),
+       internal_project:internal_projects!internal_project_id(project_number)`,
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -128,8 +130,16 @@ serve(async (req: Request) => {
         is_ar_customer: boolean | null;
         payment_terms: string | null;
         ar_contact_email: string | null;
+        company_name: string | null;
       }
     | null;
+  const internalProject = (Array.isArray((order as any).internal_project)
+    ? (order as any).internal_project[0]
+    : (order as any).internal_project) as
+    | { project_number: string | null }
+    | null;
+  const projectNumber = internalProject?.project_number ?? null;
+  const companyName = customer?.company_name ?? null;
 
   if (!customer) {
     return json({ success: false, error: "customer_missing" }, 400);
@@ -288,7 +298,7 @@ serve(async (req: Request) => {
   } else {
     const payload = brevoPayload({
       to: [{ email: recipientEmail, name: recipientName || recipientEmail }],
-      subject: `Your order is confirmed — ${order.order_number}`,
+      subject: prefixWithProject(`Your order is confirmed — ${order.order_number}`, { companyName, projectNumber }),
       html,
       replyTo: REPLY.customer,
       tags: ["order-confirmation-ar", `order-${order.order_number}`],
@@ -326,7 +336,7 @@ serve(async (req: Request) => {
       recipient_id: customer.id,
       order_id: orderId,
       step_id: null,
-      subject: `Your order is confirmed — ${order.order_number}`,
+      subject: prefixWithProject(`Your order is confirmed — ${order.order_number}`, { companyName, projectNumber }),
       status,
       error_message: errorMessage,
       metadata: {

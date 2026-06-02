@@ -33,6 +33,7 @@ import {
   title,
   type TemplateMeta,
 } from "../_shared/email-shell.ts";
+import { prefixWithProject } from "../_shared/email-subject.ts";
 
 const TEMPLATE: TemplateMeta = {
   name: "Customer — Quote Acknowledgment",
@@ -108,9 +109,10 @@ serve(async (req: Request) => {
   const { data: quote, error: qErr } = await supabase
     .from("quotes")
     .select(
-      `id, quote_number, created_at, customer_id, service_id,
+      `id, quote_number, created_at, customer_id, service_id, internal_project_id,
        source_language_id, target_language_id, target_language_other,
-       customers (id, full_name, email)`,
+       customers (id, full_name, email, company_name),
+       internal_project:internal_projects!internal_project_id(project_number)`,
     )
     .eq("id", quoteId)
     .maybeSingle();
@@ -122,8 +124,15 @@ serve(async (req: Request) => {
   const customer = (Array.isArray((quote as any).customers)
     ? (quote as any).customers[0]
     : (quote as any).customers) as
-    | { id: string; full_name: string | null; email: string | null }
+    | { id: string; full_name: string | null; email: string | null; company_name: string | null }
     | null;
+  const internalProject = (Array.isArray((quote as any).internal_project)
+    ? (quote as any).internal_project[0]
+    : (quote as any).internal_project) as
+    | { project_number: string | null }
+    | null;
+  const projectNumber = internalProject?.project_number ?? null;
+  const companyName = customer?.company_name ?? null;
 
   const recipientEmail = body.override_email || customer?.email || null;
   const recipientName = body.override_name || customer?.full_name || null;
@@ -249,7 +258,7 @@ serve(async (req: Request) => {
   } else {
     const payload = brevoPayload({
       to: [{ email: recipientEmail, name: recipientName || recipientEmail }],
-      subject: `We've got your request — ${quote.quote_number}`,
+      subject: prefixWithProject(`We've got your request — ${quote.quote_number}`, { companyName, projectNumber }),
       html,
       replyTo: REPLY.customer,
       tags: ["quote-acknowledgment", `quote-${quote.quote_number}`],
@@ -288,7 +297,7 @@ serve(async (req: Request) => {
       recipient_id: customer?.id ?? null,
       order_id: null,
       step_id: null,
-      subject: `We've got your request — ${quote.quote_number}`,
+      subject: prefixWithProject(`We've got your request — ${quote.quote_number}`, { companyName, projectNumber }),
       status,
       error_message: errorMessage,
       metadata: {
