@@ -20,6 +20,7 @@ import {
   title,
   type TemplateMeta,
 } from "./email-shell.ts";
+import { buildEmailSubject } from "./email-subject.ts";
 
 const TPL_OFFER:        TemplateMeta = { name: "Vendor — New Offer",         version: "2.0", updatedAt: "2026-05-28" };
 const TPL_ASSIGN:       TemplateMeta = { name: "Vendor — Direct Assign",     version: "2.0", updatedAt: "2026-05-28" };
@@ -193,7 +194,7 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
         .maybeSingle(),
       supabase
         .from("orders")
-        .select("id, order_number, internal_project_id")
+        .select("id, order_number, internal_project_id, customer_id, internal_project:internal_projects(project_number), customer:customers(company_name)")
         .eq("id", workflow?.order_id)
         .maybeSingle(),
       serviceId
@@ -211,6 +212,8 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
             .eq("workflow_id", workflowId)
         : Promise.resolve({ count: null }),
     ]);
+    const projectNumber = (order as any)?.internal_project?.project_number ?? null;
+    const companyName = (order as any)?.customer?.company_name ?? null;
 
     if (!vendor?.email) {
       console.warn(`notify-vendor-assignment: vendor ${vendor_id} has no email`);
@@ -253,9 +256,15 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
         ? `${languagePair.source} → ${languagePair.target}`
         : languagePair.source || languagePair.target || null;
 
-    const subject = isOffer
-      ? `New offer: ${order?.order_number ?? "Order"} — ${stepDisplayName ?? "step"}${languagePairLabel ? ` (${languagePairLabel})` : ""}`
-      : `Assigned: ${order?.order_number ?? "Order"} — ${stepDisplayName ?? "step"}${languagePairLabel ? ` (${languagePairLabel})` : ""}`;
+    const subject = buildEmailSubject({
+      eventLabel: isOffer ? "New offer" : "Assigned",
+      orderNumber: order?.order_number ?? null,
+      projectNumber,
+      companyName,
+      sourceLangName: languagePair.source,
+      targetLangName: languagePair.target,
+      stepName: stepDisplayName,
+    });
 
     const portalLink = `${VENDOR_PORTAL_URL}/jobs`;
     const ctaLabel = isOffer ? "Review offer" : "Accept assignment";
@@ -461,7 +470,7 @@ export async function notifyVendorOfferBatchSummary(
         : Promise.resolve({ data: [] }),
       supabase
         .from("orders")
-        .select("id, order_number, internal_project_id")
+        .select("id, order_number, internal_project_id, customer_id, internal_project:internal_projects(project_number), customer:customers(company_name)")
         .eq("id", workflow?.order_id)
         .maybeSingle(),
       serviceId
@@ -479,6 +488,8 @@ export async function notifyVendorOfferBatchSummary(
             .eq("workflow_id", workflowId)
         : Promise.resolve({ count: null }),
     ]);
+    const projectNumberB = (order as any)?.internal_project?.project_number ?? null;
+    const companyNameB = (order as any)?.customer?.company_name ?? null;
 
     const vendorMap = new Map<string, { full_name: string | null; email: string | null }>();
     for (const v of (vendors ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>) {
@@ -505,7 +516,15 @@ export async function notifyVendorOfferBatchSummary(
         : languagePair.source || languagePair.target || null;
 
     const n = vendorList.length;
-    const subject = `Batch offer sent: ${order?.order_number ?? "Order"} — ${stepDisplayName ?? "step"} (${n} vendor${n === 1 ? "" : "s"})`;
+    const subject = buildEmailSubject({
+      eventLabel: `Batch offer sent (${n} vendor${n === 1 ? "" : "s"})`,
+      orderNumber: order?.order_number ?? null,
+      projectNumber: projectNumberB,
+      companyName: companyNameB,
+      sourceLangName: languagePair.source,
+      targetLangName: languagePair.target,
+      stepName: stepDisplayName,
+    });
 
     const detailRows: Array<[string, string]> = [
       ["Order", order?.order_number ?? "—"],
