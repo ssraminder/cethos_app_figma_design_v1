@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — R9 counter-back action + UI (PR #861)
+- **Decision:** Admin-side counter to a vendor counter-offer is implemented as `admin-respond-counter-offer{action:'counter_back'}` overwriting the offer's `vendor_*` terms with admin's new rate/total/deadline and clearing the `counter_*` fields, plus bumping `counter_round`. The vendor portal's existing Accept/Negotiate buttons pick the new terms up unchanged (Negotiate is gated on `counter_status === 'proposed'`, so clearing it re-enables negotiate). Vendor is notified via `notifyVendorCounterBack` (`event_type='counter_back'` in notification_log).
+- **Rationale:** Closes the dead "Counter-back not yet wired" italic from the AI-rec block (Audit B finding). Admins previously had to Reject + re-Offer, losing the round context and burning a Brevo round trip.
+- **Alternatives considered:** (a) Add a new `counter_status='admin_counter'` value and route Accept through it — rejected; adds branching in vendor portal for marginal audit-trail gain. (b) Mirror admin's terms into both `vendor_*` AND `counter_*` for audit — rejected; notification_log already carries the email, and `counter_round` preserves the round sequence.
+- **Status:** active
+- **Affects:** [admin-respond-counter-offer](supabase/functions/admin-respond-counter-offer/index.ts), [notify-counter.ts](supabase/functions/_shared/notify-counter.ts), [OrderWorkflowSection.tsx](client/components/admin/OrderWorkflowSection.tsx) (new `CounterBackForm` inline component)
+
 ### 2026-06-02 — Sprint 7+8 partials: VendorFinderModal extraction + WORM (R11p, R18)
 - **R11 partial (#857):** VendorFinderModal (~700 lines) + its local SearchableSelect extracted from OrderWorkflowSection.tsx (5,995 → 5,412 lines). No behavior change. Sets up cleaner ground for R9 counter-back UI + R13 per-vendor rate to land on top. VendorAssignModal / UnassignVendorModal / WorkflowPipeline stay in the original file.
 - **R18 (#858):** WORM `enforce_worm_no_delete()` SECURITY DEFINER trigger on notification_log + order_workflow_steps + qms.assignment_eligibility_events. service_role + postgres bypass; everything else raises 42501. Bypass attempts logged via NOTICE.
