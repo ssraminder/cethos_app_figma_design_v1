@@ -18,6 +18,12 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — R14 backfill deferred + R16 cite qualification (Sprint 5 partial close)
+- **R14 deferred:** Mass backfill of qms.role_qualifications + competence_evidence + nda_agreements for the 248 candidates in `qms.v_retroactive_qualification_candidates` is ISO-audit-sensitive (verified=true evidence + active NDAs under staff identity for vendors who haven't actually signed). Classifier correctly blocked the en-masse insert. Needs a staff-driven admin UI flow (per-vendor signoff with real auth user) — that's its own R14+UI sub-feature. Schema path mapped: nda_agreements → competence_evidence → role_qualifications (verified_by/created_by on first two reference auth.users not staff_users).
+- **R16 shipped (#854):** `order_workflow_steps.competence_basis_cited_id uuid REFERENCES qms.role_qualifications` added (NULLable, partial index). update-workflow-step direct_assign persists `body.competence_basis_cited_id` when supplied. UI to populate it lands with R14.
+- **R17 blocked on R14:** Flipping `qms.config.assignment_gating_mode` to `block` without backfilling qualifications would block every assignment (most vendors have 0 rows). Stays at `warn` until R14 lands.
+- **Sprint 5 net:** R23 + R15 + R22 + R16 shipped; R14 + R17 paired and deferred to a staff-UI follow-up.
+
 ### 2026-06-02 — Cognitive Debriefing workflow template + §6.2 enforcement (R23 + R15 + R22)
 - **R23 (#852):** New `cognitive_debriefing` workflow template — 5 steps (Translation → Cognitive Debriefing → Harmonization → QA Review → Final Deliverable) using the `cognitive_debriefing` service that existed since 2026-03-24 but had no template. Closes the audit gap.
 - **R15 (#853):** `workflow_template_steps.requires_different_vendor_from_step int[]` column. Seeded constraints on TEP (Step 2 ≠ 1, Step 3 ≠ 1,2), Translation+Review (Step 2 ≠ 1), MTPE+Review (Step 2 ≠ 1), Medical/Back Translation (Step 2 ≠ 1), Transcription+Translation (Step 3 ≠ 2). `update-workflow-step` direct_assign / offer_vendor / offer_multiple now block §6.2 violations with `SEPARATION_VIOLATION` 409 unless `force_override_reason` supplied.
