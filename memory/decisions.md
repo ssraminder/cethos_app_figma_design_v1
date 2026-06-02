@@ -18,6 +18,11 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — 3 admin UX features: staff notes, mandatory client deadline, quote search (PRs #870-#872)
+- **PR #870 (staff notes):** New `staff_notes` table (polymorphic on entity_type+entity_id, soft-deleted, RLS on), `manage-staff-notes` edge fn, `StaffNotesPanel` mounted above the activity feed on AdminQuoteDetail and above the tab bar on AdminOrderDetail. Internal-only — never surfaced to customers or vendors.
+- **PR #871 (client deadline):** Made `promisedDeliveryDate` mandatory in AdminCreateOrder (required + asterisk + validate(); orders list 'Client Deadline' column renders `estimated_delivery_at` via `toLocaleString` so each staff member sees the deadline in their own browser-local TZ. Falls back to legacy `estimated_delivery_date` date-only when the timestamp is null.
+- **PR #872 (quote search):** /admin/quotes search input now OR-matches across quote_number + customers.full_name + customers.email + customers.phone via 2-stage query (customer IDs first, then OR filter). Dedicated 'Filter by name' input kept for back-compat.
+
 ### 2026-06-02 — R14 QMS qualification entry UI shipped, R17 gated on data (PR #869)
 - **Decision:** Built the per-vendor admin QMS tab and `qms.record_qualification` RPC that atomically writes NDA + verified evidence + role qualification + language-pair qualifications, satisfying the existing precondition trigger. Did NOT flip `qms.config.assignment_gating_mode` from `warn` to `block` — the role_qualifications table is empty, so flipping would deny every vendor assignment.
 - **Rationale:** The earlier classifier denial on bulk backfill stands. The defensible path was: ship a per-vendor entry UI so staff record qualifications case-by-case as they review CVs/NDAs. `qms.v_retroactive_qualification_candidates` view lists vendors needing records. R17 flip becomes safe once the active roster has been processed.
