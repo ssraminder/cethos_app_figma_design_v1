@@ -34,6 +34,7 @@ import {
   type TemplateMeta,
   C,
 } from "../_shared/email-shell.ts";
+import { prefixWithProject } from "../_shared/email-subject.ts";
 
 const TPL_CUSTOMER_DRAFT: TemplateMeta = {
   name: "Customer — Draft for Review",
@@ -933,9 +934,19 @@ async function notifyCustomerDraftReady(
   try {
     const { data: customer } = await supabase
       .from("customers")
-      .select("email, full_name")
+      .select("email, full_name, company_name")
       .eq("id", customerId)
       .single();
+
+    // #2.1 Tier 4 — resolve project number via order for business-customer prefix
+    const { data: orderForPrj } = await supabase
+      .from("orders")
+      .select("internal_project:internal_projects!internal_project_id(project_number)")
+      .eq("id", orderId)
+      .maybeSingle();
+    const ipEmb = (orderForPrj as any)?.internal_project;
+    const projectNumber: string | null = (Array.isArray(ipEmb) ? ipEmb[0]?.project_number : ipEmb?.project_number) ?? null;
+    const companyName: string | null = (customer as any)?.company_name ?? null;
 
     // When staff is running a smoke test, recipientOverride redirects the
     // delivery without mutating the customer record. Body still says
@@ -981,9 +992,12 @@ async function notifyCustomerDraftReady(
       ? `Your draft translations (${fileCount} files) are ready for review. Please look them over and either approve or request changes — one revision pass is included.`
       : `Your draft translation ${strong(esc(fileName || filesWithUrls?.[0]?.name || "file"))} is ready for review. Please look it over and either approve or request changes — one revision pass is included.`;
 
-    const subject = fileCount > 1
-      ? `Your draft translations (${fileCount} files) are ready for review`
-      : "Your draft translation is ready for review";
+    const subject = prefixWithProject(
+      fileCount > 1
+        ? `Your draft translations (${fileCount} files) are ready for review`
+        : "Your draft translation is ready for review",
+      { companyName, projectNumber },
+    );
 
     const customerFirstName = (toName || customer?.full_name || "").trim().split(/\s+/)[0] || "there";
 
@@ -1168,11 +1182,21 @@ async function notifyCustomerDelivery(
   try {
     const { data: customer } = await supabase
       .from("customers")
-      .select("email, full_name")
+      .select("email, full_name, company_name")
       .eq("id", customerId)
       .single();
 
     if (!customer?.email) return;
+
+    // #2.1 Tier 4 — project number resolved via order
+    const { data: orderForPrj } = await supabase
+      .from("orders")
+      .select("internal_project:internal_projects!internal_project_id(project_number)")
+      .eq("id", orderId)
+      .maybeSingle();
+    const ipEmb = (orderForPrj as any)?.internal_project;
+    const projectNumber: string | null = (Array.isArray(ipEmb) ? ipEmb[0]?.project_number : ipEmb?.project_number) ?? null;
+    const companyName: string | null = (customer as any)?.company_name ?? null;
 
     const orderUrl = `${siteUrl}/dashboard/orders/${orderId}`;
 
@@ -1232,7 +1256,10 @@ async function notifyCustomerDelivery(
       },
       body: JSON.stringify(brevoPayload({
         to: [{ email: customer.email, name: customer.full_name || customer.email }],
-        subject: `Your translation for order ${orderNumber} has been delivered`,
+        subject: prefixWithProject(
+          `Your translation for order ${orderNumber} has been delivered`,
+          { companyName, projectNumber },
+        ),
         html,
         replyTo: REPLY.customer,
         senderName: "Cethos Translation Services",

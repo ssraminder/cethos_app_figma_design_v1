@@ -27,6 +27,7 @@ import {
   C,
   type TemplateMeta,
 } from "../_shared/email-shell.ts";
+import { prefixWithProject } from "../_shared/email-subject.ts";
 
 const TEMPLATE: TemplateMeta = {
   name: "Customer — Final Deliverable",
@@ -172,15 +173,17 @@ serve(async (req: Request) => {
     // 6) Load order + customer for the email
     const { data: order } = await supabase
       .from("orders")
-      .select("id, order_number, customer_id")
+      .select("id, order_number, customer_id, internal_project:internal_projects!internal_project_id(project_number)")
       .eq("id", step.order_id)
       .single();
+    const ipEmb = (order as any)?.internal_project;
+    const projectNumber: string | null = (Array.isArray(ipEmb) ? ipEmb[0]?.project_number : ipEmb?.project_number) ?? null;
 
-    let customer: { id: string; full_name: string | null; email: string | null } | null = null;
+    let customer: { id: string; full_name: string | null; email: string | null; company_name: string | null } | null = null;
     if (order?.customer_id) {
       const { data: c } = await supabase
         .from("customers")
-        .select("id, full_name, email")
+        .select("id, full_name, email, company_name")
         .eq("id", order.customer_id)
         .single();
       customer = c ?? null;
@@ -210,6 +213,8 @@ serve(async (req: Request) => {
         downloads,
         message: typeof message === "string" ? message.trim() || null : null,
         version: chosenDelivery.version,
+        projectNumber,
+        companyName: customer.company_name,
       });
     } else {
       console.warn(`send-final-deliverable: no customer email for order ${step.order_id}`);
@@ -248,6 +253,9 @@ interface CustomerEmailArgs {
   downloads: Array<{ name: string; url: string }>;
   message: string | null;
   version: number;
+  // #2.1 Tier 4 — business-customer subject prefix
+  projectNumber?: string | null;
+  companyName?: string | null;
 }
 
 async function sendCustomerEmail(args: CustomerEmailArgs): Promise<void> {
@@ -258,7 +266,10 @@ async function sendCustomerEmail(args: CustomerEmailArgs): Promise<void> {
   }
 
   const firstName = (args.customerName || "").trim().split(/\s+/)[0] || "there";
-  const subject = `Your final translation is ready — ${args.orderNumber}`;
+  const subject = prefixWithProject(
+    `Your final translation is ready — ${args.orderNumber}`,
+    { companyName: args.companyName, projectNumber: args.projectNumber },
+  );
 
   // Download list — one row per file in a teal-bordered card.
   const downloadRows = args.downloads

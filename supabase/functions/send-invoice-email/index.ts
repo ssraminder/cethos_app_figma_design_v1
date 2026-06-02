@@ -14,6 +14,7 @@
 // ============================================================================
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { prefixWithProject } from "../_shared/email-subject.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,6 +60,18 @@ serve(async (req) => {
     }
 
     const cur = invoice.currency || 'CAD';
+
+    // #2.1 Tier 4 — resolve internal_project for business-customer subject prefix
+    let projectNumber: string | null = null;
+    if (invoice.order_id) {
+      const { data: orderRow } = await sb
+        .from('orders')
+        .select('internal_project:internal_projects!internal_project_id(project_number)')
+        .eq('id', invoice.order_id)
+        .maybeSingle();
+      const ipEmb = (orderRow as any)?.internal_project;
+      projectNumber = (Array.isArray(ipEmb) ? ipEmb[0]?.project_number : ipEmb?.project_number) ?? null;
+    }
 
     // ── 2. Load customer + branch + preferred payment method ───────────────
     const { data: customer } = await sb.from('customers').select(`
@@ -312,7 +325,10 @@ serve(async (req) => {
       sender: { name: 'CETHOS Translation Services', email: 'donotreply@cethos.com' },
       to: toRecipients,
       replyTo: { email: branch.email || 'support@cethos.com' },
-      subject: `Invoice ${invoice.invoice_number} \u2014 ${fmt(invoice.balance_due, cur)} Due ${fmtDate(invoice.due_date)}`,
+      subject: prefixWithProject(
+        `Invoice ${invoice.invoice_number} \u2014 ${fmt(invoice.balance_due, cur)} Due ${fmtDate(invoice.due_date)}`,
+        { companyName: customer.company_name, projectNumber },
+      ),
       htmlContent,
       attachment: [{
         content: pdfBase64,
