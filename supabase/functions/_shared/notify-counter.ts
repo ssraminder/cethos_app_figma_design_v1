@@ -181,6 +181,8 @@ interface DecisionContext {
     deadline: string | null;
   };
   rejectionReason?: string | null;
+  // R9 counter-back free-form note (used by notifyVendorCounterBack only)
+  note?: string | null;
 }
 
 function appliedRows(c: DecisionContext): Array<[string, string]> {
@@ -227,6 +229,42 @@ export async function notifyVendorCounterAccepted(ctx: DecisionContext): Promise
     orderId: ctx.order.id,
     stepId: ctx.step.id,
     offerId: ctx.offerId,
+  });
+}
+
+// `counter_back` — admin counter-counters the vendor's counter (R9). The
+// vendor's offer row already has admin's new rate/total/deadline in the
+// counter_* columns by the time this fires; ctx.applied carries those
+// values for display so the email mirrors counter_accepted's shape.
+export async function notifyVendorCounterBack(ctx: DecisionContext): Promise<void> {
+  const subject = `Counter-proposal back to you: ${ctx.order.order_number}`;
+  const noteCallout = ctx.note
+    ? callout({ tone: "info", title: "From the admin", body: esc(ctx.note) })
+    : "";
+  const body = [
+    statusBadge("warn", "Counter back"),
+    title("The admin has countered your counter-proposal"),
+    lead(
+      `Hi ${esc(firstName(ctx.vendor.full_name))}, the admin has updated the offer terms in response to your counter. Please review and accept, decline, or counter again.`,
+    ),
+    detailsTable(appliedRows(ctx)),
+    noteCallout,
+    ctaButton({ label: "Review updated offer", url: `${VENDOR_PORTAL_URL}/jobs` }),
+  ].join("");
+  await sendOne({
+    supabase: ctx.supabase,
+    eventType: "counter_back",
+    recipientType: "vendor",
+    recipientEmail: ctx.vendor.email,
+    recipientName: ctx.vendor.full_name,
+    recipientId: ctx.vendor.id,
+    ccEmails: ccFor(ctx.vendor),
+    subject,
+    htmlContent: emailShell(body, { replyTo: REPLY.vendor, template: TPL.counterRejected }),
+    orderId: ctx.order.id,
+    stepId: ctx.step.id,
+    offerId: ctx.offerId,
+    metadata: { note: ctx.note ?? null },
   });
 }
 

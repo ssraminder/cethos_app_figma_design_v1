@@ -285,6 +285,119 @@ function ActorIcon({ type, className = "w-4 h-4" }: { type: string; className?: 
 // actors across the same workflow. We pass the whole step and resolve the
 // label from `vendor_id` / `assigned_staff_id` first, falling back to
 // `actor_type` only when no one is assigned yet (template-role preview).
+// R9 — inline form inside the counter-offer card. Admin proposes new rate,
+// total, deadline, and a note; the offer's vendor_* terms get overwritten with
+// these values via admin-respond-counter-offer{action:'counter_back'} and the
+// vendor's existing Accept/Negotiate buttons pick them up unchanged.
+function CounterBackForm({
+  offer,
+  disabled,
+  onSubmit,
+  onCancel,
+}: {
+  offer: any;
+  disabled: boolean;
+  onSubmit: (values: { new_rate?: number; new_total?: number; new_deadline?: string; new_note?: string; new_rate_unit?: string; new_currency?: string }) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const initialRate = offer.counter_rate != null ? String(offer.counter_rate) : offer.vendor_rate != null ? String(offer.vendor_rate) : "";
+  const initialTotal = offer.counter_total != null ? String(offer.counter_total) : offer.vendor_total != null ? String(offer.vendor_total) : "";
+  const initialDeadline = offer.counter_deadline || offer.deadline || "";
+  const [rate, setRate] = useState(initialRate);
+  const [total, setTotal] = useState(initialTotal);
+  const [deadline, setDeadline] = useState(initialDeadline ? new Date(initialDeadline).toISOString().slice(0, 16) : "");
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    const rateNum = rate ? Number(rate) : undefined;
+    const totalNum = total ? Number(total) : undefined;
+    if ((rate && Number.isNaN(rateNum)) || (total && Number.isNaN(totalNum))) {
+      toast.error("Rate and total must be numbers");
+      return;
+    }
+    if (!rateNum && !totalNum && !deadline && !note.trim()) {
+      toast.error("Provide at least one of rate, total, deadline, or note");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        new_rate: rateNum,
+        new_total: totalNum,
+        new_deadline: deadline ? new Date(deadline).toISOString() : undefined,
+        new_note: note.trim() || undefined,
+        new_rate_unit: offer.counter_rate_unit || offer.vendor_rate_unit || undefined,
+        new_currency: offer.counter_currency || offer.vendor_currency || undefined,
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-md space-y-2">
+      <div className="text-[11px] font-semibold text-orange-800">Counter back to {offer.vendor_name}</div>
+      <div className="grid grid-cols-3 gap-2">
+        <label className="text-[11px] text-gray-700">
+          Rate ({offer.counter_rate_unit || offer.vendor_rate_unit || "flat"})
+          <input
+            type="number" step="0.01" min="0"
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
+            className="mt-0.5 w-full border border-gray-300 rounded px-1.5 py-1 text-xs"
+            disabled={disabled || submitting}
+          />
+        </label>
+        <label className="text-[11px] text-gray-700">
+          Total ({offer.counter_currency || offer.vendor_currency || "CAD"})
+          <input
+            type="number" step="0.01" min="0"
+            value={total}
+            onChange={(e) => setTotal(e.target.value)}
+            className="mt-0.5 w-full border border-gray-300 rounded px-1.5 py-1 text-xs"
+            disabled={disabled || submitting}
+          />
+        </label>
+        <label className="text-[11px] text-gray-700">
+          Deadline
+          <input
+            type="datetime-local"
+            value={deadline}
+            onChange={(e) => setDeadline(e.target.value)}
+            className="mt-0.5 w-full border border-gray-300 rounded px-1.5 py-1 text-xs"
+            disabled={disabled || submitting}
+          />
+        </label>
+      </div>
+      <textarea
+        className="w-full border border-gray-300 rounded p-1.5 text-xs"
+        placeholder="Note to vendor (optional)…"
+        rows={2}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        disabled={disabled || submitting}
+      />
+      <div className="flex gap-2">
+        <button
+          className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs disabled:opacity-50 inline-flex items-center gap-1"
+          disabled={disabled || submitting}
+          onClick={handleSubmit}
+        >
+          {submitting ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending…</> : <>Send counter back</>}
+        </button>
+        <button
+          className="px-3 py-1.5 text-gray-600 hover:text-gray-800 text-xs"
+          disabled={disabled || submitting}
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ActorTypeBadge({
   actorType,
   vendorId,
@@ -1752,11 +1865,17 @@ interface WorkflowPipelineProps {
   handleManageSteps?: (action: string, params: any) => Promise<void>;
   onAddStepAt?: (afterPosition: number) => void;
   handleRetractSingleOffer?: (stepId: string, offerId: string, vendorName: string) => Promise<void>;
-  handleRespondCounter?: (offerId: string, action: 'accept' | 'reject') => Promise<void>;
+  handleRespondCounter?: (
+    offerId: string,
+    action: 'accept' | 'reject' | 'counter_back',
+    counterBack?: { new_rate?: number; new_total?: number; new_deadline?: string; new_note?: string; new_currency?: string; new_rate_unit?: string },
+  ) => Promise<void>;
   rejectingOfferId?: string | null;
   rejectReason?: string;
   onSetRejectingOfferId?: (id: string | null) => void;
   onSetRejectReason?: (text: string) => void;
+  counterBackOfferId?: string | null;
+  onSetCounterBackOfferId?: (id: string | null) => void;
   counterLoadingId?: string | null;
   onUnassignVendor?: (step: WorkflowStep) => void;
   onExtendDeadline?: (stepId: string, newDeadline: string, reason: string) => Promise<void>;
@@ -1812,6 +1931,8 @@ function WorkflowPipeline({
   rejectReason = '',
   onSetRejectingOfferId = () => {},
   onSetRejectReason = () => {},
+  counterBackOfferId = null,
+  onSetCounterBackOfferId = () => {},
   counterLoadingId = null,
   onUnassignVendor = () => {},
   onExtendDeadline,
@@ -2764,9 +2885,12 @@ function WorkflowPipeline({
                                       </button>
                                     )}
                                     {negotiationRecs[offer.id].action === "counter" && (
-                                      <span className="text-[11px] text-violet-700 italic">
-                                        Counter-back not yet wired to a one-click action — use Accept/Reject above or wait for Phase 2 counter-respond.
-                                      </span>
+                                      <button
+                                        onClick={() => onSetCounterBackOfferId(offer.id)}
+                                        className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded text-xs font-medium"
+                                      >
+                                        ↩ Apply: Counter back
+                                      </button>
                                     )}
                                     <button
                                       onClick={() => fetchNegotiationRec(offer.id)}
@@ -2801,6 +2925,13 @@ function WorkflowPipeline({
                                 )}
                               </button>
                               <button
+                                className="bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs px-3 py-1.5 rounded border border-orange-300 inline-flex items-center gap-1 disabled:opacity-50"
+                                disabled={counterLoadingId === offer.id}
+                                onClick={() => onSetCounterBackOfferId(offer.id)}
+                              >
+                                ↩ Counter Back
+                              </button>
+                              <button
                                 className="bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-700 text-xs px-3 py-1.5 rounded border inline-flex items-center gap-1 disabled:opacity-50"
                                 disabled={counterLoadingId === offer.id}
                                 onClick={() => onSetRejectingOfferId(offer.id)}
@@ -2808,6 +2939,16 @@ function WorkflowPipeline({
                                 ✕ Reject Counter
                               </button>
                             </div>
+                            {counterBackOfferId === offer.id && (
+                              <CounterBackForm
+                                offer={offer}
+                                disabled={counterLoadingId === offer.id}
+                                onCancel={() => onSetCounterBackOfferId(null)}
+                                onSubmit={async (values) => {
+                                  await handleRespondCounter(offer.id, 'counter_back', values);
+                                }}
+                              />
+                            )}
                             {rejectingOfferId === offer.id && (
                               <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
                                 <textarea
@@ -4919,6 +5060,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
   const [servicesLoaded, setServicesLoaded] = useState(false);
   const [addStepAfter, setAddStepAfter] = useState<number>(0);
   const [rejectingOfferId, setRejectingOfferId] = useState<string | null>(null);
+  const [counterBackOfferId, setCounterBackOfferId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [counterLoadingId, setCounterLoadingId] = useState<string | null>(null);
   const [unassignStep, setUnassignStep] = useState<any | null>(null);
@@ -5211,7 +5353,11 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
     }
   };
 
-  const handleRespondCounter = async (offerId: string, action: 'accept' | 'reject') => {
+  const handleRespondCounter = async (
+    offerId: string,
+    action: 'accept' | 'reject' | 'counter_back',
+    counterBack?: { new_rate?: number; new_total?: number; new_deadline?: string; new_note?: string; new_currency?: string; new_rate_unit?: string },
+  ) => {
     setCounterLoadingId(offerId);
     try {
       const { data: result, error } = await supabase.functions.invoke('admin-respond-counter-offer', {
@@ -5220,6 +5366,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
           action,
           staff_id: currentStaff?.staffId,
           rejection_reason: action === 'reject' ? rejectReason : undefined,
+          ...(action === 'counter_back' ? counterBack ?? {} : {}),
         },
       });
 
@@ -5232,12 +5379,15 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
         toast.success(
           `Counter-proposal accepted. ${result.vendor_name || 'Vendor'} assigned to ${result.step_name || 'step'}.`
         );
+      } else if (action === 'counter_back') {
+        toast.success(`Counter back sent to ${result.vendor_name || 'vendor'}.`);
       } else {
         toast.success('Counter-proposal rejected.');
       }
 
       setRejectingOfferId(null);
       setRejectReason('');
+      setCounterBackOfferId(null);
       await fetchWorkflow();
     } catch (err) {
       toast.error('Failed to respond to counter-offer');
@@ -5340,6 +5490,8 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
             rejectReason={rejectReason}
             onSetRejectingOfferId={setRejectingOfferId}
             onSetRejectReason={setRejectReason}
+            counterBackOfferId={counterBackOfferId}
+            onSetCounterBackOfferId={setCounterBackOfferId}
             counterLoadingId={counterLoadingId}
             onUnassignVendor={(step) => setUnassignStep(step)}
             onExtendDeadline={handleExtendDeadline}
