@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-02 — Chrome MCP e2e verify + PR #873 hotfix (qms lookups + Tier 4 prefix)
+- **Verified live on portal.cethos.com:** staff notes panel + add/list works end-to-end (#870), Client Deadline column renders local-TZ time on rows that have `estimated_delivery_at` ("May 12, 2026, 5:00 PM" in MDT for ORD-2026-10195) (#871), Create Order form blocks submit when deadline missing (#871), Quote search now matches name/email/phone (25 gmail matches) (#872), Orders list filter panel shows Vendor + Source/Target language + Assignment status (#862), QMS tab present in vendor profile + modal opens with all fields (#869), Workflow + Staff Notes both render on order detail confirming R11 refactor non-regressive (#865-#868), Tier 2/3 PRJ-prefix subjects in production notification_log (#863).
+- **Two real regressions caught and fixed (PR #873):**
+  - VendorQmsTab competence-basis + evidence-type dropdowns were empty because PostgREST exposes only public/graphql_public/tr — `supabase.schema('qms')` returns no rows from client. Fix: public views `qms_competence_bases` / `qms_evidence_types` / `qms_role_types` over the enum-like qms reference tables + new `list-vendor-qms` edge fn for per-vendor listings.
+  - All 5 Tier 4 customer-facing email functions (notify-customer-order-confirmed, notify-customer-quote-ack, send-final-deliverable, send-invoice-email, review-draft-file) skipped the PRJ prefix even on business customers: the embed alias `internal_project:internal_projects!internal_project_id(project_number)` returned undefined at runtime. Confirmed on ORD-2026-10294 (TRSB-test AR, PRJ-2026-00090 linked, company_name set, sent 14 min post-deploy). Fix: replace embed with direct two-step SELECT in all 5 fns.
+- **Status:** active. Counter-back UI (#861) deferred from live e2e — no active proposed counter on production to exercise it.
+
 ### 2026-06-02 — 3 admin UX features: staff notes, mandatory client deadline, quote search (PRs #870-#872)
 - **PR #870 (staff notes):** New `staff_notes` table (polymorphic on entity_type+entity_id, soft-deleted, RLS on), `manage-staff-notes` edge fn, `StaffNotesPanel` mounted above the activity feed on AdminQuoteDetail and above the tab bar on AdminOrderDetail. Internal-only — never surfaced to customers or vendors.
 - **PR #871 (client deadline):** Made `promisedDeliveryDate` mandatory in AdminCreateOrder (required + asterisk + validate(); orders list 'Client Deadline' column renders `estimated_delivery_at` via `toLocaleString` so each staff member sees the deadline in their own browser-local TZ. Falls back to legacy `estimated_delivery_date` date-only when the timestamp is null.
