@@ -111,8 +111,7 @@ serve(async (req: Request) => {
     .select(
       `id, quote_number, created_at, customer_id, service_id, internal_project_id,
        source_language_id, target_language_id, target_language_other,
-       customers (id, full_name, email, company_name),
-       internal_project:internal_projects!internal_project_id(project_number)`,
+       customers (id, full_name, email, company_name)`,
     )
     .eq("id", quoteId)
     .maybeSingle();
@@ -126,12 +125,18 @@ serve(async (req: Request) => {
     : (quote as any).customers) as
     | { id: string; full_name: string | null; email: string | null; company_name: string | null }
     | null;
-  const internalProject = (Array.isArray((quote as any).internal_project)
-    ? (quote as any).internal_project[0]
-    : (quote as any).internal_project) as
-    | { project_number: string | null }
-    | null;
-  const projectNumber = internalProject?.project_number ?? null;
+  // Separate SELECT for internal_projects — the PostgREST embed alias
+  // returned undefined at runtime even when the FK existed (see fix in
+  // notify-customer-order-confirmed for the same regression).
+  let projectNumber: string | null = null;
+  if ((quote as any).internal_project_id) {
+    const { data: ip } = await supabase
+      .from("internal_projects")
+      .select("project_number")
+      .eq("id", (quote as any).internal_project_id)
+      .maybeSingle();
+    projectNumber = (ip as any)?.project_number ?? null;
+  }
   const companyName = customer?.company_name ?? null;
 
   const recipientEmail = body.override_email || customer?.email || null;

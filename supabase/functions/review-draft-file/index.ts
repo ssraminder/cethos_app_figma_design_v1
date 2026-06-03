@@ -938,14 +938,23 @@ async function notifyCustomerDraftReady(
       .eq("id", customerId)
       .single();
 
-    // #2.1 Tier 4 — resolve project number via order for business-customer prefix
+    // #2.1 Tier 4 — resolve project number via order for business-customer prefix.
+    // PostgREST embed alias returned undefined at runtime (see other Tier 4
+    // fixes 2026-06-02); use direct two-step lookup instead.
+    let projectNumber: string | null = null;
     const { data: orderForPrj } = await supabase
       .from("orders")
-      .select("internal_project:internal_projects!internal_project_id(project_number)")
+      .select("internal_project_id")
       .eq("id", orderId)
       .maybeSingle();
-    const ipEmb = (orderForPrj as any)?.internal_project;
-    const projectNumber: string | null = (Array.isArray(ipEmb) ? ipEmb[0]?.project_number : ipEmb?.project_number) ?? null;
+    if ((orderForPrj as any)?.internal_project_id) {
+      const { data: ip } = await supabase
+        .from("internal_projects")
+        .select("project_number")
+        .eq("id", (orderForPrj as any).internal_project_id)
+        .maybeSingle();
+      projectNumber = (ip as any)?.project_number ?? null;
+    }
     const companyName: string | null = (customer as any)?.company_name ?? null;
 
     // When staff is running a smoke test, recipientOverride redirects the
@@ -1188,14 +1197,21 @@ async function notifyCustomerDelivery(
 
     if (!customer?.email) return;
 
-    // #2.1 Tier 4 — project number resolved via order
+    // #2.1 Tier 4 — direct lookup (embed alias returned undefined at runtime)
+    let projectNumber: string | null = null;
     const { data: orderForPrj } = await supabase
       .from("orders")
-      .select("internal_project:internal_projects!internal_project_id(project_number)")
+      .select("internal_project_id")
       .eq("id", orderId)
       .maybeSingle();
-    const ipEmb = (orderForPrj as any)?.internal_project;
-    const projectNumber: string | null = (Array.isArray(ipEmb) ? ipEmb[0]?.project_number : ipEmb?.project_number) ?? null;
+    if ((orderForPrj as any)?.internal_project_id) {
+      const { data: ip } = await supabase
+        .from("internal_projects")
+        .select("project_number")
+        .eq("id", (orderForPrj as any).internal_project_id)
+        .maybeSingle();
+      projectNumber = (ip as any)?.project_number ?? null;
+    }
     const companyName: string | null = (customer as any)?.company_name ?? null;
 
     const orderUrl = `${siteUrl}/dashboard/orders/${orderId}`;

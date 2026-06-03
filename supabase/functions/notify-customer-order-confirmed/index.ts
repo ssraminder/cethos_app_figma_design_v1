@@ -109,8 +109,7 @@ serve(async (req: Request) => {
       `id, order_number, total_amount, currency, estimated_delivery_date, amount_paid,
        customer_id, quote_id, internal_project_id,
        customers (id, full_name, email, is_ar_customer, payment_terms, ar_contact_email, company_name),
-       quotes (id, quote_number, source_language_id, target_language_id, target_language_other, service_id),
-       internal_project:internal_projects!internal_project_id(project_number)`,
+       quotes (id, quote_number, source_language_id, target_language_id, target_language_other, service_id)`,
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -133,12 +132,21 @@ serve(async (req: Request) => {
         company_name: string | null;
       }
     | null;
-  const internalProject = (Array.isArray((order as any).internal_project)
-    ? (order as any).internal_project[0]
-    : (order as any).internal_project) as
-    | { project_number: string | null }
-    | null;
-  const projectNumber = internalProject?.project_number ?? null;
+  // Separate SELECT for internal_projects — the embed alias
+  // `internal_project:internal_projects!internal_project_id(...)` returned
+  // undefined at runtime against this orders row even though the FK +
+  // company_name + project_number all exist in DB (confirmed via SQL probe
+  // 2026-06-02). Doing the lookup directly is one extra query and
+  // unambiguous.
+  let projectNumber: string | null = null;
+  if (order.internal_project_id) {
+    const { data: ip } = await supabase
+      .from("internal_projects")
+      .select("project_number")
+      .eq("id", order.internal_project_id)
+      .maybeSingle();
+    projectNumber = (ip as any)?.project_number ?? null;
+  }
   const companyName = customer?.company_name ?? null;
 
   if (!customer) {

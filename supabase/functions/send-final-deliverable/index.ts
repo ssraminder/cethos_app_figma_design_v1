@@ -173,11 +173,19 @@ serve(async (req: Request) => {
     // 6) Load order + customer for the email
     const { data: order } = await supabase
       .from("orders")
-      .select("id, order_number, customer_id, internal_project:internal_projects!internal_project_id(project_number)")
+      .select("id, order_number, customer_id, internal_project_id")
       .eq("id", step.order_id)
       .single();
-    const ipEmb = (order as any)?.internal_project;
-    const projectNumber: string | null = (Array.isArray(ipEmb) ? ipEmb[0]?.project_number : ipEmb?.project_number) ?? null;
+    // Direct lookup — embed alias returned undefined at runtime (other Tier 4 fixes).
+    let projectNumber: string | null = null;
+    if ((order as any)?.internal_project_id) {
+      const { data: ip } = await supabase
+        .from("internal_projects")
+        .select("project_number")
+        .eq("id", (order as any).internal_project_id)
+        .maybeSingle();
+      projectNumber = (ip as any)?.project_number ?? null;
+    }
 
     let customer: { id: string; full_name: string | null; email: string | null; company_name: string | null } | null = null;
     if (order?.customer_id) {
