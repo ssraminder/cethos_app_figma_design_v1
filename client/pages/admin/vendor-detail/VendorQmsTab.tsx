@@ -49,7 +49,7 @@ interface NdaRow {
 }
 
 interface CompetenceBasisOpt { id: string; code: string; short_label: string; role_type_code: string }
-interface EvidenceTypeOpt { id: string; code: string; name: string }
+interface EvidenceTypeOpt { id: string; code: string; name: string; applies_to_roles?: string[] | null }
 interface LanguageOpt { id: string; code: string; name: string }
 
 export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onRefresh?: () => void }) {
@@ -71,26 +71,18 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
   const loadData = async () => {
     setLoading(true);
     try {
-      const qmsSb = supabase.schema("qms" as any) as any;
-      const [qRes, nRes] = await Promise.all([
-        qmsSb
-          .from("role_qualifications")
-          .select(`id, status, qualified_at, re_qualification_due,
-                   role_type:role_types!role_type_id(code, name),
-                   competence_basis:competence_bases!competence_basis_id(code, short_label),
-                   language_pair_qualifications(direction,
-                     source_language:public.languages!source_language_id(code, name),
-                     target_language:public.languages!target_language_id(code, name))`)
-          .eq("vendor_id", vendorId)
-          .order("qualified_at", { ascending: false }),
-        qmsSb
-          .from("nda_agreements")
-          .select("id, status, signed_date, effective_date, expiry_date, template_version")
-          .eq("vendor_id", vendorId)
-          .order("signed_date", { ascending: false }),
-      ]);
-      setQualifications((qRes.data as RoleQualificationRow[]) ?? []);
-      setNdas((nRes.data as NdaRow[]) ?? []);
+      // PostgREST only exposes public/graphql_public/tr — qms schema is not
+      // reachable via supabase.schema('qms'), so per-vendor lookups route
+      // through an edge function that uses service_role.
+      const { data, error } = await supabase.functions.invoke("list-vendor-qms", {
+        body: { vendor_id: vendorId },
+      });
+      if (error || !data?.success) {
+        toast.error(data?.error ?? error?.message ?? "Failed to load QMS data");
+        return;
+      }
+      setQualifications((data.qualifications as RoleQualificationRow[]) ?? []);
+      setNdas((data.ndas as NdaRow[]) ?? []);
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to load QMS data");
     } finally {
@@ -103,14 +95,15 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
   // Load lookups on first form open
   const openForm = async () => {
     if (competenceBases.length === 0) {
-      const qmsSb = supabase.schema("qms" as any) as any;
+      // Public views over qms.competence_bases + qms.evidence_types — see
+      // migration 20260602_qms_public_lookup_views_v2.sql.
       const [cb, ev, lg] = await Promise.all([
-        qmsSb.from("competence_bases").select("id, code, short_label, role_type_code"),
-        qmsSb.from("evidence_types").select("id, code, name"),
+        supabase.from("qms_competence_bases" as any).select("id, code, short_label, role_type_code"),
+        supabase.from("qms_evidence_types" as any).select("id, code, name, applies_to_roles"),
         supabase.from("languages").select("id, code, name").order("name"),
       ]);
-      setCompetenceBases(cb.data ?? []);
-      setEvidenceTypes(ev.data ?? []);
+      setCompetenceBases((cb.data ?? []) as CompetenceBasisOpt[]);
+      setEvidenceTypes((ev.data ?? []) as EvidenceTypeOpt[]);
       setLanguages(lg.data ?? []);
     }
     setShowForm(true);

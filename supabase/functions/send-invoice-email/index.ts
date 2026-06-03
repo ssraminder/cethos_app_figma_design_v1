@@ -61,16 +61,22 @@ serve(async (req) => {
 
     const cur = invoice.currency || 'CAD';
 
-    // #2.1 Tier 4 — resolve internal_project for business-customer subject prefix
+    // #2.1 Tier 4 — direct lookup (embed alias returned undefined at runtime).
     let projectNumber: string | null = null;
     if (invoice.order_id) {
       const { data: orderRow } = await sb
         .from('orders')
-        .select('internal_project:internal_projects!internal_project_id(project_number)')
+        .select('internal_project_id')
         .eq('id', invoice.order_id)
         .maybeSingle();
-      const ipEmb = (orderRow as any)?.internal_project;
-      projectNumber = (Array.isArray(ipEmb) ? ipEmb[0]?.project_number : ipEmb?.project_number) ?? null;
+      if ((orderRow as any)?.internal_project_id) {
+        const { data: ip } = await sb
+          .from('internal_projects')
+          .select('project_number')
+          .eq('id', (orderRow as any).internal_project_id)
+          .maybeSingle();
+        projectNumber = (ip as any)?.project_number ?? null;
+      }
     }
 
     // ── 2. Load customer + branch + preferred payment method ───────────────
