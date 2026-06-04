@@ -27,6 +27,7 @@ import { VendorActivationDripProgress } from "@/components/admin/VendorActivatio
 interface Vendor {
   id: string;
   full_name: string;
+  business_name: string | null;
   email: string;
   phone: string | null;
   status: string;
@@ -374,7 +375,7 @@ export default function AdminVendorsList() {
 
     if (search) {
       query = query.or(
-        `full_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,country.ilike.%${search}%`
+        `full_name.ilike.%${search}%,business_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,country.ilike.%${search}%`
       );
     }
     if (statusFilter) query = query.eq("status", statusFilter);
@@ -914,6 +915,11 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
                       >
                         {v.full_name}
                       </Link>
+                      {v.business_name && (
+                        <div className="text-xs text-gray-500 mt-0.5" title="Business / agency name">
+                          {v.business_name}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {v.email}

@@ -412,6 +412,9 @@ export default function VendorAssignModal({
                           <td className="py-1.5 px-2">
                             <span className="inline-flex items-center gap-1">
                               {v.full_name}
+                              {(v as any).business_name && (
+                                <span className="text-[10px] text-gray-500 italic">({(v as any).business_name})</span>
+                              )}
                               {v.rating != null && (
                                 <span className="flex items-center gap-0.5 text-gray-400">
                                   <Star className="w-2.5 h-2.5 text-yellow-400 fill-yellow-400" />
@@ -444,6 +447,9 @@ export default function VendorAssignModal({
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium">
                     {vendor.full_name}
+                    {(vendor as any).business_name && (
+                      <span className="text-xs text-indigo-600 italic font-normal">({(vendor as any).business_name})</span>
+                    )}
                     {vendor.rating != null && (
                       <span className="flex items-center gap-0.5 ml-1">
                         <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
