@@ -273,6 +273,7 @@ export async function notifyVendorAssignment(args: NotifyArgs): Promise<void> {
       ["Order", order?.order_number ?? "—"],
       ["Step", stepRowValue],
     ];
+    if (projectNumber) detailRows.unshift(["Project", projectNumber]);
     if (languagePairLabel) detailRows.push(["Languages", languagePairLabel]);
     if (service?.name) detailRows.push(["Service", service.name]);
     if (args.vendor_rate != null && args.vendor_total != null) {
@@ -530,6 +531,7 @@ export async function notifyVendorOfferBatchSummary(
       ["Order", order?.order_number ?? "—"],
       ["Step", stepRowValue],
     ];
+    if (projectNumberB) detailRows.unshift(["Project", projectNumberB]);
     if (languagePairLabel) detailRows.push(["Languages", languagePairLabel]);
     if (service?.name) detailRows.push(["Service", service.name]);
     if (args.deadline) detailRows.push(["Deadline", fmtDate(args.deadline)]);

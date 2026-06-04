@@ -85,6 +85,7 @@ interface BuildArgs {
   vendorName?: string | null;
   vendorLabel?: string | null;
   orderNumber: string;
+  projectNumber?: string | null;
   stepName: string | null;
   deadline: string;
   hoursLate?: number;
@@ -135,6 +136,7 @@ function buildEmail(args: BuildArgs): string {
     ["Step", args.stepName || "—"],
     ["Deadline", args.deadline],
   ];
+  if (args.projectNumber) detailRows.unshift(["Project", args.projectNumber]);
   if (args.hoursLate != null) detailRows.push(["Hours past", String(args.hoursLate)]);
   if (args.vendorLabel) detailRows.push(["Vendor", args.vendorLabel]);
 
@@ -336,6 +338,7 @@ serve(async (req: Request) => {
             tier: "overdue",
             vendorName: vendor.full_name,
             orderNumber: order.order_number,
+            projectNumber: (order as any)?.internal_project?.project_number ?? null,
             stepName: step.name,
             deadline: fmtDeadline(step.deadline),
             hoursLate,
@@ -368,6 +371,7 @@ serve(async (req: Request) => {
               tier: "overdue_admin",
               vendorLabel: vendor.full_name || vendor.email,
               orderNumber: order.order_number,
+              projectNumber: (order as any)?.internal_project?.project_number ?? null,
               stepName: step.name,
               deadline: fmtDeadline(step.deadline),
               hoursLate,
@@ -408,6 +412,7 @@ serve(async (req: Request) => {
             tier: "6h",
             vendorName: vendor.full_name,
             orderNumber: order.order_number,
+            projectNumber: (order as any)?.internal_project?.project_number ?? null,
             stepName: step.name,
             deadline: fmtDeadline(step.deadline),
             ctaUrl: stepCtaUrl,
@@ -445,6 +450,7 @@ serve(async (req: Request) => {
             tier: "24h",
             vendorName: vendor.full_name,
             orderNumber: order.order_number,
+            projectNumber: (order as any)?.internal_project?.project_number ?? null,
             stepName: step.name,
             deadline: fmtDeadline(step.deadline),
             ctaUrl: stepCtaUrl,
