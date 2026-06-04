@@ -37,6 +37,7 @@ import {
   PinOff,
   ArrowUp,
   ArrowDown,
+  GripVertical,
 } from "lucide-react";
 import { format } from "date-fns";
 import { StatCard } from "@/components/admin/StatCard";
@@ -272,6 +273,11 @@ export default function AdminOrdersList() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  // Drag-and-drop state for the pin/reorder UX. dragOrderId is the row
+  // currently being dragged; dropTargetId is the row hovered over so we
+  // can highlight it. Native HTML5 DnD on <tr>; no extra dependency.
+  const [dragOrderId, setDragOrderId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   // Aggregates across the FILTERED dataset (not just the current page).
   // Computed by a second PostgREST fetch alongside the paginated one so the
   // stat cards reflect "5 rush orders match your filters" rather than "0 rush
@@ -540,6 +546,61 @@ export default function AdminOrdersList() {
       if (e2) throw e2;
       const { error: e3 } = await supabase.from("orders").update({ pinned_position: (neighbor as any).pinned_position }).eq("id", orderId);
       if (e3) throw e3;
+      fetchOrders();
+    } catch (e: any) {
+      toast.error(`Failed to reorder: ${e?.message || e}`);
+    }
+  };
+
+  // Drop handler: a user dragged sourceId onto targetId. Behaviour:
+  //  - both pinned       → swap their pinned_position (two-step via sentinel)
+  //  - source unpinned   → pin source above target (target.pp - 1, or top
+  //                        of pinned section if target is also unpinned)
+  //  - source pinned     → if target unpinned: unpin source (drag-out)
+  // Same row → no-op.
+  const handleDropOnRow = async (sourceId: string, targetId: string) => {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const source = orders.find((o) => o.id === sourceId);
+    const target = orders.find((o) => o.id === targetId);
+    if (!source || !target) return;
+    try {
+      if (source.pinned_position != null && target.pinned_position != null) {
+        const SENTINEL = -2_000_000_000;
+        const { error: e1 } = await supabase.from("orders").update({ pinned_position: SENTINEL }).eq("id", sourceId);
+        if (e1) throw e1;
+        const { error: e2 } = await supabase.from("orders").update({ pinned_position: source.pinned_position }).eq("id", targetId);
+        if (e2) throw e2;
+        const { error: e3 } = await supabase.from("orders").update({ pinned_position: target.pinned_position }).eq("id", sourceId);
+        if (e3) throw e3;
+      } else if (source.pinned_position == null) {
+        // Pin source above target. If target isn't pinned either, pin
+        // source to the top (current min - 1 or 0).
+        let nextPos: number;
+        if (target.pinned_position != null) {
+          nextPos = target.pinned_position - 1;
+        } else {
+          const { data: minRow } = await supabase
+            .from("orders")
+            .select("pinned_position")
+            .not("pinned_position", "is", null)
+            .order("pinned_position", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          nextPos = (minRow?.pinned_position ?? 1) - 1;
+        }
+        const { error } = await supabase
+          .from("orders")
+          .update({ pinned_position: nextPos })
+          .eq("id", sourceId);
+        if (error) throw error;
+      } else {
+        // source pinned, target unpinned → unpin source.
+        const { error } = await supabase
+          .from("orders")
+          .update({ pinned_position: null })
+          .eq("id", sourceId);
+        if (error) throw error;
+      }
       fetchOrders();
     } catch (e: any) {
       toast.error(`Failed to reorder: ${e?.message || e}`);
@@ -904,7 +965,7 @@ export default function AdminOrdersList() {
   const avgOrderValue = totalCount > 0 ? totalRevenue / totalCount : 0;
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-6">
+    <div className="max-w-[1800px] mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Orders</h1>
@@ -1397,21 +1458,22 @@ export default function AdminOrdersList() {
             <table className="w-full min-w-[1200px]">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
-                  {isColVisible("orderDetails") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Order Details</th>}
-                  {isColVisible("customer") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Customer</th>}
-                  {isColVisible("languagePair") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Languages</th>}
-                  {isColVisible("vendor") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Vendor</th>}
-                  {isColVisible("assignment") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Assignment</th>}
-                  {isColVisible("status") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>}
-                  {isColVisible("total") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>}
-                  {isColVisible("clientTotal") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client Total</th>}
-                  {isColVisible("vendorCost") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Vendor Cost</th>}
-                  {isColVisible("profit") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit</th>}
-                  {isColVisible("profitPct") && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit %</th>}
-                  {isColVisible("xtrfProject") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Project</th>}
-                  {isColVisible("xtrfInvoice") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Invoice</th>}
-                  {isColVisible("delivery") && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client Deadline</th>}
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                  <th className="w-6 px-1.5 py-2.5" aria-label="Drag handle" />
+                  {isColVisible("orderDetails") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Order Details</th>}
+                  {isColVisible("customer") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Customer</th>}
+                  {isColVisible("languagePair") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Languages</th>}
+                  {isColVisible("vendor") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Vendor</th>}
+                  {isColVisible("assignment") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Assignment</th>}
+                  {isColVisible("status") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>}
+                  {isColVisible("total") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>}
+                  {isColVisible("clientTotal") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client Total</th>}
+                  {isColVisible("vendorCost") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Vendor Cost</th>}
+                  {isColVisible("profit") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit</th>}
+                  {isColVisible("profitPct") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit %</th>}
+                  {isColVisible("xtrfProject") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Project</th>}
+                  {isColVisible("xtrfInvoice") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Invoice</th>}
+                  {isColVisible("delivery") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client Deadline</th>}
+                  <th className="px-3 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
@@ -1419,14 +1481,14 @@ export default function AdminOrdersList() {
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={columnSettings.filter(c => c.ui).length + 1} className="px-6 py-12 text-center">
+                    <td colSpan={columnSettings.filter(c => c.ui).length + 2} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={columnSettings.filter(c => c.ui).length + 1}
+                      colSpan={columnSettings.filter(c => c.ui).length + 2}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No orders found
@@ -1437,18 +1499,42 @@ export default function AdminOrdersList() {
                     const isNonCertified =
                       !!order.service_code &&
                       order.service_code !== "certified_translation";
+                    const isDropTarget = dropTargetId === order.id && dragOrderId !== order.id;
+                    const isDragging = dragOrderId === order.id;
                     return (
                     <tr
                       key={order.id}
+                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dropTargetId !== order.id) setDropTargetId(order.id); }}
+                      onDragLeave={() => { if (dropTargetId === order.id) setDropTargetId(null); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const src = e.dataTransfer.getData("text/plain") || dragOrderId;
+                        setDropTargetId(null);
+                        if (src) void handleDropOnRow(src, order.id);
+                      }}
                       className={`transition-colors ${
-                        isNonCertified
-                          ? "bg-indigo-50/60 hover:bg-indigo-100/70"
-                          : "hover:bg-gray-50"
+                        isDragging
+                          ? "opacity-40"
+                          : isDropTarget
+                            ? "ring-2 ring-teal-400 ring-inset bg-teal-50/60"
+                            : isNonCertified
+                              ? "bg-indigo-50/60 hover:bg-indigo-100/70"
+                              : "hover:bg-gray-50"
                       }`}
                     >
+                      {/* Drag handle: hold + drag to reorder pinned rows
+                          or to pin/unpin by dropping on another row. */}
+                      <td className="w-6 px-1.5 py-2.5 text-center cursor-grab active:cursor-grabbing select-none"
+                          draggable
+                          onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", order.id); setDragOrderId(order.id); }}
+                          onDragEnd={() => { setDragOrderId(null); setDropTargetId(null); }}
+                          aria-label="Drag to reorder"
+                          title="Drag onto another row to pin / swap / unpin">
+                        <GripVertical className="w-3.5 h-3.5 text-gray-400 mx-auto" />
+                      </td>
                       {/* Order Details */}
                       {isColVisible("orderDetails") && (
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2.5">
                           <Link to={`/admin/orders/${order.id}`} className="block group">
                             <p className="text-sm font-semibold text-gray-900 font-mono group-hover:text-teal-600 flex items-center gap-1.5">
                               {order.pinned_position != null && (
@@ -1472,19 +1558,19 @@ export default function AdminOrdersList() {
                       )}
                       {/* Customer */}
                       {isColVisible("customer") && (
-                        <td className="px-4 py-3">
-                          <p className="text-sm font-medium text-gray-900">{order.customer_name || "—"}</p>
+                        <td className="px-3 py-2.5 max-w-[220px]">
+                          <p className="text-sm font-medium text-gray-900 truncate" title={order.customer_name || ""}>{order.customer_name || "—"}</p>
                           {order.customer_company_name && (
-                            <p className="text-xs text-gray-700 mt-0.5 font-medium">
+                            <p className="text-xs text-gray-700 mt-0.5 font-medium truncate" title={order.customer_company_name}>
                               {order.customer_company_name}
                             </p>
                           )}
-                          <p className="text-xs text-gray-500 mt-0.5">{order.customer_email || "—"}</p>
+                          <p className="text-xs text-gray-500 mt-0.5 truncate" title={order.customer_email || ""}>{order.customer_email || "—"}</p>
                         </td>
                       )}
                       {/* Languages */}
                       {isColVisible("languagePair") && (
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-sm text-gray-700 whitespace-nowrap">
                           {order.source_language_name && order.target_language_name
                             ? `${order.source_language_name} → ${order.target_language_name}`
                             : (order.source_language_name || order.target_language_name || "—")}
@@ -1492,13 +1578,13 @@ export default function AdminOrdersList() {
                       )}
                       {/* Vendor */}
                       {isColVisible("vendor") && (
-                        <td className="px-4 py-3 text-sm text-gray-700">
+                        <td className="px-3 py-2.5 text-sm text-gray-700">
                           {order.active_vendor_name || <span className="text-gray-400 italic text-xs">—</span>}
                         </td>
                       )}
                       {/* Assignment */}
                       {isColVisible("assignment") && (
-                        <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-xs whitespace-nowrap">
                           {(() => {
                             const b = order.assignment_bucket;
                             if (b === "Fully assigned") return <span className="inline-flex px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">Fully assigned</span>;
@@ -1511,7 +1597,7 @@ export default function AdminOrdersList() {
                       )}
                       {/* Status */}
                       {isColVisible("status") && (
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="flex flex-col gap-1">
                             <OrderStatusBadge status={order.status} />
                             <WorkStatusBadge status={order.work_status} />
@@ -1521,7 +1607,7 @@ export default function AdminOrdersList() {
                       )}
                       {/* Total */}
                       {isColVisible("total") && (
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
                           <p className="text-sm font-semibold text-gray-900 tabular-nums">
                             ${(order.total_amount || 0).toFixed(2)}
                           </p>
@@ -1529,7 +1615,7 @@ export default function AdminOrdersList() {
                       )}
                       {/* Client Total */}
                       {isColVisible("clientTotal") && (
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-2.5 text-right">
                           {order.xtrf_project_total_agreed != null ? (
                             <span className="text-sm text-gray-900 tabular-nums">
                               {order.xtrf_project_total_agreed.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
@@ -1541,7 +1627,7 @@ export default function AdminOrdersList() {
                       )}
                       {/* Vendor Cost */}
                       {isColVisible("vendorCost") && (
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-2.5 text-right">
                           {order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (
                             <span className="text-sm text-gray-700 tabular-nums">
                               {order.xtrf_project_total_cost.toFixed(2)} {order.xtrf_project_currency_code ?? ''}
@@ -1553,7 +1639,7 @@ export default function AdminOrdersList() {
                       )}
                       {/* Profit */}
                       {isColVisible("profit") && (
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-2.5 text-right">
                           {order.xtrf_project_total_agreed != null && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
                             const profit = order.xtrf_project_total_agreed - order.xtrf_project_total_cost;
                             return (
@@ -1568,7 +1654,7 @@ export default function AdminOrdersList() {
                       )}
                       {/* % Profit */}
                       {isColVisible("profitPct") && (
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-2.5 text-right">
                           {order.xtrf_project_total_agreed != null && order.xtrf_project_total_agreed > 0 && order.xtrf_project_total_cost != null && order.xtrf_project_total_cost > 0 ? (() => {
                             const profitPct = ((order.xtrf_project_total_agreed - order.xtrf_project_total_cost) / order.xtrf_project_total_agreed) * 100;
                             return (
@@ -1583,7 +1669,7 @@ export default function AdminOrdersList() {
                       )}
                       {/* XTRF Project */}
                       {isColVisible("xtrfProject") && (
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
                           {order.xtrf_project_number ? (
                             <span className="text-sm font-mono text-gray-900">{order.xtrf_project_number}</span>
                           ) : (
@@ -1620,7 +1706,7 @@ export default function AdminOrdersList() {
                          Falls back to legacy date-only when older rows
                          don't carry the timestamp. */}
                       {isColVisible("delivery") && (
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2.5">
                           {order.estimated_delivery_at ? (
                             <p className="text-sm text-gray-700">
                               {new Date(order.estimated_delivery_at).toLocaleString(undefined, {
@@ -1638,7 +1724,7 @@ export default function AdminOrdersList() {
                         </td>
                       )}
                       {/* Actions Meatball Menu */}
-                      <td className="px-4 py-3 text-center relative">
+                      <td className="px-3 py-2.5 text-center relative">
                         <button
                           onClick={() =>
                             setOpenMenuId(
