@@ -874,10 +874,17 @@ export default function AdminOrderDetail() {
         const updateFields: any = {};
 
         if (uploadType === "draft") {
-          const existingDrafts = orderFiles.filter(
-            f => f.category_slug === "draft_translation"
-          );
-          updateFields.review_version = existingDrafts.length + successCount + 1;
+          // Each uploaded file is treated as its own logical document by
+          // default — gets a fresh draft_group_id and starts at v1. Distinct
+          // documents (Birth Certificate, PCC, etc.) uploaded in the same
+          // batch no longer look like revisions of a single draft, and the
+          // customer portal's per-group filter shows them all in parallel.
+          // To upload a revision of an existing draft, use the (Phase 2)
+          // "Replace this draft" flow which reuses the existing group_id.
+          updateFields.review_version = 1;
+          updateFields.draft_group_id = (typeof crypto !== "undefined" && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : undefined;
         }
 
         if (Object.keys(updateFields).length > 0) {
