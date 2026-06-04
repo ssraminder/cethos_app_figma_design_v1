@@ -136,6 +136,11 @@ serve(async (req: Request) => {
       }
 
       case "remove_step": {
+        // ISO 17100 sec 7.1 retention: order_workflow_steps has a WORM BEFORE-DELETE
+        // trigger that blocks hard delete. "Remove" = soft-cancel: mark
+        // status='cancelled' and park the step at a negative sentinel step_number
+        // so the downstream renumber can fill its slot without colliding with the
+        // (workflow_id, step_number) unique index. UI filters cancelled steps.
         const { step_id } = body;
         if (!step_id) return json({ success: false, error: "Missing step_id" }, 400);
 
@@ -150,30 +155,33 @@ serve(async (req: Request) => {
           return json({ success: false, error: "Step does not belong to this workflow" }, 400);
         }
 
-        if (!["pending", "skipped", "cancelled"].includes(step.status)) {
+        if (!["pending", "skipped"].includes(step.status)) {
           return json(
-            { success: false, error: "Cannot remove a step that is in progress or completed" },
+            {
+              success: false,
+              error:
+                "Cannot remove a step that is in progress, completed, or already cancelled",
+            },
             400,
           );
         }
 
-        // Clear FK references before delete. For pending/skipped/cancelled steps these
-        // are typically empty, but vendor_step_offers and notification_log can have rows.
-        await supabase.from("vendor_step_offers").delete().eq("step_id", step_id);
-        await supabase.from("notification_log").delete().eq("step_id", step_id);
-        await supabase.from("step_deliveries").delete().eq("step_id", step_id);
-        await supabase.from("step_draft_sends").delete().eq("step_id", step_id);
-        await supabase.from("vendor_payables").delete().eq("workflow_step_id", step_id);
-        await supabase.from("vendor_terms_acceptances").delete().eq("step_id", step_id);
-
-        const { error: delErr } = await supabase
+        // Park at min(step_number)-1 (so concurrent removals don't collide).
+        const { data: minRow } = await supabase
           .from("order_workflow_steps")
-          .delete()
+          .select("step_number")
+          .eq("workflow_id", workflow_id)
+          .order("step_number", { ascending: true })
+          .limit(1);
+        const sentinel = (minRow?.[0]?.step_number ?? 1) - 1;
+
+        const { error: cancelErr } = await supabase
+          .from("order_workflow_steps")
+          .update({ status: "cancelled", step_number: sentinel })
           .eq("id", step_id);
+        if (cancelErr) return json({ success: false, error: cancelErr.message }, 500);
 
-        if (delErr) return json({ success: false, error: delErr.message }, 500);
-
-        // Renumber remaining downstream steps.
+        // Renumber active downstream steps down by 1 to fill the freed slot.
         const { data: remaining, error: remErr } = await supabase
           .from("order_workflow_steps")
           .select("id, step_number")
@@ -256,11 +264,20 @@ serve(async (req: Request) => {
 
         if (!allSteps) return json({ success: false, error: "No steps found" }, 500);
 
-        // Park the moving step at a sentinel to avoid the (workflow_id, step_number)
-        // unique conflict while neighbors are being shifted.
+        // Park the moving step at a unique negative sentinel to avoid the
+        // (workflow_id, step_number) unique conflict while neighbors are being
+        // shifted. Use min-1 so we never collide with cancelled steps which also
+        // sit at negative step_numbers.
+        const { data: rrMinRow } = await supabase
+          .from("order_workflow_steps")
+          .select("step_number")
+          .eq("workflow_id", workflow_id)
+          .order("step_number", { ascending: true })
+          .limit(1);
+        const reorderSentinel = (rrMinRow?.[0]?.step_number ?? 1) - 1;
         await supabase
           .from("order_workflow_steps")
-          .update({ step_number: -1 })
+          .update({ step_number: reorderSentinel })
           .eq("id", step_id);
 
         if (newPos < oldPos) {
