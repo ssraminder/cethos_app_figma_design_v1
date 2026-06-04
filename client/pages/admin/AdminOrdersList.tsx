@@ -94,12 +94,15 @@ const STATUS_OPTIONS = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
+// Must mirror the DB CHECK on orders.work_status:
+// ('pending','in_progress','completed','cancelled','on_hold').
 const WORK_STATUS_OPTIONS = [
   { value: "", label: "All Work Statuses" },
-  { value: "queued", label: "Queued" },
+  { value: "pending", label: "Pending" },
   { value: "in_progress", label: "In Progress" },
-  { value: "review", label: "In Review" },
+  { value: "on_hold", label: "On Hold" },
   { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
 ];
 
 const PAGE_SIZE = 25;
@@ -1866,25 +1869,30 @@ function WorkStatusBadge({ status }: { status?: string }) {
     string,
     { style: string; icon: React.ReactNode; label: string }
   > = {
-    queued: {
+    pending: {
       style: "bg-gray-100 text-gray-700",
       icon: <Package className="w-3 h-3" />,
-      label: "Queued",
+      label: "Pending",
     },
     in_progress: {
       style: "bg-blue-100 text-blue-700",
       icon: <Truck className="w-3 h-3" />,
       label: "In Progress",
     },
-    review: {
+    on_hold: {
       style: "bg-amber-100 text-amber-700",
       icon: <Package className="w-3 h-3" />,
-      label: "In Review",
+      label: "On Hold",
     },
     completed: {
       style: "bg-green-100 text-green-700",
       icon: <CheckCircle className="w-3 h-3" />,
       label: "Completed",
+    },
+    cancelled: {
+      style: "bg-red-100 text-red-700",
+      icon: <X className="w-3 h-3" />,
+      label: "Cancelled",
     },
   };
 
