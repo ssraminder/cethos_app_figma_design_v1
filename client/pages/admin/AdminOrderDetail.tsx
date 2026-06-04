@@ -291,11 +291,18 @@ const ORDER_STATUSES = [
   { value: "refunded", label: "Refunded", color: "red" },
 ];
 
+// Must match the DB CHECK constraint on orders.work_status:
+// ('pending','in_progress','completed','cancelled','on_hold').
+// Auto-synced by the order_steps_sync_work_status trigger on
+// order_workflow_steps — staff manual selection here overrides until
+// the next step transition. 'on_hold' and 'cancelled' are sticky:
+// the trigger refuses to clobber them.
 const WORK_STATUSES = [
-  { value: "queued", label: "Queued", color: "gray" },
+  { value: "pending", label: "Pending", color: "gray" },
   { value: "in_progress", label: "In Progress", color: "blue" },
-  { value: "review", label: "Review", color: "amber" },
+  { value: "on_hold", label: "On Hold", color: "amber" },
   { value: "completed", label: "Completed", color: "green" },
+  { value: "cancelled", label: "Cancelled", color: "red" },
 ];
 
 // Small icon button that copies the given string to the clipboard. Flips
