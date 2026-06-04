@@ -271,7 +271,28 @@ export default function CustomerOrderDetail() {
       );
       const data = await response.json();
       if (data.success) {
-        setOrderFiles(data.files || []);
+        const files: any[] = data.files || [];
+        // The get-customer-documents edge function lives outside the
+        // repo (zombie deploy — bundle isn't introspectable) and we
+        // can't safely add fields to its SELECT. Enrich draft_group_id
+        // client-side so the per-group "latest pending wins" filter
+        // works for newly-uploaded multi-document drafts. RLS scopes
+        // the read to the customer's own quote_files.
+        const ids = files.map(f => f.id).filter(Boolean);
+        if (ids.length > 0) {
+          const { data: groupRows } = await supabase
+            .from("quote_files")
+            .select("id, draft_group_id")
+            .in("id", ids);
+          if (groupRows && groupRows.length > 0) {
+            const byId = new Map<string, string | null>();
+            for (const r of groupRows as any[]) byId.set(r.id, r.draft_group_id ?? null);
+            for (const f of files) {
+              if (f.draft_group_id === undefined) f.draft_group_id = byId.get(f.id) ?? null;
+            }
+          }
+        }
+        setOrderFiles(files);
       }
     } catch (err) {
       console.error("Error fetching order files:", err);
@@ -475,19 +496,37 @@ export default function CustomerOrderDetail() {
     .filter(f => f.category === "draft_translation")
     .filter(f => !f.deleted_at);
 
-  const latestPendingVersion = draftFiles
-    .filter(f => f.review_status === "pending_review")
-    .reduce((m, f) => Math.max(m, f.review_version || 0), 0);
+  // Latest pending version is computed PER draft_group_id, not order-wide.
+  // Distinct documents (Birth Cert, PCC, etc.) live in independent groups,
+  // so the customer sees the latest pending of EACH document in parallel
+  // — not just the highest review_version across the whole order, which
+  // was hiding parallel deliveries before 2026-06-04.
+  // Legacy rows with NULL draft_group_id all share one synthetic key,
+  // preserving the pre-grouping "latest pending wins" semantics.
+  const LEGACY_GROUP_KEY = "__legacy__";
+  const latestPendingByGroup = new Map<string, number>();
+  for (const f of draftFiles) {
+    if (f.review_status !== "pending_review") continue;
+    const k = f.draft_group_id || LEGACY_GROUP_KEY;
+    const v = f.review_version || 0;
+    if (v > (latestPendingByGroup.get(k) || 0)) latestPendingByGroup.set(k, v);
+  }
 
-  const visibleDrafts = draftFiles.filter(f =>
-    f.review_status !== "pending_review" ||
-    (f.review_version || 0) === latestPendingVersion,
-  );
+  const visibleDrafts = draftFiles.filter(f => {
+    if (f.review_status !== "pending_review") return true;
+    const k = f.draft_group_id || LEGACY_GROUP_KEY;
+    return (f.review_version || 0) === latestPendingByGroup.get(k);
+  });
   const currentDrafts = visibleDrafts.filter(f => f.review_status === "pending_review");
 
   const sortedDrafts = [...visibleDrafts].sort((a, b) => {
     if (a.review_status === "pending_review" && b.review_status !== "pending_review") return -1;
     if (b.review_status === "pending_review" && a.review_status !== "pending_review") return 1;
+    // Within the same status, group by draft_group_id so revisions of the
+    // same document sit together, newest version first inside each group.
+    const ag = a.draft_group_id || "";
+    const bg = b.draft_group_id || "";
+    if (ag !== bg) return ag.localeCompare(bg);
     return (b.review_version || 0) - (a.review_version || 0);
   });
 

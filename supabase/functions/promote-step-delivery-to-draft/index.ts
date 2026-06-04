@@ -197,24 +197,43 @@ serve(async (req) => {
       return json({ error: "draft_translation file_category not found" }, 500);
     }
 
-    // Determine next review_version on this quote's drafts.
-    const { data: existingDrafts } = await sb
+    // Each workflow step is one logical document — re-promoting the same
+    // step is a revision of the same draft group. Look up any prior
+    // promoted draft for THIS step (via staff_notes prefix, the only
+    // cheap back-link we have today) and reuse its draft_group_id; else
+    // mint a fresh one. review_version is computed per-group.
+    const stepTag = `Promoted from workflow step "${step.name}"`;
+    const { data: priorStepDrafts } = await sb
+      .from("quote_files")
+      .select("draft_group_id, review_version")
+      .eq("quote_id", order.quote_id)
+      .eq("file_category_id", cat.id)
+      .like("staff_notes", `${stepTag}%`)
+      .not("draft_group_id", "is", null);
+    const reusedGroupId = (priorStepDrafts ?? [])
+      .map((r: any) => r.draft_group_id)
+      .find((v: any) => !!v) ?? null;
+    const draftGroupId = reusedGroupId ?? crypto.randomUUID();
+
+    const { data: groupDrafts } = await sb
       .from("quote_files")
       .select("review_version")
       .eq("quote_id", order.quote_id)
       .eq("file_category_id", cat.id)
+      .eq("draft_group_id", draftGroupId)
       .is("deleted_at", null);
     const nextVersion =
-      (existingDrafts ?? []).reduce((m: number, r: any) => Math.max(m, r.review_version ?? 0), 0) + 1;
+      (groupDrafts ?? []).reduce((m: number, r: any) => Math.max(m, r.review_version ?? 0), 0) + 1;
 
-    // Supersede any prior pending_review draft on this quote — review-draft-file
-    // lists EVERY pending_review row on the quote when sending the customer email,
-    // so leaving older versions pending causes duplicate rows in the email.
+    // Supersede prior pending_review draft in the SAME group — older
+    // versions of OTHER groups (distinct documents) stay pending so the
+    // customer keeps seeing every parallel document.
     await sb
       .from("quote_files")
       .update({ deleted_at: new Date().toISOString() })
       .eq("quote_id", order.quote_id)
       .eq("file_category_id", cat.id)
+      .eq("draft_group_id", draftGroupId)
       .eq("review_status", "pending_review")
       .is("deleted_at", null);
 
@@ -237,7 +256,8 @@ serve(async (req) => {
         file_category_id: cat.id,
         review_status: "pending_review",
         review_version: nextVersion,
-        staff_notes: `Promoted from workflow step "${step.name}" v${delivery.version}${wasConverted ? " (Word → PDF + DRAFT watermark)" : " (DRAFT watermark)"}`,
+        draft_group_id: draftGroupId,
+        staff_notes: `${stepTag} v${delivery.version}${wasConverted ? " (Word → PDF + DRAFT watermark)" : " (DRAFT watermark)"}`,
       })
       .select("id")
       .single();
