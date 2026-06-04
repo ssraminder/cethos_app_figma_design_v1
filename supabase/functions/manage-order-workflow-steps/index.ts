@@ -38,21 +38,28 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Verify workflow exists
-    const { data: workflow } = await supabase
+    const { data: workflow, error: wfErr } = await supabase
       .from("order_workflows")
       .select("id, order_id, total_steps")
       .eq("id", workflow_id)
-      .is("deleted_at", null)
       .single();
 
-    if (!workflow) {
+    if (wfErr || !workflow) {
       return json({ success: false, error: "Workflow not found" }, 404);
     }
 
     switch (action) {
       case "add_step": {
-        const { insert_after, name, service_id, actor_type, auto_advance, is_optional, requires_file_upload, instructions } = body;
+        const {
+          insert_after,
+          name,
+          service_id,
+          actor_type,
+          auto_advance,
+          is_optional,
+          requires_file_upload,
+          instructions,
+        } = body;
 
         if (!name || !actor_type) {
           return json({ success: false, error: "Missing name or actor_type" }, 400);
@@ -60,30 +67,50 @@ serve(async (req: Request) => {
 
         const insertPosition = (insert_after ?? workflow.total_steps) + 1;
 
-        // Shift existing steps at or after the insert position
-        const { data: existingSteps } = await supabase
-          .from("workflow_steps")
+        const { data: existingSteps, error: existingErr } = await supabase
+          .from("order_workflow_steps")
           .select("id, step_number")
           .eq("workflow_id", workflow_id)
-          .is("deleted_at", null)
           .gte("step_number", insertPosition)
           .order("step_number", { ascending: false });
 
-        for (const step of existingSteps ?? []) {
-          await supabase
-            .from("workflow_steps")
-            .update({ step_number: step.step_number + 1 })
-            .eq("id", step.id);
+        if (existingErr) {
+          return json({ success: false, error: existingErr.message }, 500);
         }
 
-        // Insert the new step
+        for (const step of existingSteps ?? []) {
+          const { error: shiftErr } = await supabase
+            .from("order_workflow_steps")
+            .update({ step_number: step.step_number + 1 })
+            .eq("id", step.id);
+          if (shiftErr) return json({ success: false, error: shiftErr.message }, 500);
+        }
+
+        // Bump approval_depends_on_step refs >= insertPosition so they keep pointing
+        // at the same logical step after renumber.
+        const { data: depsToBump, error: depsErr } = await supabase
+          .from("order_workflow_steps")
+          .select("id, approval_depends_on_step")
+          .eq("workflow_id", workflow_id)
+          .gte("approval_depends_on_step", insertPosition);
+        if (depsErr) return json({ success: false, error: depsErr.message }, 500);
+        for (const s of depsToBump ?? []) {
+          if (s.approval_depends_on_step != null) {
+            const { error: e } = await supabase
+              .from("order_workflow_steps")
+              .update({ approval_depends_on_step: s.approval_depends_on_step + 1 })
+              .eq("id", s.id);
+            if (e) return json({ success: false, error: e.message }, 500);
+          }
+        }
+
         const { error: insertErr } = await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .insert({
             workflow_id,
             order_id: workflow.order_id,
             step_number: insertPosition,
-            step_name: name,
+            name,
             actor_type,
             service_id: service_id || null,
             assignment_mode: "manual",
@@ -92,7 +119,7 @@ serve(async (req: Request) => {
             requires_file_upload: requires_file_upload ?? false,
             instructions: instructions || null,
             status: "pending",
-            currency: "CAD",
+            vendor_currency: "CAD",
             revision_count: 0,
           });
 
@@ -100,7 +127,6 @@ serve(async (req: Request) => {
           return json({ success: false, error: insertErr.message }, 500);
         }
 
-        // Update workflow total
         await supabase
           .from("order_workflows")
           .update({ total_steps: workflow.total_steps + 1 })
@@ -113,42 +139,85 @@ serve(async (req: Request) => {
         const { step_id } = body;
         if (!step_id) return json({ success: false, error: "Missing step_id" }, 400);
 
-        // Get the step to remove
-        const { data: step } = await supabase
-          .from("workflow_steps")
-          .select("id, step_number, status")
+        const { data: step, error: stepErr } = await supabase
+          .from("order_workflow_steps")
+          .select("id, step_number, status, workflow_id")
           .eq("id", step_id)
           .single();
 
-        if (!step) return json({ success: false, error: "Step not found" }, 404);
-
-        if (!["pending", "skipped", "cancelled"].includes(step.status)) {
-          return json({ success: false, error: "Cannot remove a step that is in progress or completed" }, 400);
+        if (stepErr || !step) return json({ success: false, error: "Step not found" }, 404);
+        if (step.workflow_id !== workflow_id) {
+          return json({ success: false, error: "Step does not belong to this workflow" }, 400);
         }
 
-        // Soft-delete the step
-        await supabase
-          .from("workflow_steps")
-          .update({ deleted_at: new Date().toISOString() })
+        if (!["pending", "skipped", "cancelled"].includes(step.status)) {
+          return json(
+            { success: false, error: "Cannot remove a step that is in progress or completed" },
+            400,
+          );
+        }
+
+        // Clear FK references before delete. For pending/skipped/cancelled steps these
+        // are typically empty, but vendor_step_offers and notification_log can have rows.
+        await supabase.from("vendor_step_offers").delete().eq("step_id", step_id);
+        await supabase.from("notification_log").delete().eq("step_id", step_id);
+        await supabase.from("step_deliveries").delete().eq("step_id", step_id);
+        await supabase.from("step_draft_sends").delete().eq("step_id", step_id);
+        await supabase.from("vendor_payables").delete().eq("workflow_step_id", step_id);
+        await supabase.from("vendor_terms_acceptances").delete().eq("step_id", step_id);
+
+        const { error: delErr } = await supabase
+          .from("order_workflow_steps")
+          .delete()
           .eq("id", step_id);
 
-        // Re-number remaining steps
-        const { data: remaining } = await supabase
-          .from("workflow_steps")
+        if (delErr) return json({ success: false, error: delErr.message }, 500);
+
+        // Renumber remaining downstream steps.
+        const { data: remaining, error: remErr } = await supabase
+          .from("order_workflow_steps")
           .select("id, step_number")
           .eq("workflow_id", workflow_id)
-          .is("deleted_at", null)
           .gt("step_number", step.step_number)
           .order("step_number");
 
+        if (remErr) return json({ success: false, error: remErr.message }, 500);
+
         for (const s of remaining ?? []) {
-          await supabase
-            .from("workflow_steps")
+          const { error: e } = await supabase
+            .from("order_workflow_steps")
             .update({ step_number: s.step_number - 1 })
+            .eq("id", s.id);
+          if (e) return json({ success: false, error: e.message }, 500);
+        }
+
+        // Fix approval_depends_on_step references that pointed at or past the removed step.
+        const { data: depsExact } = await supabase
+          .from("order_workflow_steps")
+          .select("id")
+          .eq("workflow_id", workflow_id)
+          .eq("approval_depends_on_step", step.step_number);
+        for (const s of depsExact ?? []) {
+          await supabase
+            .from("order_workflow_steps")
+            .update({ approval_depends_on_step: null })
             .eq("id", s.id);
         }
 
-        // Update total
+        const { data: depsAfter } = await supabase
+          .from("order_workflow_steps")
+          .select("id, approval_depends_on_step")
+          .eq("workflow_id", workflow_id)
+          .gt("approval_depends_on_step", step.step_number);
+        for (const s of depsAfter ?? []) {
+          if (s.approval_depends_on_step != null) {
+            await supabase
+              .from("order_workflow_steps")
+              .update({ approval_depends_on_step: s.approval_depends_on_step - 1 })
+              .eq("id", s.id);
+          }
+        }
+
         await supabase
           .from("order_workflows")
           .update({ total_steps: Math.max(0, workflow.total_steps - 1) })
@@ -164,54 +233,60 @@ serve(async (req: Request) => {
         }
 
         const { data: step } = await supabase
-          .from("workflow_steps")
-          .select("id, step_number")
+          .from("order_workflow_steps")
+          .select("id, step_number, workflow_id")
           .eq("id", step_id)
           .single();
 
         if (!step) return json({ success: false, error: "Step not found" }, 404);
+        if (step.workflow_id !== workflow_id) {
+          return json({ success: false, error: "Step does not belong to this workflow" }, 400);
+        }
 
         const oldPos = step.step_number;
         const newPos = new_position;
 
         if (oldPos === newPos) return json({ success: true });
 
-        // Get all steps in the workflow
         const { data: allSteps } = await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .select("id, step_number")
           .eq("workflow_id", workflow_id)
-          .is("deleted_at", null)
           .order("step_number");
 
         if (!allSteps) return json({ success: false, error: "No steps found" }, 500);
 
-        // Shift steps between old and new positions
+        // Park the moving step at a sentinel to avoid the (workflow_id, step_number)
+        // unique conflict while neighbors are being shifted.
+        await supabase
+          .from("order_workflow_steps")
+          .update({ step_number: -1 })
+          .eq("id", step_id);
+
         if (newPos < oldPos) {
-          // Moving up: shift steps in [newPos, oldPos-1] down by 1
           for (const s of allSteps) {
+            if (s.id === step_id) continue;
             if (s.step_number >= newPos && s.step_number < oldPos) {
               await supabase
-                .from("workflow_steps")
+                .from("order_workflow_steps")
                 .update({ step_number: s.step_number + 1 })
                 .eq("id", s.id);
             }
           }
         } else {
-          // Moving down: shift steps in [oldPos+1, newPos] up by 1
           for (const s of allSteps) {
+            if (s.id === step_id) continue;
             if (s.step_number > oldPos && s.step_number <= newPos) {
               await supabase
-                .from("workflow_steps")
+                .from("order_workflow_steps")
                 .update({ step_number: s.step_number - 1 })
                 .eq("id", s.id);
             }
           }
         }
 
-        // Set the moved step to its new position
         await supabase
-          .from("workflow_steps")
+          .from("order_workflow_steps")
           .update({ step_number: newPos })
           .eq("id", step_id);
 
