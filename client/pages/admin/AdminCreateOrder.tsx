@@ -249,6 +249,52 @@ export default function AdminCreateOrder() {
   >([]);
   const [clientPmDropdownOpen, setClientPmDropdownOpen] = useState(false);
   const [clientPmAddingNew, setClientPmAddingNew] = useState(false);
+  const [linkingCompany, setLinkingCompany] = useState(false);
+
+  // Auto-link a business customer with no company_id to a companies
+  // row (matched ilike on company_name; inserted if no match), so the
+  // PM picker can render this customer's PM directory. Mirrors the
+  // same auto-link in CustomerDetail.saveProjectManager — staff
+  // should not have to bounce to a separate "link company" flow
+  // mid-order.
+  const autoLinkCustomerCompany = async () => {
+    if (!customer || customer.company_id) return;
+    const companyName = (customer.company_name || customer.full_name || "").trim();
+    if (!companyName) {
+      toast.error("Add a company name on the customer profile first.");
+      return;
+    }
+    setLinkingCompany(true);
+    try {
+      const { data: existing } = await supabase
+        .from("companies")
+        .select("id, name")
+        .ilike("name", companyName)
+        .limit(1)
+        .maybeSingle();
+      let companyId: string | null = (existing as any)?.id ?? null;
+      if (!companyId) {
+        const { data: created, error: cErr } = await supabase
+          .from("companies")
+          .insert({ name: companyName })
+          .select("id")
+          .single();
+        if (cErr) throw cErr;
+        companyId = (created as any).id;
+      }
+      const { error: linkErr } = await supabase
+        .from("customers")
+        .update({ company_id: companyId })
+        .eq("id", customer.id);
+      if (linkErr) throw linkErr;
+      setCustomer({ ...customer, company_id: companyId! });
+      toast.success(`Linked ${companyName} — you can now pick a PM.`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to link company");
+    } finally {
+      setLinkingCompany(false);
+    }
+  };
   const clientPmDebounceRef = useRef<number | null>(null);
   // ── Project picker (typeahead over internal_projects) ──
   const [projectSuggestions, setProjectSuggestions] = useState<ProjectSuggestion[]>([]);
@@ -2315,6 +2361,17 @@ export default function AdminCreateOrder() {
                     ? "Pick a customer first."
                     : "This customer isn't linked to a company — PM directory is per-company."}
               </p>
+              {customer && !customer.company_id && (
+                <button
+                  type="button"
+                  onClick={autoLinkCustomerCompany}
+                  disabled={linkingCompany || !(customer.company_name || customer.full_name)}
+                  className="mb-2 inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-teal-300 text-teal-700 rounded hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Match or create a companies row from this customer's company name, then enable the PM picker."
+                >
+                  {linkingCompany ? "Linking…" : `+ Link "${(customer.company_name || customer.full_name || "this customer").trim()}" as a company`}
+                </button>
+              )}
               {clientPmId ? (
                 <div className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm max-w-xl">
                   <div className="min-w-0">
