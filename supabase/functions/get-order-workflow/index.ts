@@ -237,7 +237,7 @@ serve(async (req: Request) => {
         .select(`
           id, step_id, version, actor_type,
           delivered_by_id, delivered_by_name, delivered_at,
-          file_paths, notes,
+          file_paths, notes, vendor_identifier,
           review_status, reviewed_by, reviewed_at, review_feedback,
           created_at
         `)
