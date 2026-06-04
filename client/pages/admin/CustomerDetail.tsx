@@ -1716,12 +1716,17 @@ export default function CustomerDetail() {
                   customer-side contacts (Steve Bisson at TRSB, etc.).
                   These same rows feed the PM picker on AdminCreateOrder
                   and the per-task PM display on AdminProjectDetail. */}
-              {customer.company_id ? (
+              {(customer.customer_type === "business" || customer.company_id) ? (
                 <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-base font-semibold text-gray-800">
                       <UserCheck className="w-4 h-4 inline mr-2" />
                       Project Managers & Contacts
+                      {!customer.company_id && (
+                        <span className="ml-2 text-xs font-normal text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                          Adding the first PM will link this customer to a "{(customer.company_name || customer.full_name || "company").trim()}" company.
+                        </span>
+                      )}
                     </h3>
                     <div className="flex items-center gap-3">
                       <label className="text-xs text-gray-500 inline-flex items-center gap-1">
