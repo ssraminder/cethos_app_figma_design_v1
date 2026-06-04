@@ -38,6 +38,7 @@ import {
   ArrowUp,
   ArrowDown,
   GripVertical,
+  MessageSquare,
 } from "lucide-react";
 import { format } from "date-fns";
 import { StatCard } from "@/components/admin/StatCard";
@@ -75,6 +76,9 @@ interface Order {
   active_vendor_name: string | null;
   assignment_bucket: string | null;
   pinned_position: number | null;
+  staff_note_excerpt: string | null;
+  staff_note_author: string | null;
+  staff_note_count: number;
 }
 
 interface CompanyOption {
@@ -789,15 +793,37 @@ export default function AdminOrdersList() {
       // mirrors the pattern get-order-workflow uses.
       const orderIds = (data ?? []).map((o: any) => o.id).filter(Boolean);
       let stepsByOrder = new Map<string, any[]>();
+      // Staff notes — latest non-deleted note per order, plus a per-order
+      // count, so the row can render a MessageSquare icon + tooltip
+      // excerpt without an extra round trip per row.
+      let notesByOrder = new Map<string, { excerpt: string; author: string | null; count: number }>();
       if (orderIds.length > 0) {
         const stepsQs = `order_workflow_steps?select=order_id,actor_type,status,vendor_id,assigned_at,step_number,vendor:vendors!vendor_id(full_name)&order_id=in.(${orderIds.join(",")})`;
-        const stepsRes = await sbGet(stepsQs);
+        const notesQs = `staff_notes?select=entity_id,body,created_by_name,created_at&entity_type=eq.order&entity_id=in.(${orderIds.join(",")})&deleted_at=is.null&order=created_at.desc&limit=500`;
+        const [stepsRes, notesRes] = await Promise.all([sbGet(stepsQs), sbGet(notesQs)]);
         if (stepsRes.ok) {
           const stepsRows: any[] = await stepsRes.json();
           for (const s of stepsRows) {
             const arr = stepsByOrder.get(s.order_id) || [];
             arr.push(s);
             stepsByOrder.set(s.order_id, arr);
+          }
+        }
+        if (notesRes.ok) {
+          const noteRows: Array<{ entity_id: string; body: string; created_by_name: string | null; created_at: string }> = await notesRes.json();
+          // Rows arrive newest-first per the order=created_at.desc above; the
+          // first encounter for each entity_id is the latest note for that order.
+          for (const n of noteRows) {
+            const cur = notesByOrder.get(n.entity_id);
+            if (cur) {
+              cur.count += 1;
+            } else {
+              notesByOrder.set(n.entity_id, {
+                excerpt: (n.body || "").slice(0, 240),
+                author: n.created_by_name,
+                count: 1,
+              });
+            }
           }
         }
       }
@@ -855,6 +881,9 @@ export default function AdminOrdersList() {
           source_language_name: (order.quote as any)?.source_language?.name ?? null,
           target_language_name: (order.quote as any)?.target_language?.name ?? null,
           pinned_position: (order as any).pinned_position ?? null,
+          staff_note_excerpt: notesByOrder.get(order.id)?.excerpt ?? null,
+          staff_note_author: notesByOrder.get(order.id)?.author ?? null,
+          staff_note_count: notesByOrder.get(order.id)?.count ?? 0,
           ...(() => {
             const va = deriveVendorAndAssignment(stepsByOrder.get(order.id) || []);
             return { active_vendor_name: va.vendorName, assignment_bucket: va.bucket };
@@ -1541,6 +1570,19 @@ export default function AdminOrdersList() {
                                 <Pin className="w-3.5 h-3.5 text-teal-600 fill-teal-100" aria-label="Pinned" />
                               )}
                               {order.order_number}
+                              {order.staff_note_excerpt && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 text-amber-600 cursor-help"
+                                  title={`Staff note${order.staff_note_count > 1 ? ` (latest of ${order.staff_note_count})` : ""}${order.staff_note_author ? ` — ${order.staff_note_author}` : ""}:\n${order.staff_note_excerpt}${order.staff_note_excerpt.length >= 240 ? "…" : ""}`}
+                                  aria-label="Has staff note"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5 fill-amber-100" />
+                                  {order.staff_note_count > 1 && (
+                                    <span className="text-[10px] font-semibold">{order.staff_note_count}</span>
+                                  )}
+                                </span>
+                              )}
                             </p>
                             {order.internal_project_number && (
                               <p className="text-xs font-mono text-teal-700 mt-0.5">
