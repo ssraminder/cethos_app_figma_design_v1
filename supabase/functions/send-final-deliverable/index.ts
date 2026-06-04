@@ -73,8 +73,22 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
   try {
-    const { step_id, staff_id, delivery_id, message } = await req.json();
+    const { step_id, staff_id, delivery_id, message, recipients } = await req.json();
     if (!step_id) return json({ success: false, error: "Missing step_id" }, 400);
+
+    // Optional explicit recipient list — staff picks who gets the email
+    // from the Send Final Deliverable modal (primary customer + any PMs
+    // + ad-hoc name/email rows). When absent or empty we fall back to
+    // the order's primary customer email (legacy behaviour, preserved).
+    const recipientList: Array<{ email: string; name?: string | null }> =
+      Array.isArray(recipients)
+        ? recipients
+            .map((r: any) => ({
+              email: String(r?.email ?? "").trim().toLowerCase(),
+              name: r?.name ? String(r.name).trim() : null,
+            }))
+            .filter((r) => r.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email))
+        : [];
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -208,24 +222,35 @@ serve(async (req: Request) => {
       }
     }
 
-    // 8) Fire customer email + Dropbox sync to Final Deliverable folder
-    if (customer?.email && order) {
-      await sendCustomerEmail({
-        supabase,
-        customerEmail: customer.email,
-        customerName: customer.full_name,
-        customerId: customer.id,
-        orderId: order.id,
-        orderNumber: order.order_number,
-        stepId: step.id,
-        downloads,
-        message: typeof message === "string" ? message.trim() || null : null,
-        version: chosenDelivery.version,
-        projectNumber,
-        companyName: customer.company_name,
-      });
+    // 8) Fire emails + Dropbox sync to Final Deliverable folder.
+    //    If the staff selected a recipient list, use that; otherwise fall
+    //    back to the order's primary customer email.
+    const finalRecipients: Array<{ email: string; name?: string | null }> =
+      recipientList.length > 0
+        ? recipientList
+        : (customer?.email
+            ? [{ email: customer.email, name: customer.full_name }]
+            : []);
+
+    if (finalRecipients.length === 0 || !order) {
+      console.warn(`send-final-deliverable: no recipient email for order ${step.order_id}`);
     } else {
-      console.warn(`send-final-deliverable: no customer email for order ${step.order_id}`);
+      for (const rcpt of finalRecipients) {
+        await sendCustomerEmail({
+          supabase,
+          customerEmail: rcpt.email,
+          customerName: rcpt.name ?? customer?.full_name ?? null,
+          customerId: customer?.id ?? null,
+          orderId: order.id,
+          orderNumber: order.order_number,
+          stepId: step.id,
+          downloads,
+          message: typeof message === "string" ? message.trim() || null : null,
+          version: chosenDelivery.version,
+          projectNumber,
+          companyName: customer?.company_name ?? null,
+        });
+      }
     }
 
     // Push files to Dropbox /Final Deliverable folder (fire-and-forget)
@@ -254,7 +279,7 @@ interface CustomerEmailArgs {
   supabase: any;
   customerEmail: string;
   customerName: string | null;
-  customerId: string;
+  customerId: string | null;
   orderId: string;
   orderNumber: string;
   stepId: string;
