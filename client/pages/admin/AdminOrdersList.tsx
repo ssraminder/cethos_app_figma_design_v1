@@ -282,6 +282,13 @@ export default function AdminOrdersList() {
   // can highlight it. Native HTML5 DnD on <tr>; no extra dependency.
   const [dragOrderId, setDragOrderId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  // Inline note composer — opens when staff picks "Add note" from a row
+  // menu. Submits to manage-staff-notes edge function with the current
+  // staffId, then refetches the list so the indicator lights up.
+  const [notingOrderId, setNotingOrderId] = useState<string | null>(null);
+  const [notingOrderNumber, setNotingOrderNumber] = useState<string>("");
+  const [noteDraft, setNoteDraft] = useState<string>("");
+  const [savingNote, setSavingNote] = useState(false);
   // Aggregates across the FILTERED dataset (not just the current page).
   // Computed by a second PostgREST fetch alongside the paginated one so the
   // stat cards reflect "5 rush orders match your filters" rather than "0 rush
@@ -299,6 +306,11 @@ export default function AdminOrdersList() {
   const rushOnly = searchParams.get("rush") === "true";
   const xtrfStatus = searchParams.get("xtrfStatus") || "";
   const poStatus = searchParams.get("poStatus") || "";
+  // Due-date bucket filter: overdue / today / 7days / 30days / no_deadline / "".
+  // Resolved server-side so it scopes the full filtered dataset like the
+  // other filters; overdue logic also checks work_status and status to
+  // avoid counting completed/cancelled orders as "overdue" forever.
+  const dueWhen = searchParams.get("dueWhen") || "";
   const xtrfInvoiceStatuses = searchParams.get("xtrfInvStatus")?.split(",").filter(Boolean) || [];
   const xtrfPaymentStatuses = searchParams.get("xtrfPayStatus")?.split(",").filter(Boolean) || [];
   const serviceFilter = (searchParams.get("service") || "all") as
@@ -556,6 +568,44 @@ export default function AdminOrdersList() {
     }
   };
 
+  // Open the inline note composer for a row. Captures the order_number
+  // for the modal title; entity_id is the order id we already have.
+  const openNoteComposer = (orderId: string, orderNumber: string) => {
+    setNotingOrderId(orderId);
+    setNotingOrderNumber(orderNumber);
+    setNoteDraft("");
+    setOpenMenuId(null);
+  };
+
+  const submitInlineNote = async () => {
+    if (!notingOrderId || !noteDraft.trim()) return;
+    if (!staffId) { toast.error("No staff session"); return; }
+    setSavingNote(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-staff-notes", {
+        body: {
+          action: "create",
+          entity_type: "order",
+          entity_id: notingOrderId,
+          body: noteDraft.trim(),
+          staff_id: staffId,
+        },
+      });
+      if (error || !data?.success) {
+        toast.error((data as any)?.error || error?.message || "Failed to save note");
+        return;
+      }
+      toast.success("Note added");
+      setNotingOrderId(null);
+      setNoteDraft("");
+      fetchOrders();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save note");
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
   // Drop handler: a user dragged sourceId onto targetId. Behaviour:
   //  - both pinned       → swap their pinned_position (two-step via sentinel)
   //  - source unpinned   → pin source above target (target.pp - 1, or top
@@ -656,6 +706,36 @@ export default function AdminOrdersList() {
       if (xtrfPaymentStatuses.length > 0) {
         filters.push(`xtrf_invoice_payment_status=in.(${xtrfPaymentStatuses.join(",")})`);
       }
+      // Due-date bucket. estimated_delivery_at (timestamptz) is the
+      // canonical deadline; the 71-row backfill on 2026-06-04 cleared the
+      // date-only legacy gap. "overdue" also gates on status / work_status
+      // so a long-completed order doesn't sit in the overdue bucket.
+      if (dueWhen === "overdue") {
+        const nowIso = new Date().toISOString();
+        filters.push(`estimated_delivery_at=lt.${nowIso}`);
+        filters.push(`work_status=not.in.(completed,cancelled)`);
+        filters.push(`status=not.in.(cancelled,refunded,completed)`);
+      } else if (dueWhen === "today") {
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+        filters.push(`estimated_delivery_at=gte.${startOfDay}`);
+        filters.push(`estimated_delivery_at=lt.${endOfDay}`);
+      } else if (dueWhen === "7days") {
+        const nowIso = new Date().toISOString();
+        const endIso = new Date(Date.now() + 7 * 86400_000).toISOString();
+        filters.push(`estimated_delivery_at=gte.${nowIso}`);
+        filters.push(`estimated_delivery_at=lte.${endIso}`);
+      } else if (dueWhen === "30days") {
+        const nowIso = new Date().toISOString();
+        const endIso = new Date(Date.now() + 30 * 86400_000).toISOString();
+        filters.push(`estimated_delivery_at=gte.${nowIso}`);
+        filters.push(`estimated_delivery_at=lte.${endIso}`);
+      } else if (dueWhen === "no_deadline") {
+        filters.push(`estimated_delivery_at=is.null`);
+        filters.push(`estimated_delivery_date=is.null`);
+      }
+
       // PO Pending: customer is in pending_acceptable PO mode and the
       // order has no po_number yet. Mirrors the DB-level invoice-issue
       // gate so staff can chase what's blocking issue.
@@ -905,7 +985,7 @@ export default function AdminOrdersList() {
     // (null = still loading; once loaded, certifiedServiceLoaded flips true and we re-run)
     if (serviceFilter !== "all" && !certifiedServiceLoaded) return;
     fetchOrders();
-  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, poStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, vendorFilter, srcLangFilter, tgtLangFilter, assignmentFilter, certifiedServiceLoaded]);
+  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, poStatus, dueWhen, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, vendorFilter, srcLangFilter, tgtLangFilter, assignmentFilter, certifiedServiceLoaded]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -985,7 +1065,7 @@ export default function AdminOrdersList() {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const hasActiveFilters =
-    search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus || xtrfInvoiceStatuses.length > 0 || xtrfPaymentStatuses.length > 0;
+    search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus || dueWhen || xtrfInvoiceStatuses.length > 0 || xtrfPaymentStatuses.length > 0;
 
   // Summary stats reflect the FULL filtered dataset, not just the current
   // page, so the cards stay consistent with "Total Orders" (which is also
@@ -1223,6 +1303,29 @@ export default function AdminOrdersList() {
                   <option value="">All PO Status</option>
                   <option value="pending">PO Pending — chase</option>
                   <option value="received">PO Received</option>
+                </select>
+              </div>
+
+              {/* Due Date bucket — overdue first since that's the PM
+                  triage need. estimated_delivery_at is the canonical
+                  field; client-date-only legacy rows were backfilled to
+                  17:00 Edmonton on 2026-06-04 so the bucket math is
+                  consistent. */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Due Date
+                </label>
+                <select
+                  value={dueWhen}
+                  onChange={(e) => updateFilter("dueWhen", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Any deadline</option>
+                  <option value="overdue">Overdue (active)</option>
+                  <option value="today">Due today</option>
+                  <option value="7days">Due in 7 days</option>
+                  <option value="30days">Due in 30 days</option>
+                  <option value="no_deadline">No deadline set</option>
                 </select>
               </div>
 
@@ -1530,6 +1633,16 @@ export default function AdminOrdersList() {
                       order.service_code !== "certified_translation";
                     const isDropTarget = dropTargetId === order.id && dragOrderId !== order.id;
                     const isDragging = dragOrderId === order.id;
+                    // Overdue = deadline passed AND order isn't already
+                    // closed out. status/work_status checks keep
+                    // long-completed orders from sitting in the bucket.
+                    const deadlineMs = order.estimated_delivery_at
+                      ? new Date(order.estimated_delivery_at).getTime()
+                      : (order.estimated_delivery_date ? new Date(order.estimated_delivery_date).getTime() : null);
+                    const isOverdue = !!deadlineMs
+                      && deadlineMs < Date.now()
+                      && !["completed", "cancelled"].includes(order.work_status || "")
+                      && !["completed", "cancelled", "refunded"].includes(order.status || "");
                     return (
                     <tr
                       key={order.id}
@@ -1593,6 +1706,9 @@ export default function AdminOrdersList() {
                               {format(new Date(order.created_at), "MMM d, yyyy")}
                               {order.is_rush && (
                                 <span className="ml-1.5 text-amber-600 font-medium">⚡ Rush</span>
+                              )}
+                              {isOverdue && (
+                                <span className="ml-1.5 text-red-600 font-semibold">⏰ Overdue</span>
                               )}
                             </p>
                           </Link>
@@ -1750,14 +1866,14 @@ export default function AdminOrdersList() {
                       {isColVisible("delivery") && (
                         <td className="px-3 py-2.5">
                           {order.estimated_delivery_at ? (
-                            <p className="text-sm text-gray-700">
+                            <p className={`text-sm ${isOverdue ? "text-red-600 font-semibold" : "text-gray-700"}`}>
                               {new Date(order.estimated_delivery_at).toLocaleString(undefined, {
                                 month: "short", day: "numeric", year: "numeric",
                                 hour: "numeric", minute: "2-digit",
                               })}
                             </p>
                           ) : order.estimated_delivery_date ? (
-                            <p className="text-sm text-gray-700">
+                            <p className={`text-sm ${isOverdue ? "text-red-600 font-semibold" : "text-gray-700"}`}>
                               {format(new Date(order.estimated_delivery_date), "MMM d, yyyy")}
                             </p>
                           ) : (
@@ -1793,6 +1909,14 @@ export default function AdminOrdersList() {
                                 <Eye className="w-4 h-4" />
                                 View Details
                               </Link>
+                              <button
+                                type="button"
+                                onClick={() => openNoteComposer(order.id, order.order_number)}
+                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                              >
+                                <MessageSquare className="w-4 h-4" />
+                                Add note
+                              </button>
                               <div className="my-1 border-t border-gray-100" />
                               {order.pinned_position == null ? (
                                 <button
@@ -1873,6 +1997,61 @@ export default function AdminOrdersList() {
             </div>
           )}
         </div>
+
+        {/* Inline Add-Note Modal */}
+        {notingOrderId && (
+          <>
+            <div className="fixed inset-0 bg-black/40 z-40" onClick={() => !savingNote && setNotingOrderId(null)} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Add staff note</h3>
+                    <p className="text-xs text-gray-500 mt-0.5 font-mono">{notingOrderNumber}</p>
+                  </div>
+                  <button onClick={() => !savingNote && setNotingOrderId(null)} className="p-1 hover:bg-gray-100 rounded-lg" disabled={savingNote}>
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+                <div className="px-6 py-4">
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mb-3">
+                    Internal — not shown to customers or vendors.
+                  </p>
+                  <textarea
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    placeholder="Add an internal note for the team..."
+                    rows={5}
+                    autoFocus
+                    disabled={savingNote}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                        e.preventDefault();
+                        void submitInlineNote();
+                      } else if (e.key === "Escape") {
+                        if (!savingNote) setNotingOrderId(null);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-y"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Cmd/Ctrl + Enter to save · Esc to cancel</p>
+                </div>
+                <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-gray-100">
+                  <button onClick={() => setNotingOrderId(null)} disabled={savingNote} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void submitInlineNote()}
+                    disabled={savingNote || !noteDraft.trim()}
+                    className="px-4 py-2 text-sm text-white bg-teal-600 hover:bg-teal-700 rounded-lg disabled:opacity-50"
+                  >
+                    {savingNote ? "Saving..." : "Save note"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Column Settings Modal */}
         {showColumnSettings && (
