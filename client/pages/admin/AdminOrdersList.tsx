@@ -33,6 +33,10 @@ import {
   MoreVertical,
   Eye,
   Settings2,
+  Pin,
+  PinOff,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import { StatCard } from "@/components/admin/StatCard";
@@ -69,6 +73,7 @@ interface Order {
   target_language_name: string | null;
   active_vendor_name: string | null;
   assignment_bucket: string | null;
+  pinned_position: number | null;
 }
 
 interface CompanyOption {
@@ -453,11 +458,96 @@ export default function AdminOrdersList() {
     });
   };
 
+  // Pin / unpin / reorder handlers. Direct PostgREST UPDATEs via the
+  // supabase client — RLS already grants is_active_staff() full access on
+  // orders, and no edge function is needed for what is essentially a
+  // single-column write. Lower pinned_position = higher in list.
+  const handlePinOrder = async (orderId: string) => {
+    setOpenMenuId(null);
+    try {
+      const { data: minRow } = await supabase
+        .from("orders")
+        .select("pinned_position")
+        .not("pinned_position", "is", null)
+        .order("pinned_position", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const next = (minRow?.pinned_position ?? 1) - 1;
+      const { error } = await supabase
+        .from("orders")
+        .update({ pinned_position: next })
+        .eq("id", orderId);
+      if (error) throw error;
+      toast.success("Order pinned to top");
+      fetchOrders();
+    } catch (e: any) {
+      toast.error(`Failed to pin order: ${e?.message || e}`);
+    }
+  };
+
+  const handleUnpinOrder = async (orderId: string) => {
+    setOpenMenuId(null);
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ pinned_position: null })
+        .eq("id", orderId);
+      if (error) throw error;
+      toast.success("Order unpinned");
+      fetchOrders();
+    } catch (e: any) {
+      toast.error(`Failed to unpin order: ${e?.message || e}`);
+    }
+  };
+
+  // Swap pinned_position with the adjacent pinned row. "Up" = smaller
+  // pinned_position. No-op when the row is already at the top/bottom of
+  // the pinned section. Two UPDATEs because there's no UNIQUE constraint
+  // to deferr around.
+  const handleMovePinned = async (orderId: string, direction: "up" | "down") => {
+    setOpenMenuId(null);
+    const me = orders.find((o) => o.id === orderId);
+    if (!me || me.pinned_position == null) return;
+    try {
+      const q = supabase
+        .from("orders")
+        .select("id, pinned_position")
+        .not("pinned_position", "is", null);
+      const { data: neighbor } = direction === "up"
+        ? await q
+            .lt("pinned_position", me.pinned_position)
+            .order("pinned_position", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : await q
+            .gt("pinned_position", me.pinned_position)
+            .order("pinned_position", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+      if (!neighbor) {
+        toast.message(direction === "up" ? "Already at top of pinned" : "Already at bottom of pinned");
+        return;
+      }
+      // Two-step swap via a sentinel out-of-range value avoids any temporary
+      // collision (defensive — there's no UNIQUE on pinned_position today).
+      const SENTINEL = -2_000_000_000;
+      const { error: e1 } = await supabase.from("orders").update({ pinned_position: SENTINEL }).eq("id", orderId);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase.from("orders").update({ pinned_position: me.pinned_position }).eq("id", (neighbor as any).id);
+      if (e2) throw e2;
+      const { error: e3 } = await supabase.from("orders").update({ pinned_position: (neighbor as any).pinned_position }).eq("id", orderId);
+      if (e3) throw e3;
+      fetchOrders();
+    } catch (e: any) {
+      toast.error(`Failed to reorder: ${e?.message || e}`);
+    }
+  };
+
   const fetchOrders = async () => {
     setLoading(true);
     try {
       const select =
-        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,estimated_delivery_at,service_id,quote_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,internal_project_id,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code),internal_project:internal_projects!internal_project_id(project_number),quote:quotes(source_language:languages!source_language_id(name),target_language:languages!target_language_id(name))";
+        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,estimated_delivery_at,pinned_position,service_id,quote_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,internal_project_id,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code),internal_project:internal_projects!internal_project_id(project_number),quote:quotes(source_language:languages!source_language_id(name),target_language:languages!target_language_id(name))";
 
       const filters: string[] = [];
 
@@ -589,7 +679,9 @@ export default function AdminOrdersList() {
       const to = from + PAGE_SIZE - 1;
 
       const filterStr = filters.length > 0 ? "&" + filters.join("&") : "";
-      const qs = `orders?select=${encodeURIComponent(select)}${filterStr}&order=created_at.desc`;
+      // Pinned rows render at the top in pinned_position ASC (NULLs last);
+      // unpinned fall back to the original created_at DESC sort.
+      const qs = `orders?select=${encodeURIComponent(select)}${filterStr}&order=pinned_position.asc.nullslast,created_at.desc`;
 
       // Parallel: aggregate over the FULL filtered dataset so the stat cards
       // ("Rush Orders", "Avg Order Value", revenue) reflect every matching
@@ -698,6 +790,7 @@ export default function AdminOrdersList() {
           internal_project_number: (order.internal_project as any)?.project_number ?? null,
           source_language_name: (order.quote as any)?.source_language?.name ?? null,
           target_language_name: (order.quote as any)?.target_language?.name ?? null,
+          pinned_position: (order as any).pinned_position ?? null,
           ...(() => {
             const va = deriveVendorAndAssignment(stepsByOrder.get(order.id) || []);
             return { active_vendor_name: va.vendorName, assignment_bucket: va.bucket };
@@ -1354,7 +1447,10 @@ export default function AdminOrdersList() {
                       {isColVisible("orderDetails") && (
                         <td className="px-4 py-3">
                           <Link to={`/admin/orders/${order.id}`} className="block group">
-                            <p className="text-sm font-semibold text-gray-900 font-mono group-hover:text-teal-600">
+                            <p className="text-sm font-semibold text-gray-900 font-mono group-hover:text-teal-600 flex items-center gap-1.5">
+                              {order.pinned_position != null && (
+                                <Pin className="w-3.5 h-3.5 text-teal-600 fill-teal-100" aria-label="Pinned" />
+                              )}
                               {order.order_number}
                             </p>
                             {order.internal_project_number && (
@@ -1557,7 +1653,7 @@ export default function AdminOrdersList() {
                               className="fixed inset-0 z-10"
                               onClick={() => setOpenMenuId(null)}
                             />
-                            <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                            <div className="absolute right-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
                               <Link
                                 to={`/admin/orders/${order.id}`}
                                 className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
@@ -1566,6 +1662,44 @@ export default function AdminOrdersList() {
                                 <Eye className="w-4 h-4" />
                                 View Details
                               </Link>
+                              <div className="my-1 border-t border-gray-100" />
+                              {order.pinned_position == null ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handlePinOrder(order.id)}
+                                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                  <Pin className="w-4 h-4" />
+                                  Pin to top
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMovePinned(order.id, "up")}
+                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <ArrowUp className="w-4 h-4" />
+                                    Move up
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMovePinned(order.id, "down")}
+                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <ArrowDown className="w-4 h-4" />
+                                    Move down
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUnpinOrder(order.id)}
+                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <PinOff className="w-4 h-4" />
+                                    Unpin
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </>
                         )}
