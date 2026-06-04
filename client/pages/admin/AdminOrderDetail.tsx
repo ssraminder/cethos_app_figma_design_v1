@@ -905,12 +905,16 @@ export default function AdminOrderDetail() {
       }
     }
 
-    // Send ONE consolidated notification after all uploads complete
+    // Send ONE consolidated submit_for_review covering every uploaded
+    // file in the batch. Previously this passed only `file_id: lastFileId`
+    // (singular), so a multi-file upload left the first N-1 files stuck
+    // at review_status=NULL — they had no checkbox on the admin list and
+    // staff couldn't send them. The endpoint already accepts `file_ids`
+    // array (same as the Send Selected modal does at line 1509).
     if (uploadedFileIds.length > 0) {
       const lastFileId = uploadedFileIds[uploadedFileIds.length - 1];
       try {
         if (uploadType === "draft") {
-          // Draft: submit for review using the last uploaded file_id
           await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/review-draft-file`,
             {
@@ -920,7 +924,7 @@ export default function AdminOrderDetail() {
                 Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
               },
               body: JSON.stringify({
-                file_id: lastFileId,
+                file_ids: uploadedFileIds,
                 action: "submit_for_review",
                 actor_type: "staff",
                 actor_id: currentStaff.staffId,
@@ -929,7 +933,7 @@ export default function AdminOrderDetail() {
               }),
             }
           );
-          console.log("Customer notification sent for all draft files");
+          console.log(`Marked ${uploadedFileIds.length} draft file(s) pending_review`);
         } else if (uploadType === "final") {
           // Final delivery: notify using the order_id
           setIsDelivering(true);
