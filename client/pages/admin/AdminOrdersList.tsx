@@ -264,6 +264,12 @@ export default function AdminOrdersList() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  // Aggregates across the FILTERED dataset (not just the current page).
+  // Computed by a second PostgREST fetch alongside the paginated one so the
+  // stat cards reflect "5 rush orders match your filters" rather than "0 rush
+  // orders on this 25-row page".
+  const [filteredRevenue, setFilteredRevenue] = useState(0);
+  const [filteredRushCount, setFilteredRushCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Filters from URL
@@ -584,16 +590,40 @@ export default function AdminOrdersList() {
 
       const filterStr = filters.length > 0 ? "&" + filters.join("&") : "";
       const qs = `orders?select=${encodeURIComponent(select)}${filterStr}&order=created_at.desc`;
-      const res = await sbGet(qs, {
-        Prefer: "count=exact",
-        Range: `${from}-${to}`,
-        "Range-Unit": "items",
-      });
+
+      // Parallel: aggregate over the FULL filtered dataset so the stat cards
+      // ("Rush Orders", "Avg Order Value", revenue) reflect every matching
+      // order, not just the page. Slim select keeps payload tiny; cap at
+      // 10000 to bound worst case (today ~378 orders total).
+      const aggQs = `orders?select=is_rush,total_amount${filterStr}&limit=10000`;
+
+      const [res, aggRes] = await Promise.all([
+        sbGet(qs, {
+          Prefer: "count=exact",
+          Range: `${from}-${to}`,
+          "Range-Unit": "items",
+        }),
+        sbGet(aggQs),
+      ]);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const contentRange = res.headers.get("Content-Range") || "";
       const count = parseInt(contentRange.split("/")[1] || "0", 10);
       const data: any[] = await res.json();
+
+      if (aggRes.ok) {
+        const aggRows: Array<{ is_rush: boolean | null; total_amount: number | null }> = await aggRes.json();
+        let rev = 0, rush = 0;
+        for (const r of aggRows) {
+          rev += r.total_amount || 0;
+          if (r.is_rush) rush += 1;
+        }
+        setFilteredRevenue(rev);
+        setFilteredRushCount(rush);
+      } else {
+        setFilteredRevenue(0);
+        setFilteredRushCount(0);
+      }
 
       // Batched per-page fetch of workflow steps so we can derive:
       // - the active vendor's name (first non-completed external_vendor step
@@ -689,7 +719,7 @@ export default function AdminOrdersList() {
     // (null = still loading; once loaded, certifiedServiceLoaded flips true and we re-run)
     if (serviceFilter !== "all" && !certifiedServiceLoaded) return;
     fetchOrders();
-  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, vendorFilter, srcLangFilter, tgtLangFilter, assignmentFilter, certifiedServiceLoaded]);
+  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, poStatus, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, vendorFilter, srcLangFilter, tgtLangFilter, assignmentFilter, certifiedServiceLoaded]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -771,11 +801,11 @@ export default function AdminOrdersList() {
   const hasActiveFilters =
     search || status || workStatus || dateFrom || dateTo || rushOnly || xtrfStatus || xtrfInvoiceStatuses.length > 0 || xtrfPaymentStatuses.length > 0;
 
-  // Calculate summary stats
-  const totalRevenue = orders.reduce(
-    (sum, o) => sum + (o.total_amount || 0),
-    0,
-  );
+  // Summary stats reflect the FULL filtered dataset, not just the current
+  // page, so the cards stay consistent with "Total Orders" (which is also
+  // a filtered count from Content-Range).
+  const totalRevenue = filteredRevenue;
+  const avgOrderValue = totalCount > 0 ? totalRevenue / totalCount : 0;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
@@ -828,21 +858,21 @@ export default function AdminOrdersList() {
             color="blue"
           />
           <StatCard
-            label="Page Revenue"
+            label="Revenue"
             value={`$${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
             icon={DollarSign}
             color="green"
           />
           <StatCard
             label="Rush Orders"
-            value={orders.filter((o) => o.is_rush).length}
+            value={filteredRushCount}
             icon={Zap}
             color="amber"
-            valueColor={orders.filter((o) => o.is_rush).length > 0 ? "text-amber-600" : undefined}
+            valueColor={filteredRushCount > 0 ? "text-amber-600" : undefined}
           />
           <StatCard
             label="Avg Order Value"
-            value={`$${orders.length > 0 ? (totalRevenue / orders.length).toFixed(2) : "0.00"}`}
+            value={`$${avgOrderValue.toFixed(2)}`}
             icon={TrendingUp}
             color="purple"
           />
