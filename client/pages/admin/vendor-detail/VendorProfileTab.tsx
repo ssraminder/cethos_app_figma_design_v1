@@ -42,6 +42,7 @@ export default function VendorProfileTab({
   const startEditing = () => {
     setForm({
       full_name: vendor.full_name,
+      business_name: (vendor as any).business_name ?? "",
       phone: vendor.phone ?? "",
       country: vendor.country ?? "",
       province_state: vendor.province_state ?? "",
@@ -102,6 +103,7 @@ export default function VendorProfileTab({
         if (!fn) throw new Error("Full name is required");
         updates.full_name = fn;
       }
+      setIfPresent("business_name", trimOrNull);
       setIfPresent("phone", trimOrNull);
       setIfPresent("country", trimOrNull);
       setIfPresent("province_state", trimOrNull);
@@ -381,6 +383,20 @@ export default function VendorProfileTab({
               Personal Information
             </h3>
             {renderField("Full Name", vendor.full_name, textInput("full_name"))}
+            {(() => {
+              // Business name only meaningful for agencies / business entities.
+              // Surface the field when the vendor is one, OR when staff is
+              // editing and wants to set the type to one.
+              const vtype = (editing ? form.vendor_type : vendor.vendor_type) ?? "";
+              const ctype = (vendor as any).contractor_type ?? "";
+              const isBusinessLike = vtype === "agency" || ctype === "business";
+              if (!isBusinessLike && !(vendor as any).business_name) return null;
+              return renderField(
+                "Business Name",
+                (vendor as any).business_name ?? "—",
+                textInput("business_name"),
+              );
+            })()}
             {renderField("Email", vendor.email)}
             {renderField(
               "Additional emails (CC)",

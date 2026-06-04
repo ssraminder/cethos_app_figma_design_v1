@@ -5,6 +5,7 @@ export interface Vendor {
   xtrf_vendor_id: number | null;
   xtrf_account_name: string | null;
   full_name: string;
+  business_name: string | null;
   email: string;
   phone: string | null;
   status: string;
