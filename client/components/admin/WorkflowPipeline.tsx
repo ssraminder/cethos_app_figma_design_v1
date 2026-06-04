@@ -614,6 +614,14 @@ function WorkflowPipeline({
   const [sendFinalStep, setSendFinalStep] = useState<WorkflowStep | null>(null);
   const [sendFinalMessage, setSendFinalMessage] = useState("");
   const [sendFinalLoading, setSendFinalLoading] = useState(false);
+  // Recipient picker for the Send Final Deliverable modal. Built when the
+  // modal opens from the order's customer + the linked company PMs (if any).
+  // adHoc rows let staff type one-off name+email pairs without persisting
+  // them anywhere. Empty list = default to the customer's primary email.
+  interface RecipientChoice { email: string; name: string | null; source: "customer" | "pm" | "adhoc"; selected: boolean; }
+  const [sendFinalRecipients, setSendFinalRecipients] = useState<RecipientChoice[]>([]);
+  const [sendFinalAdHocName, setSendFinalAdHocName] = useState("");
+  const [sendFinalAdHocEmail, setSendFinalAdHocEmail] = useState("");
 
   // Tracks which step is being promoted to a customer draft file so the
   // button can spin while the watermarked PDF is generated server-side
@@ -709,6 +717,73 @@ function WorkflowPipeline({
     }
   };
 
+  // Open the Send Final Deliverable modal — also load the order's
+  // customer + linked company PMs so the recipient picker can render
+  // them as checkboxes. Defaults: customer pre-selected, PMs unselected.
+  const openSendFinalModal = async (step: WorkflowStep) => {
+    setSendFinalStep(step);
+    setSendFinalMessage("");
+    setSendFinalRecipients([]);
+    setSendFinalAdHocName("");
+    setSendFinalAdHocEmail("");
+    try {
+      const { data: ord } = await supabase
+        .from("orders")
+        .select("id, customer:customers!customer_id(id, full_name, email, company_id)")
+        .eq("id", (data?.workflow?.order_id) ?? "")
+        .maybeSingle();
+      const cust = (ord as any)?.customer ?? null;
+      const choices: RecipientChoice[] = [];
+      if (cust?.email) {
+        choices.push({ email: cust.email, name: cust.full_name, source: "customer", selected: true });
+      }
+      if (cust?.company_id) {
+        const { data: pms } = await supabase
+          .from("company_project_managers")
+          .select("email, full_name, is_active")
+          .eq("company_id", cust.company_id)
+          .eq("is_active", true);
+        for (const pm of (pms as any[]) || []) {
+          if (pm.email && !choices.some((c) => c.email.toLowerCase() === String(pm.email).toLowerCase())) {
+            choices.push({ email: pm.email, name: pm.full_name, source: "pm", selected: false });
+          }
+        }
+      }
+      setSendFinalRecipients(choices);
+    } catch (e: any) {
+      console.warn("openSendFinalModal recipient load failed:", e?.message || e);
+    }
+  };
+
+  const toggleSendFinalRecipient = (email: string) => {
+    setSendFinalRecipients((prev) =>
+      prev.map((r) => (r.email === email ? { ...r, selected: !r.selected } : r)),
+    );
+  };
+
+  const addSendFinalAdHocRecipient = () => {
+    const email = sendFinalAdHocEmail.trim().toLowerCase();
+    const name = sendFinalAdHocName.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Enter a valid email before adding.");
+      return;
+    }
+    if (sendFinalRecipients.some((r) => r.email.toLowerCase() === email)) {
+      toast.message("That email is already in the recipient list.");
+      return;
+    }
+    setSendFinalRecipients((prev) => [
+      ...prev,
+      { email, name: name || null, source: "adhoc", selected: true },
+    ]);
+    setSendFinalAdHocName("");
+    setSendFinalAdHocEmail("");
+  };
+
+  const removeSendFinalRecipient = (email: string) => {
+    setSendFinalRecipients((prev) => prev.filter((r) => r.email !== email));
+  };
+
   // Ships the Final Deliverable step's latest version to the customer:
   // signed download links via email, approves the step, completes the
   // workflow and the order. The edge function is idempotent — a re-click
@@ -717,11 +792,15 @@ function WorkflowPipeline({
     if (!sendFinalStep) return;
     setSendFinalLoading(true);
     try {
+      const selectedRecipients = sendFinalRecipients
+        .filter((r) => r.selected && r.email)
+        .map((r) => ({ email: r.email, name: r.name }));
       const { data, error } = await supabase.functions.invoke("send-final-deliverable", {
         body: {
           step_id: sendFinalStep.id,
           staff_id: currentStaff?.staffId || null,
           message: sendFinalMessage.trim() || null,
+          recipients: selectedRecipients.length > 0 ? selectedRecipients : undefined,
         },
       });
       if (error) throw error;
@@ -2198,8 +2277,7 @@ function WorkflowPipeline({
                       disabled={!(step.delivery_count && step.delivery_count > 0) && !(step.deliveries && step.deliveries.length > 0)}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSendFinalStep(step);
-                        setSendFinalMessage("");
+                        void openSendFinalModal(step);
                       }}
                       title={
                         !(step.delivery_count && step.delivery_count > 0) && !(step.deliveries && step.deliveries.length > 0)
@@ -3119,6 +3197,80 @@ function WorkflowPipeline({
                     )}
                   </div>
                 )}
+                {/* Recipient picker — primary customer + linked PMs +
+                    any ad-hoc rows staff types. At least one must be
+                    selected for the Send button to enable. */}
+                <div className="border border-gray-200 rounded p-3 space-y-2 bg-gray-50">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-gray-600">
+                    Recipients
+                  </div>
+                  {sendFinalRecipients.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic">Loading customer contacts…</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {sendFinalRecipients.map((r) => (
+                        <li key={r.email} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={r.selected}
+                            onChange={() => toggleSendFinalRecipient(r.email)}
+                            disabled={sendFinalLoading}
+                            className="w-3.5 h-3.5"
+                          />
+                          <span className="flex-1 truncate" title={`${r.name ?? ""} <${r.email}>`}>
+                            {r.name ? <span className="font-medium">{r.name}</span> : null}
+                            <span className={r.name ? "ml-1 text-gray-500" : ""}>{r.email}</span>
+                          </span>
+                          <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                            r.source === "customer" ? "bg-emerald-100 text-emerald-700"
+                            : r.source === "pm" ? "bg-blue-100 text-blue-700"
+                            : "bg-amber-100 text-amber-700"
+                          }`}>
+                            {r.source === "customer" ? "Customer" : r.source === "pm" ? "PM" : "Added"}
+                          </span>
+                          {r.source === "adhoc" && (
+                            <button
+                              type="button"
+                              onClick={() => removeSendFinalRecipient(r.email)}
+                              disabled={sendFinalLoading}
+                              className="text-gray-400 hover:text-red-600"
+                              aria-label="Remove recipient"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="flex gap-1.5 items-center pt-1 border-t border-gray-200">
+                    <input
+                      type="text"
+                      value={sendFinalAdHocName}
+                      onChange={(e) => setSendFinalAdHocName(e.target.value)}
+                      placeholder="Name (optional)"
+                      disabled={sendFinalLoading}
+                      className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <input
+                      type="email"
+                      value={sendFinalAdHocEmail}
+                      onChange={(e) => setSendFinalAdHocEmail(e.target.value)}
+                      placeholder="email@example.com"
+                      disabled={sendFinalLoading}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSendFinalAdHocRecipient(); } }}
+                      className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={addSendFinalAdHocRecipient}
+                      disabled={sendFinalLoading || !sendFinalAdHocEmail.trim()}
+                      className="text-xs px-2 py-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
                 <textarea
                   className="w-full text-sm border border-gray-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   rows={3}
@@ -3142,7 +3294,7 @@ function WorkflowPipeline({
                 </button>
                 <button
                   className="px-4 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded disabled:opacity-50 flex items-center gap-2"
-                  disabled={sendFinalLoading || filePaths.length === 0}
+                  disabled={sendFinalLoading || filePaths.length === 0 || sendFinalRecipients.filter((r) => r.selected).length === 0}
                   onClick={handleSendFinalDeliverable}
                 >
                   {sendFinalLoading && <Loader2 className="w-4 h-4 animate-spin" />}
