@@ -47,6 +47,7 @@ import { DollarSign, Zap, TrendingUp, Hash } from "lucide-react";
 interface Order {
   id: string;
   order_number: string;
+  serial_no: number;
   status: string;
   work_status: string;
   total_amount: number;
@@ -665,20 +666,25 @@ export default function AdminOrdersList() {
     setLoading(true);
     try {
       const select =
-        "id,order_number,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,estimated_delivery_at,pinned_position,service_id,quote_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,internal_project_id,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code),internal_project:internal_projects!internal_project_id(project_number),quote:quotes(source_language:languages!source_language_id(name),target_language:languages!target_language_id(name))";
+        "id,order_number,serial_no,status,work_status,total_amount,is_rush,po_number,created_at,estimated_delivery_date,estimated_delivery_at,pinned_position,service_id,quote_id,xtrf_invoice_id,xtrf_invoice_number,xtrf_invoice_status,xtrf_invoice_payment_status,xtrf_project_number,xtrf_project_total_agreed,xtrf_project_total_cost,xtrf_project_currency_code,xtrf_project_status,internal_project_id,customers!inner(email,full_name,company_name,customer_type,company_id,requires_po_mode),service:services(code),internal_project:internal_projects!internal_project_id(project_number),quote:quotes(source_language:languages!source_language_id(name),target_language:languages!target_language_id(name))";
 
       const filters: string[] = [];
 
-      // Search: resolve customer ids first, then OR filter
+      // Search: resolve customer ids first, then OR filter.
+      // Also match the internal serial number when the query is purely
+      // digits (optionally prefixed with `#`), so staff can paste `#123`
+      // from chat and jump straight to the row.
       if (search) {
         const esc = search.replace(/[*,%()]/g, "").trim();
+        const serialMatch = esc.replace(/^#/, "").trim();
+        const serialClause = /^\d+$/.test(serialMatch) ? `,serial_no.eq.${serialMatch}` : "";
         const custRes = await sbGet(`customers?select=id&or=(email.ilike.*${esc}*,full_name.ilike.*${esc}*)&limit=500`);
         const custRows: any[] = custRes.ok ? await custRes.json() : [];
         const custIds = custRows.map((c: any) => c.id);
         if (custIds.length > 0) {
-          filters.push(`or=(order_number.ilike.*${esc}*,xtrf_project_number.ilike.*${esc}*,customer_id.in.(${custIds.join(",")}))`);
+          filters.push(`or=(order_number.ilike.*${esc}*,xtrf_project_number.ilike.*${esc}*${serialClause},customer_id.in.(${custIds.join(",")}))`);
         } else {
-          filters.push(`or=(order_number.ilike.*${esc}*,xtrf_project_number.ilike.*${esc}*)`);
+          filters.push(`or=(order_number.ilike.*${esc}*,xtrf_project_number.ilike.*${esc}*${serialClause})`);
         }
       }
       if (status) filters.push(`status=eq.${status}`);
@@ -934,6 +940,7 @@ export default function AdminOrdersList() {
         data?.map((order) => ({
           id: order.id,
           order_number: order.order_number,
+          serial_no: (order as any).serial_no ?? 0,
           status: order.status,
           work_status: order.work_status,
           total_amount: order.total_amount,
@@ -1049,8 +1056,10 @@ export default function AdminOrdersList() {
     ];
 
     const visibleExportCols = exportColumns.filter((c) => isColExported(c.key));
-    const headers = visibleExportCols.flatMap((c) => c.headers);
-    const rows = orders.map((o) => visibleExportCols.flatMap((c) => c.values(o)));
+    // Internal serial # is always exported as the leading column — it's the
+    // anchor staff use when discussing rows in chat / tickets.
+    const headers = ["Serial #", ...visibleExportCols.flatMap((c) => c.headers)];
+    const rows = orders.map((o) => [String(o.serial_no), ...visibleExportCols.flatMap((c) => c.values(o))]);
     const csv = [headers, ...rows]
       .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
       .join("\n");
@@ -1591,6 +1600,7 @@ export default function AdminOrdersList() {
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
                   <th className="w-6 px-1.5 py-2.5" aria-label="Drag handle" />
+                  <th className="w-14 px-2 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" title="Stable internal serial number — never changes when rows are pinned or reordered">#</th>
                   {isColVisible("orderDetails") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Order Details</th>}
                   {isColVisible("customer") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Customer</th>}
                   {isColVisible("languagePair") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Languages</th>}
@@ -1613,14 +1623,14 @@ export default function AdminOrdersList() {
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={columnSettings.filter(c => c.ui).length + 2} className="px-6 py-12 text-center">
+                    <td colSpan={columnSettings.filter(c => c.ui).length + 3} className="px-6 py-12 text-center">
                       <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={columnSettings.filter(c => c.ui).length + 2}
+                      colSpan={columnSettings.filter(c => c.ui).length + 3}
                       className="px-6 py-12 text-center text-gray-500"
                     >
                       No orders found
@@ -1673,6 +1683,14 @@ export default function AdminOrdersList() {
                           aria-label="Drag to reorder"
                           title="Drag onto another row to pin / swap / unpin">
                         <GripVertical className="w-3.5 h-3.5 text-gray-400 mx-auto" />
+                      </td>
+                      {/* Stable internal serial number — assigned at INSERT,
+                          immutable across pin / drag-reorder. Used by staff
+                          when referring to orders in chat / tickets. */}
+                      <td className="w-14 px-2 py-2.5 align-top">
+                        <span className="text-xs font-mono text-gray-500 font-medium" title={`Internal #${order.serial_no}`}>
+                          #{order.serial_no}
+                        </span>
                       </td>
                       {/* Order Details */}
                       {isColVisible("orderDetails") && (
