@@ -601,8 +601,8 @@ export default function CustomerDetail() {
   };
 
   const saveProjectManager = async () => {
-    if (!customer?.company_id) {
-      toast.error("Customer is not linked to a company");
+    if (!customer) {
+      toast.error("Customer is not loaded yet");
       return;
     }
     const name = pmDraft.full_name.trim();
@@ -617,8 +617,48 @@ export default function CustomerDetail() {
     }
     setPmSaving(true);
     try {
+      // PMs are stored on companies, not customers. Three business
+      // customers exist with company_name typed at quote creation but no
+      // companies row linked (company_id IS NULL). Auto-create the
+      // companies row from the customer's company_name (fall back to the
+      // contact's full_name) and link it so staff can add a PM without
+      // bouncing to a separate "link company" flow.
+      let companyId = customer.company_id;
+      if (!companyId) {
+        const companyName = (customer.company_name || customer.full_name || "").trim();
+        if (!companyName) {
+          toast.error("Add a company name on the customer profile first.");
+          setPmSaving(false);
+          return;
+        }
+        const { data: existing } = await supabase
+          .from("companies")
+          .select("id")
+          .ilike("name", companyName)
+          .limit(1)
+          .maybeSingle();
+        if (existing?.id) {
+          companyId = existing.id;
+        } else {
+          const { data: created, error: cErr } = await supabase
+            .from("companies")
+            .insert({ name: companyName })
+            .select("id")
+            .single();
+          if (cErr) throw cErr;
+          companyId = created.id;
+        }
+        const { error: linkErr } = await supabase
+          .from("customers")
+          .update({ company_id: companyId })
+          .eq("id", customer.id);
+        if (linkErr) throw linkErr;
+        // Update local state so subsequent reads see the link without a
+        // round trip.
+        setCustomer({ ...customer, company_id: companyId });
+      }
       const payload = {
-        company_id: customer.company_id,
+        company_id: companyId,
         full_name: name,
         email,
         phone: pmDraft.phone.trim() || null,
@@ -649,7 +689,9 @@ export default function CustomerDetail() {
         toast.success(`Added ${name} to the directory`);
       }
       resetPmDraft();
-      await fetchProjectManagers(customer.company_id);
+      // Use the resolved company id (post auto-link), not the stale
+      // customer.company_id read at the top.
+      await fetchProjectManagers(payload.company_id);
     } catch (err: any) {
       toast.error(err?.message || "Failed to save project manager");
     } finally {
