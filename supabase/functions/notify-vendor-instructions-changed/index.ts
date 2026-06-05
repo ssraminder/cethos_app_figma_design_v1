@@ -18,7 +18,7 @@ const CORS_HEADERS = {
 };
 
 const VENDOR_PORTAL_URL =
-  Deno.env.get("VENDOR_PORTAL_URL") || "https://cethos-vendor.netlify.app";
+  Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com";
 const SUPPORT_EMAIL = Deno.env.get("SUPPORT_EMAIL") || "support@cethos.com";
 
 const ACTIVE_STEP_STATUSES = [
