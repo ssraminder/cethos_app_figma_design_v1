@@ -102,6 +102,21 @@ export default function AdminVendorDetail() {
           has_payment_info: false,
           has_portal_access: false,
           active_job_count: 0,
+          has_cv: false,
+          has_nda: false,
+          profile_completeness: 0,
+          profile_checks: {
+            phone: false,
+            country: false,
+            vendor_type: false,
+            language_pair: false,
+            rate: false,
+            payment_info: false,
+            cv: false,
+            nda: false,
+          },
+          activation_eligible: false,
+          missing_for_activation: ["CV", "signed NDA"],
         },
       });
       setError(null);

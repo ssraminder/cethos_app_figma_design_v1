@@ -103,6 +103,17 @@ export interface ActiveJob {
   currency: string | null;
 }
 
+export interface VendorProfileChecks {
+  phone: boolean;
+  country: boolean;
+  vendor_type: boolean;
+  language_pair: boolean;
+  rate: boolean;
+  payment_info: boolean;
+  cv: boolean;
+  nda: boolean;
+}
+
 export interface VendorSummary {
   language_pairs_active: number;
   language_pairs_total: number;
@@ -111,6 +122,13 @@ export interface VendorSummary {
   has_payment_info: boolean;
   has_portal_access: boolean;
   active_job_count: number;
+  // Onboarding gates + completeness (added by get-vendor-detail)
+  has_cv: boolean;
+  has_nda: boolean;
+  profile_completeness: number;
+  profile_checks: VendorProfileChecks;
+  activation_eligible: boolean;
+  missing_for_activation: string[];
 }
 
 export interface VendorPageData {

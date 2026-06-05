@@ -73,6 +73,23 @@ export default function VendorDetailHeader({
   }, [vendor.id]);
 
   const handleToggleStatus = async () => {
+    const activating = vendor.status !== "active";
+    // Gate: a vendor can only be marked active once CV + signed NDA are on
+    // file (agencies are exempt from the CV requirement — handled server-side
+    // in get-vendor-detail). `=== false` so we only block when the backend
+    // positively reports the vendor ineligible; undefined (stale deploy) fails
+    // open rather than locking out every activation.
+    if (activating && summary.activation_eligible === false) {
+      const missing =
+        summary.missing_for_activation?.length > 0
+          ? summary.missing_for_activation.join(" and ")
+          : "CV and signed NDA";
+      toast.error(
+        `Can't activate ${vendor.full_name} — missing ${missing}. Upload the CV and signed NDA first.`,
+      );
+      setActionsOpen(false);
+      return;
+    }
     setActionLoading(true);
     const newStatus = vendor.status === "active" ? "inactive" : "active";
     const { error } = await supabase
@@ -89,20 +106,21 @@ export default function VendorDetailHeader({
     }
   };
 
-  // Email OTP is the only vendor login flow. Click to send a fresh
-  // 6-digit code; vendor enters it on vendor.cethos.com to get a session.
-  const handleSendLoginCode = async () => {
+  // Manually email the vendor a portal invitation (the "set up your account"
+  // link, expires in 72h). `mode: "invitation"` routes vendor-auth-otp-send to
+  // sendInvitationForVendor, which also stamps invitation_sent_at.
+  const handleSendInvitation = async () => {
     setActionLoading(true);
     try {
       const { error } = await supabase.functions.invoke("vendor-auth-otp-send", {
-        body: { email: vendor.email, channel: "email" },
+        body: { email: vendor.email, mode: "invitation" },
       });
       if (error) throw error;
-      toast.success(`Login code sent to ${vendor.email}`);
+      toast.success(`Invitation sent to ${vendor.email}`);
       await onRefresh();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to send login code",
+        err instanceof Error ? err.message : "Failed to send invitation",
       );
     }
     setActionLoading(false);
@@ -237,6 +255,41 @@ export default function VendorDetailHeader({
               {summary.active_job_count} active jobs
             </span>
           </div>
+
+          {/* Profile completeness */}
+          {(() => {
+            const pct = summary.profile_completeness ?? 0;
+            const missing = summary.missing_for_activation ?? [];
+            const barColor =
+              pct >= 100
+                ? "bg-green-500"
+                : pct >= 60
+                  ? "bg-teal-500"
+                  : "bg-amber-500";
+            return (
+              <div className="mt-3 max-w-md">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-gray-500">
+                    Profile completeness
+                  </span>
+                  <span className="text-xs font-semibold text-gray-700">
+                    {pct}%
+                  </span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${barColor}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                {vendor.status !== "active" && missing.length > 0 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Not yet activatable — missing {missing.join(" and ")}.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Right: actions dropdown */}
@@ -274,12 +327,12 @@ export default function VendorDetailHeader({
                   {vendor.status === "active" ? "Deactivate" : "Activate"} Vendor
                 </button>
                 <button
-                  onClick={handleSendLoginCode}
+                  onClick={handleSendInvitation}
                   className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                  title="Send a 6-digit login code via email."
+                  title="Email the vendor an invitation link to set up their portal account."
                 >
                   <Send className="w-4 h-4" />
-                  Send Login Code
+                  {vendor.invitation_sent_at ? "Resend Invitation" : "Send Invitation"}
                 </button>
                 {vendor.invitation_sent_at && !vendor.invitation_accepted_at && (
                   <button

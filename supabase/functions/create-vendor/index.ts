@@ -85,12 +85,20 @@ serve(async (req) => {
       );
     }
 
-    // Build vendor record
+    // Build vendor record.
+    // A brand-new vendor has no CV or signed NDA on file, so it can never
+    // satisfy the activation gate — force "applicant" if "active" was
+    // requested. Staff activate from the vendor detail page once the
+    // onboarding docs are uploaded (gate enforced in get-vendor-detail +
+    // VendorDetailHeader).
+    const requestedStatus = status || "applicant";
+    const downgradedToApplicant = requestedStatus === "active";
+    const effectiveStatus = downgradedToApplicant ? "applicant" : requestedStatus;
     const now = new Date().toISOString();
     const vendorRecord: Record<string, unknown> = {
       full_name: String(full_name).trim(),
       email: normalizedEmail,
-      status: status || "active",
+      status: effectiveStatus,
       created_at: now,
       updated_at: now,
     };
@@ -159,6 +167,7 @@ serve(async (req) => {
         success: true,
         vendor: newVendor,
         language_pairs_inserted: languagePairsInserted,
+        downgraded_to_applicant: downgradedToApplicant,
       }),
       {
         status: 201,

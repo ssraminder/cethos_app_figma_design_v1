@@ -74,6 +74,8 @@ serve(async (req) => {
       authRes,
       sessionsRes,
       jobsRes,
+      cvRes,
+      ndaRes,
     ] = await Promise.all([
       // 1. Vendor record
       supabase.from("vendors").select("*").eq("id", vendorId).single(),
@@ -127,6 +129,20 @@ serve(async (req) => {
         .eq("assigned_vendor_id", vendorId)
         .in("status", ["offered", "accepted", "in_progress"])
         .order("deadline"),
+
+      // 8. CV on file (onboarding gate). Same source the activation-email
+      //    sweep uses: any row in vendor_cvs counts.
+      supabase
+        .from("vendor_cvs")
+        .select("id", { count: "exact", head: true })
+        .eq("vendor_id", vendorId),
+
+      // 9. Current signed NDA (onboarding gate).
+      supabase
+        .from("vendor_nda_signatures")
+        .select("id", { count: "exact", head: true })
+        .eq("vendor_id", vendorId)
+        .eq("is_current", true),
     ]);
 
     if (vendorRes.error) {
@@ -201,14 +217,54 @@ serve(async (req) => {
       (r: Record<string, unknown>) => r.is_active
     );
 
+    // ── Onboarding gates + profile completeness ──
+    // Agencies are exempt from the CV requirement (mirrors the
+    // vendor-send-activation-emails sweep). A vendor can only be marked
+    // "active" once both gates below are satisfied.
+    const isAgency = String(vendor.vendor_type ?? "").toLowerCase() === "agency";
+    const hasCv = isAgency || (cvRes.count ?? 0) > 0;
+    const hasNda = (ndaRes.count ?? 0) > 0;
+    const hasPaymentInfo = paymentInfoRes.data !== null;
+
+    // Even-weighted 8-item profile completeness checklist.
+    const completenessChecks = {
+      phone: !!vendor.phone,
+      country: !!vendor.country,
+      vendor_type: !!vendor.vendor_type,
+      language_pair: activePairs.length > 0,
+      rate: activeRates.length > 0,
+      payment_info: hasPaymentInfo,
+      cv: hasCv,
+      nda: hasNda,
+    };
+    const completenessDone = Object.values(completenessChecks).filter(
+      Boolean
+    ).length;
+    const completenessTotal = Object.keys(completenessChecks).length;
+    const profileCompleteness = Math.round(
+      (completenessDone / completenessTotal) * 100
+    );
+
+    const activationEligible = hasCv && hasNda;
+    const missingForActivation = [
+      !hasCv ? "CV" : null,
+      !hasNda ? "signed NDA" : null,
+    ].filter(Boolean) as string[];
+
     const summary = {
       language_pairs_active: activePairs.length,
       language_pairs_total: languagePairs.length,
       rates_active: activeRates.length,
       rates_total: rates.length,
-      has_payment_info: paymentInfoRes.data !== null,
+      has_payment_info: hasPaymentInfo,
       has_portal_access: authRes.data !== null || vendor.auth_user_id !== null,
       active_job_count: activeJobs.length,
+      has_cv: hasCv,
+      has_nda: hasNda,
+      profile_completeness: profileCompleteness,
+      profile_checks: completenessChecks,
+      activation_eligible: activationEligible,
+      missing_for_activation: missingForActivation,
     };
 
     return new Response(
