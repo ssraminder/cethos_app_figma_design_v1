@@ -18,8 +18,8 @@ const vendorTypeOptions = [
 ];
 
 const statusOptions = [
-  { value: "active", label: "Active" },
   { value: "applicant", label: "Applicant" },
+  { value: "active", label: "Active" },
 ];
 
 const COUNTRY_OPTIONS = [
@@ -103,7 +103,7 @@ const initialFormState: FormState = {
   email: "",
   phone: "",
   vendor_type: "",
-  status: "active",
+  status: "applicant",
   country: "",
   province_state: "",
   city: "",
@@ -271,7 +271,13 @@ export default function AdminVendorNew() {
         return;
       }
 
-      toast.success("Vendor created successfully");
+      if (result.downgraded_to_applicant) {
+        toast.success(
+          "Vendor created as Applicant — activate once CV and signed NDA are on file."
+        );
+      } else {
+        toast.success("Vendor created successfully");
+      }
       navigate(`/admin/vendors/${result.vendor.id}`);
     } catch {
       toast.error("Network error — please try again");
@@ -423,6 +429,10 @@ export default function AdminVendorNew() {
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-gray-500">
+                New vendors start as <strong>Applicant</strong>. They can be
+                activated once a CV and signed NDA are on file.
+              </p>
             </div>
           </div>
         </div>

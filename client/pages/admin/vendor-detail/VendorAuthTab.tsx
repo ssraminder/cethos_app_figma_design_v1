@@ -9,7 +9,6 @@ import {
   Shield,
   AlertTriangle,
   Mail,
-  Send,
   Bell,
   RefreshCw,
   Trash2,
@@ -43,19 +42,20 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
     setConfirmAction(null);
   };
 
-  // Sends a 6-digit email OTP. Email OTP is the only login flow we use —
-  // no password setup, no SMS, no separate invitation acceptance.
-  const handleSendLoginCode = () =>
+  // Manually email the vendor a portal invitation (the "set up your account"
+  // link, expires in 72h). `mode: "invitation"` routes vendor-auth-otp-send to
+  // sendInvitationForVendor, which also stamps invitation_sent_at.
+  const handleSendInvitation = () =>
     executeAction(
       "invite",
       async () => {
         const { error } = await supabase.functions.invoke(
           "vendor-auth-otp-send",
-          { body: { email: vendor.email, channel: "email" } }
+          { body: { email: vendor.email, mode: "invitation" } }
         );
         if (error) throw error;
       },
-      `Login code sent to ${vendor.email}`
+      `Invitation sent to ${vendor.email}`
     );
 
   const handleSendReminder = () =>
@@ -64,7 +64,7 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
       async () => {
         const { error } = await supabase.functions.invoke(
           "vendor-auth-otp-send",
-          { body: { email: vendor.email, is_reminder: true } }
+          { body: { email: vendor.email, mode: "invitation", is_reminder: true } }
         );
         if (error) throw error;
       },
@@ -267,21 +267,21 @@ export default function VendorAuthTab({ vendorData, onRefresh }: TabProps) {
         </h3>
 
         <div className="flex flex-wrap gap-3">
-          {/* Email OTP is the only login flow. Click to send a fresh
-              6-digit code; vendor enters it on vendor.cethos.com to
-              get a session. No password setup, no separate invitation. */}
+          {/* Manual portal invitation. Emails the vendor a "set up your
+              account" link (expires in 72h) and stamps invitation_sent_at.
+              Label flips to "Resend Invitation" once one has been sent. */}
           <button
-            onClick={handleSendLoginCode}
+            onClick={handleSendInvitation}
             disabled={!!actionLoading}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
-            title="Email a 6-digit code the vendor can use to log in immediately."
+            title="Email the vendor an invitation link to set up their portal account."
           >
             {isLoading("invite") ? (
               <RefreshCw className="w-4 h-4 animate-spin" />
             ) : (
-              <Send className="w-4 h-4" />
+              <Mail className="w-4 h-4" />
             )}
-            Send Login Code
+            {vendor.invitation_sent_at ? "Resend Invitation" : "Send Invitation"}
           </button>
 
           {/* Send Reminder */}
