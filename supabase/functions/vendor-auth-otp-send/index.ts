@@ -46,7 +46,7 @@ const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json" };
 const INVITATION_EXPIRY_HOURS = 72;
 const OTP_EXPIRY_MINUTES = 10;
 const VENDOR_PORTAL_URL =
-  Deno.env.get("VENDOR_PORTAL_URL") || "https://cethos-vendor.netlify.app";
+  Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com";
 
 // ── Helpers ──
 
