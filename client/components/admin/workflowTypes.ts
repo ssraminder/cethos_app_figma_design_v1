@@ -45,6 +45,8 @@ export interface WorkflowStep {
   revision_count: number;
   source_language: string | null;
   target_language: string | null;
+  source_language_name?: string | null;
+  target_language_name?: string | null;
   service_id: string | null;
   service_name: string | null;
   order_document_id: string | null;
@@ -88,6 +90,13 @@ export interface WorkflowStep {
   unassign_notes: string | null;
   unassigned_at: string | null;
   approval_depends_on_step: number | null;
+  // Step split (multi-vendor per logical step). Populated by
+  // get-order-workflow when the schema columns exist; legacy steps
+  // default to (null, false, null, []).
+  parent_step_id?: string | null;
+  is_split?: boolean;
+  partition_index?: number | null;
+  step_files?: string[];
   use_cethos_tm: boolean;
   tm_job_id: string | null;
   tm_job_reference: string | null;

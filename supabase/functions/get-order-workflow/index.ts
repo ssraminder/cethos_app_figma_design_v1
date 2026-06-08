@@ -118,11 +118,27 @@ serve(async (req: Request) => {
         unassign_reason, unassign_notes, unassigned_at,
         approval_depends_on_step,
         use_cethos_tm, tm_job_id, tm_job_reference, tm_provisioned_at,
+        parent_step_id, is_split, partition_index,
         created_at, updated_at
       `)
       .eq("order_id", order_id)
       .eq("workflow_id", workflow.id)
       .order("step_number");
+
+    // Per-step file scope (split feature). Map step_id -> [quote_file_id, ...].
+    // Absent on legacy/unsplit steps which fall back to quote-wide file listing.
+    let stepFilesMap: Record<string, string[]> = {};
+    const stepIdsForFiles = (rawSteps ?? []).map((s: any) => s.id);
+    if (stepIdsForFiles.length > 0) {
+      const { data: sfRows } = await supabase
+        .from("step_files")
+        .select("step_id, quote_file_id")
+        .in("step_id", stepIdsForFiles);
+      for (const r of sfRows ?? []) {
+        const sid = r.step_id as string;
+        (stepFilesMap[sid] ||= []).push(r.quote_file_id as string);
+      }
+    }
 
     // Batch-fetch vendor names for steps that have a vendor_id
     const vendorIds = (rawSteps ?? [])
@@ -325,6 +341,10 @@ serve(async (req: Request) => {
         unassign_notes: s.unassign_notes,
         unassigned_at: s.unassigned_at,
         approval_depends_on_step: s.approval_depends_on_step ?? null,
+        parent_step_id: s.parent_step_id ?? null,
+        is_split: s.is_split ?? false,
+        partition_index: s.partition_index ?? null,
+        step_files: stepFilesMap[s.id] ?? [],
         created_at: s.created_at,
         updated_at: s.updated_at,
       });
