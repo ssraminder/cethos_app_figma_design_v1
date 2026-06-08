@@ -264,18 +264,41 @@ async function checkReviserSeparation(
       ? tplStep.requires_different_vendor_from_step
       : [];
     if (constraintSteps.length === 0) return { violation: false };
+    // Walk #1: prior parent-level steps whose step_number is in the constraint.
     const { data: priorSteps } = await supabase
       .from("order_workflow_steps")
-      .select("step_number, name, vendor_id")
+      .select("id, step_number, name, vendor_id, is_split")
       .eq("workflow_id", workflowId)
       .in("step_number", constraintSteps);
-    const hit = (priorSteps ?? []).find((p: any) => p.vendor_id === vendor_id);
-    if (!hit) return { violation: false };
-    return {
-      violation: true,
-      conflicting_step_number: hit.step_number,
-      conflicting_step_name: hit.name,
-    };
+    let hit = (priorSteps ?? []).find((p: any) => p.vendor_id === vendor_id);
+    if (hit) {
+      return {
+        violation: true,
+        conflicting_step_number: hit.step_number,
+        conflicting_step_name: hit.name,
+      };
+    }
+    // Walk #2: if any prior step is split, also consult its children. A
+    // child carries the real vendor; the parent is umbrella with vendor_id=null.
+    const splitParentIds: string[] = (priorSteps ?? [])
+      .filter((p: any) => p.is_split)
+      .map((p: any) => p.id as string);
+    if (splitParentIds.length > 0) {
+      const { data: priorChildren } = await supabase
+        .from("order_workflow_steps")
+        .select("name, vendor_id, parent_step_id")
+        .in("parent_step_id", splitParentIds);
+      const childHit = (priorChildren ?? []).find((p: any) => p.vendor_id === vendor_id);
+      if (childHit) {
+        const parentRow = (priorSteps ?? []).find((p: any) => p.id === childHit.parent_step_id);
+        return {
+          violation: true,
+          conflicting_step_number: parentRow?.step_number,
+          conflicting_step_name: parentRow?.name ?? childHit.name,
+        };
+      }
+    }
+    return { violation: false };
   } catch (e: any) {
     console.warn("checkReviserSeparation failed (treating as no-violation):", e?.message || e);
     return { violation: false };
