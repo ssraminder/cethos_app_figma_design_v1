@@ -37,3 +37,8 @@ scripts/out/
 # Claude Code worktrees + local test debris
 .claude/worktrees/
 zz-test-*
+
+# Intermediate artifacts from PPT build
+docs/training/_qa/
+docs/training/*.pdf
+
