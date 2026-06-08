@@ -448,10 +448,21 @@ serve(async (req: Request) => {
         // direct_assign in update-workflow-step).
         const { data: step, error: stepErr } = await supabase
           .from("order_workflow_steps")
-          .select("id, step_number, name, order_id, vendor_id, source_language, target_language, service_id, workflow_id")
+          .select("id, step_number, name, order_id, vendor_id, source_language, target_language, service_id, workflow_id, is_split")
           .eq("id", workflow_step_id)
           .single();
         if (stepErr || !step) return json({ success: false, error: "Workflow step not found" }, 404);
+
+        // Split parent steps are umbrellas — payables live on the children.
+        // Refuse to attach a payable to a parent so the AR/AP ledger stays
+        // aligned with vendor work units.
+        if (step.is_split) {
+          return json({
+            success: false,
+            error: "step_is_split_parent",
+            detail: "This step has been split into child partitions. Manage payables on each child instead.",
+          }, 409);
+        }
 
         const effectiveVendorId = vendor_id || step.vendor_id;
         if (!effectiveVendorId) return json({ success: false, error: "Step has no vendor; pass vendor_id" }, 400);
