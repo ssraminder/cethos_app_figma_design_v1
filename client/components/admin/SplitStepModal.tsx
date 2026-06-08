@@ -25,6 +25,16 @@ interface QuoteFile {
   page_count: number | null;
 }
 
+// quote_files itself doesn't carry word/page counts — those live on
+// ai_analysis_results keyed by quote_file_id (or quote-wide rows with a
+// null quote_file_id, for older orders). We do a separate lookup so the
+// modal can display per-file volume next to each filename.
+interface AiCount {
+  quote_file_id: string | null;
+  word_count: number | null;
+  page_count: number | null;
+}
+
 interface Vendor {
   id: string;
   full_name: string;
@@ -109,17 +119,22 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
         if (orderErr) throw orderErr;
         if (!orderRow?.quote_id) throw new Error("Order has no associated quote");
 
-        const [filesRes, vendorsRes, staffRes] = await Promise.all([
+        const [filesRes, aiRes, vendorsRes, staffRes] = await Promise.all([
           supabase
             .from("quote_files")
-            .select("id, original_filename, custom_label, word_count, page_count")
+            .select("id, original_filename, custom_label")
             .eq("quote_id", orderRow.quote_id)
             .is("deleted_at", null)
             .order("original_filename"),
           supabase
+            .from("ai_analysis_results")
+            .select("quote_file_id, word_count, page_count")
+            .eq("quote_id", orderRow.quote_id)
+            .is("deleted_at", null),
+          supabase
             .from("vendors")
             .select("id, full_name, email")
-            .eq("is_active", true)
+            .eq("status", "active")
             .order("full_name")
             .limit(500),
           supabase
@@ -132,7 +147,22 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
         if (filesRes.error) throw filesRes.error;
         if (vendorsRes.error) throw vendorsRes.error;
         if (staffRes.error) throw staffRes.error;
-        setFiles(filesRes.data ?? []);
+
+        // Merge ai counts (per-file rows) onto the file list. Quote-wide
+        // rows (quote_file_id IS NULL) are ignored here — the modal shows
+        // per-file numbers and falls back to "—" if absent.
+        const aiByFile = new Map<string, { wc: number | null; pc: number | null }>();
+        for (const a of (aiRes.data ?? []) as AiCount[]) {
+          if (a.quote_file_id) {
+            aiByFile.set(a.quote_file_id, { wc: a.word_count, pc: a.page_count });
+          }
+        }
+        const filesWithCounts: QuoteFile[] = (filesRes.data ?? []).map((f: any) => ({
+          ...f,
+          word_count: aiByFile.get(f.id)?.wc ?? null,
+          page_count: aiByFile.get(f.id)?.pc ?? null,
+        }));
+        setFiles(filesWithCounts);
         setVendors(vendorsRes.data ?? []);
         setStaff(staffRes.data ?? []);
       } catch (e: any) {
