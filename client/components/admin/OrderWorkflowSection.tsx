@@ -803,6 +803,7 @@ export default function OrderWorkflowSection({ orderId, onWorkflowLoaded, refres
           <WorkflowPipeline
             workflow={data.workflow}
             steps={data.steps}
+            orderId={orderId}
             onStepClick={() => {}}
             expandedStepId={expandedStepId}
             onToggleExpand={(id) => setExpandedStepId(expandedStepId === id ? null : id)}

@@ -4,7 +4,7 @@
 // response), step expand/collapse, and per-step QMS / vendor / counter cards.
 // No behavior change vs the inlined version.
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Loader2,
   X,
@@ -34,6 +34,8 @@ import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { ADMIN_CURRENCIES } from "@/lib/currencies";
 import BrevoEmailLogsModal from "./BrevoEmailLogsModal";
 import ManagePayableModal from "./ManagePayableModal";
+import { SplitStepModal } from "./SplitStepModal";
+import { Split as SplitIcon } from "lucide-react";
 import { ConfirmDialog, useConfirmDialog } from "./ConfirmDialog";
 import { type VendorFinancials, type MarginData, type FinancialStep } from "./OrderFinancialSummary";
 import {
@@ -452,6 +454,8 @@ interface WorkflowPipelineProps {
     findings_rejected: number;
     findings_pending: number;
   }>;
+  // Order id (needed by the Split modal to resolve quote_files for partitioning).
+  orderId?: string;
   // Opens the Upload Final Deliverable modal in the parent page. Surfaced
   // on the last workflow step once it's in_progress, so the PM doesn't have
   // to scroll up to the Documents section to upload the signed certified PDF.
@@ -501,6 +505,7 @@ function WorkflowPipeline({
   onRefresh,
   minMarginPercent = 30,
   qmByStep = {},
+  orderId,
   onUploadFinalDeliverable,
   onDraftPromoted,
 }: WorkflowPipelineProps) {
@@ -509,6 +514,30 @@ function WorkflowPipeline({
   // "Manage payable" button. Stores the step the modal is targeting; the
   // modal component handles the create_payable RPC + refetch.
   const [managePayableStep, setManagePayableStep] = useState<WorkflowStep | null>(null);
+
+  // ── Split Step modal — opens from the step header's "Split…" action.
+  // Eligibility is gated client-side (no deliveries, no vendor, no live
+  // payable, not already split, splittable actor_type); the edge function
+  // re-validates server-side.
+  const [splitModalStep, setSplitModalStep] = useState<WorkflowStep | null>(null);
+
+  // Split: partition top-level steps from children. Children render
+  // indented under their parent so the visual stays "one logical step".
+  const { topLevelSteps, childrenByParent } = useMemo(() => {
+    const top: WorkflowStep[] = [];
+    const byParent: Record<string, WorkflowStep[]> = {};
+    for (const s of steps) {
+      if (s.parent_step_id) {
+        (byParent[s.parent_step_id] ||= []).push(s);
+      } else {
+        top.push(s);
+      }
+    }
+    for (const k of Object.keys(byParent)) {
+      byParent[k].sort((a, b) => (a.partition_index ?? 0) - (b.partition_index ?? 0));
+    }
+    return { topLevelSteps: top, childrenByParent: byParent };
+  }, [steps]);
 
   // AI negotiation recommendations — keyed by offer.id. Lazy: fetched on
   // demand when staff clicks "Get AI recommendation" on the counter card.
@@ -1088,7 +1117,7 @@ function WorkflowPipeline({
           </button>
         </div>
 
-        {steps.map((step) => {
+        {topLevelSteps.map((step) => {
           const isActive = [
             "offered",
             "accepted",
@@ -1099,6 +1128,19 @@ function WorkflowPipeline({
           const isApproved = step.status === "approved";
           const isSkipped = step.status === "skipped" || step.status === "cancelled";
           const isExpanded = expandedStepId === step.id;
+          const splitChildren = childrenByParent[step.id] ?? [];
+          const childrenDelivered = splitChildren.filter((c) => c.status === "approved" || c.status === "delivered").length;
+          // Eligibility: PM can split a step iff it has no deliveries, no vendor,
+          // no live payable, isn't already split, and is an assignable actor type.
+          const canSplit =
+            !!orderId &&
+            !step.is_split &&
+            !step.parent_step_id &&
+            (step.actor_type === "external_vendor" || step.actor_type === "internal_work") &&
+            !step.vendor_id &&
+            (step.delivery_count ?? 0) === 0 &&
+            ["pending", "offered"].includes(step.status) &&
+            !step.payable;
 
           const dotClass = isApproved
             ? "border-green-500 bg-green-500"
@@ -1167,6 +1209,29 @@ function WorkflowPipeline({
                       </span>
                     )}
                     <StepStatusBadge status={step.status} />
+                    {step.is_split && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-cethos-teal-600/10 text-cethos-teal-600 border border-cethos-teal-600/20"
+                        title={`This step has been split into ${splitChildren.length} partition${splitChildren.length === 1 ? "" : "s"}.`}
+                      >
+                        <SplitIcon className="w-3 h-3" />
+                        Split {splitChildren.length > 0 ? `${childrenDelivered}/${splitChildren.length}` : ""}
+                      </span>
+                    )}
+                    {canSplit && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSplitModalStep(step);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border border-cethos-teal-600 text-cethos-teal-600 hover:bg-cethos-teal-600/5"
+                        title="Split this step across multiple assignees (different vendors / in-house)"
+                      >
+                        <SplitIcon className="w-3 h-3" />
+                        Split…
+                      </button>
+                    )}
                     {step.has_pending_counter && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-300 animate-pulse">
                         🔔 Counter-proposal pending
@@ -2875,6 +2940,58 @@ function WorkflowPipeline({
               </div>
             </div>
 
+            {/* Split children — indented under parent, one mini-card per partition.
+                When this parent is split (is_split=true), its child rows live in
+                splitChildren (filtered out of topLevelSteps) and render here
+                instead of as siblings. Each child carries its own status pill,
+                assignee, and a small file-count badge. */}
+            {step.is_split && splitChildren.length > 0 && (
+              <div className="ml-10 mb-3 border-l-2 border-cethos-teal-600/30 pl-4 space-y-2">
+                {splitChildren.map((child) => (
+                  <div
+                    key={child.id}
+                    className="bg-white rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[11px] font-bold text-slate-400 tabular-nums">
+                          {step.step_number}.{(child.partition_index ?? 0) + 1}
+                        </span>
+                        <span className="font-medium text-slate-800 truncate">
+                          {child.vendor_name ?? child.assigned_staff_name ?? (
+                            <span className="italic text-slate-400">Not assigned</span>
+                          )}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          · {child.step_files?.length ?? 0} file{(child.step_files?.length ?? 0) === 1 ? "" : "s"}
+                        </span>
+                        {child.actor_type === "internal_work" && (
+                          <span className="text-[10px] uppercase tracking-wide bg-cethos-navy/10 text-cethos-navy px-1.5 py-0.5 rounded font-semibold">
+                            In-house
+                          </span>
+                        )}
+                      </div>
+                      <StepStatusBadge status={child.status} />
+                    </div>
+                    {child.deadline && (
+                      <div className="text-xs text-slate-500 mt-1">
+                        Deadline: {new Date(child.deadline).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                        {child.vendor_total != null && (
+                          <span className="ml-2">
+                            · {child.vendor_currency} ${Number(child.vendor_total).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Insert point between steps — shows on hover */}
             <div className="relative flex items-center justify-center h-2 group">
               <button
@@ -3491,6 +3608,26 @@ function WorkflowPipeline({
           vendorName={managePayableStep.vendor_name}
           existingPayable={managePayableStep.payable}
           onSaved={async () => {
+            if (onRefresh) await onRefresh();
+          }}
+        />
+      )}
+      {splitModalStep && orderId && (
+        <SplitStepModal
+          open={true}
+          onClose={() => setSplitModalStep(null)}
+          parentStep={{
+            id: splitModalStep.id,
+            name: splitModalStep.name,
+            step_number: splitModalStep.step_number,
+            service_name: splitModalStep.service_name,
+            source_language_name: splitModalStep.source_language_name ?? null,
+            target_language_name: splitModalStep.target_language_name ?? null,
+            deadline: splitModalStep.deadline,
+            vendor_currency: splitModalStep.vendor_currency,
+          }}
+          orderId={orderId}
+          onSplit={async () => {
             if (onRefresh) await onRefresh();
           }}
         />
