@@ -392,40 +392,47 @@ async function handleSplit(req: Request) {
   }
 
   // --- 13. QMS audit rows -----------------------------------------------------
-  // Only emit an audit row when a concrete vendor was named at split time.
-  // Unassigned-at-split partitions get their audit row later when
-  // update-workflow-step assigns the vendor via Find Vendor on the child.
-  // (Staff assignments aren't audited here either — the prior code never
-  //  inserted them because the filter dropped vendor_id=null rows.)
-  const auditRows = created
-    .filter((c) => c.partition.assignee_kind === "vendor" && Boolean(c.partition.vendor_id))
-    .map((c) => ({
-      vendor_id: c.partition.vendor_id!,
-      service_id: parent.service_id,
-      source_language_id: parent.source_language,
-      target_language_id: parent.target_language,
-      order_id: parent.order_id,
-      workflow_step_id: c.id,
-      call_site: "split-step",
-      eligible: true,
-      reason: "split_assignment",
-      payload: {
+  // ISO 17100 §4.6 requires every assignment decision to be auditable.
+  // Use the canonical public.qms_check_assignment RPC (SECURITY DEFINER) which
+  // both runs the qualification gate AND inserts the audit row into
+  // qms.assignment_eligibility_events. Same wrapper update-workflow-step uses
+  // for non-split steps — keeps the audit trail uniform regardless of which
+  // path a vendor is assigned through.
+  //
+  // Direct `.from("assignment_eligibility_events")` previously failed silently
+  // because PostgREST doesn't expose the qms schema. Pre-existing bug
+  // affecting every split since 2026-06-08; this fix closes the gap.
+  //
+  // Unassigned-at-split partitions are NOT audited here — their audit row
+  // lands later when Find Vendor on the child fires update-workflow-step,
+  // which calls the same RPC with call_site='direct-assign' or 'offer-accept'.
+  const auditTargets = created
+    .filter((c) => c.partition.assignee_kind === "vendor" && Boolean(c.partition.vendor_id));
+  for (const c of auditTargets) {
+    const { error: qmsErr } = await supabase.rpc("qms_check_assignment", {
+      p_vendor_id: c.partition.vendor_id!,
+      p_service_id: parent.service_id ?? null,
+      p_source_language_code: parent.source_language ?? null,
+      p_target_language_code: parent.target_language ?? null,
+      p_call_site: "split_step",
+      p_order_id: parent.order_id ?? null,
+      p_workflow_step_id: c.id,
+      p_vendor_step_offer_id: null,
+      p_payload: {
         parent_step_id: parentStepId,
         partition_index: c.partition_index,
         quote_file_ids: c.quote_file_ids,
         assignee_kind: c.partition.assignee_kind,
+        assigned_by: staff.id,
       },
-      performed_by: staff.id,
-      performed_at: new Date().toISOString(),
-    }));
-  if (auditRows.length > 0) {
-    const { error: qmsErr } = await supabase.from("assignment_eligibility_events").insert(auditRows).select();
+    });
     if (qmsErr) {
-      // Try via qms schema directly if the public alias isn't in scope.
-      const { error: qmsErr2 } = await supabase.schema("qms").from("assignment_eligibility_events").insert(auditRows);
-      if (qmsErr2) {
-        console.error("split-step: qms audit insert failed (non-fatal)", qmsErr2.message);
-      }
+      // Non-fatal — the children are already inserted and the step_files
+      // mapping is committed. Log loudly so this surfaces in Supabase logs
+      // (which means a Stage 2 auditor sample can spot the gap during
+      // qualification review). Don't block the split.
+      console.error("split-step: qms_check_assignment failed for child",
+        { child_step: c.id, vendor_id: c.partition.vendor_id, detail: qmsErr.message });
     }
   }
 
