@@ -65,6 +65,20 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
+  try {
+    return await handleSplit(req);
+  } catch (e) {
+    /* Surface the real error to the client rather than an opaque 500.
+     * Previously an unhandled throw produced "Edge Function returned a non-2xx
+     * status code" with no body, making debugging painful. */
+    console.error("split-step: unhandled exception", e);
+    const msg = (e instanceof Error) ? e.message : String(e);
+    const stack = (e instanceof Error) ? e.stack : undefined;
+    return json({ error: "unhandled_exception", detail: msg, stack }, 500);
+  }
+});
+
+async function handleSplit(req: Request) {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -378,26 +392,32 @@ serve(async (req) => {
   }
 
   // --- 13. QMS audit rows -----------------------------------------------------
-  const auditRows = created.map((c) => ({
-    vendor_id: c.partition.assignee_kind === "vendor" ? c.partition.vendor_id! : null,
-    service_id: parent.service_id,
-    source_language_id: parent.source_language,
-    target_language_id: parent.target_language,
-    order_id: parent.order_id,
-    workflow_step_id: c.id,
-    call_site: "split-step",
-    eligible: true,
-    reason: c.partition.assignee_kind === "staff" ? "in_house_assignment" : "split_assignment",
-    payload: {
-      parent_step_id: parentStepId,
-      partition_index: c.partition_index,
-      quote_file_ids: c.quote_file_ids,
-      assignee_kind: c.partition.assignee_kind,
-      assigned_staff_id: c.partition.assignee_kind === "staff" ? c.partition.assigned_staff_id : null,
-    },
-    performed_by: staff.id,
-    performed_at: new Date().toISOString(),
-  })).filter((r) => r.vendor_id !== null);
+  // Only emit an audit row when a concrete vendor was named at split time.
+  // Unassigned-at-split partitions get their audit row later when
+  // update-workflow-step assigns the vendor via Find Vendor on the child.
+  // (Staff assignments aren't audited here either — the prior code never
+  //  inserted them because the filter dropped vendor_id=null rows.)
+  const auditRows = created
+    .filter((c) => c.partition.assignee_kind === "vendor" && Boolean(c.partition.vendor_id))
+    .map((c) => ({
+      vendor_id: c.partition.vendor_id!,
+      service_id: parent.service_id,
+      source_language_id: parent.source_language,
+      target_language_id: parent.target_language,
+      order_id: parent.order_id,
+      workflow_step_id: c.id,
+      call_site: "split-step",
+      eligible: true,
+      reason: "split_assignment",
+      payload: {
+        parent_step_id: parentStepId,
+        partition_index: c.partition_index,
+        quote_file_ids: c.quote_file_ids,
+        assignee_kind: c.partition.assignee_kind,
+      },
+      performed_by: staff.id,
+      performed_at: new Date().toISOString(),
+    }));
   if (auditRows.length > 0) {
     const { error: qmsErr } = await supabase.from("assignment_eligibility_events").insert(auditRows).select();
     if (qmsErr) {
@@ -425,4 +445,4 @@ serve(async (req) => {
       assigned_staff_id: c.partition.assignee_kind === "staff" ? c.partition.assigned_staff_id : null,
     })),
   });
-});
+}
