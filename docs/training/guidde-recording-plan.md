@@ -307,15 +307,62 @@ You don't have to run them in this order, but the dependencies (A1→A2, C1→C2
 
 ---
 
-## Post-recording — what to do in guidde
+## Post-recording — guidde dashboard cleanup (per video)
 
-For each recording:
-- **Rename steps** from `Click button` to something pedagogical (see "Guidde caption ideas" above per recording)
-- **Trim** any pre-roll where the page was loading or post-roll after the success state
-- **Add a cover slide** with the lesson number + title (matches the training markdown)
-- **Add voice-over or written narration** on the cover slide — guidde won't pick up the text I'm sending here
-- **Add CTAs** at the end (e.g., "Try it yourself on a test order")
-- **Embed the resulting video** into the lesson by adding the public URL to `cvp_training_lessons.screenshot_paths` *or* inlining via `<video>` markdown if guidde gives you an MP4 URL
+> **Important:** the guidde dashboard is opened **in the same Chrome window connected to MCP** so I can drive the cleanup actions. After you stop a recording, the guidde sidebar/extension typically prompts you with an "Edit" button or auto-opens the new video in the dashboard. Confirm the URL is `app.guidde.com` (or whichever guidde domain your team uses) and reply `"go finalize <recording-id>"` once it's loaded.
+
+For each recording, I'll drive the following cleanup loop in the guidde editor:
+
+### Standard cleanup steps (default per video)
+
+1. **Trim pre-roll** — drop frames before the first meaningful action (page load, blank states)
+2. **Trim post-roll** — drop frames after the success state is shown for ~2 seconds
+3. **Drop dead frames** — remove any captured cursor moves I didn't intend (you mid-cursor flick, browser zoom changes, accidental scrolls)
+4. **Rename each step** from guidde's default (`Click element`, `Click button`) to the pedagogical caption from the per-recording **"Guidde caption ideas"** list
+5. **Set the video title** to match the lesson — format: `Lesson NN — {Lesson title}` (e.g. `Lesson 14 — Splitting a step across multiple assignees`)
+6. **Set the cover slide** — use the lesson title as the cover heading, with a short subtitle line (I'll suggest one from the lesson's body_markdown opener)
+7. **Set the end / CTA slide** — `Try it yourself` linking to the `route_reference` from the lesson (e.g. `/admin/orders`)
+8. **Tag the video** with `vendor-management`, `lesson-NN`, and the relevant feature tag (e.g. `step-split`, `payable`, `invoice`, `vendor-portal`)
+9. **Set visibility** — workspace-only (do NOT publish to anything public; this is internal training)
+10. **Copy the share URL** — I'll paste it into a worklog so you can wire it into the lesson afterwards
+
+### Optional polish (skip if time-constrained)
+
+- **Add written captions per step** where the click target name isn't obvious (e.g. on the modal's `+ Add file…` button, caption it "Pick which files this partition will translate")
+- **Add a soft pause** (1-2s) before mode switches so the viewer can re-orient (Partition 1 done → focus shifts to Partition 2)
+- **Add a chapter marker** at each major transition (e.g. inside `split`: "Open modal", "Build P1", "Build P2 in-house", "Build P3", "Save")
+- **Adjust narration voice / pace** if you're using guidde's TTS narration
+- **Blur sensitive data** — for this training the test customer email & vendor emails are visible; if you want them blurred, point them out and I'll apply the blur tool
+
+### Embed back into the training
+
+Once a video has a final share URL:
+
+11. **Update the lesson** — I'll run an SQL UPDATE on `cvp_training_lessons.body_markdown` to embed the video at the top of the lesson:
+
+    ```markdown
+    [Watch the walkthrough on guidde →](https://app.guidde.com/playbooks/{video-id})
+
+    ![Video thumbnail](path-to-the-PPT-slide-already-there.png)
+    ```
+
+    Keeping the existing PPT-slide screenshot as the visual anchor + adding a deep-link to the guidde video gives both the static reference and the interactive walkthrough.
+
+12. **Smoke check** the live lesson page in the admin portal to confirm the video link is clickable + opens in the right place.
+
+### Per-recording finalization signal
+
+After each recording stops:
+
+- You reply `"finalize <recording-id>"` (e.g. `"finalize split"`)
+- I navigate to the guidde dashboard tab + open the newly-recorded video
+- I run cleanup steps 1-9 from the standard list above
+- I report the share URL back to you
+- I update the matching lesson's body_markdown with the embed
+- I confirm the lesson loads clean on portal.cethos.com
+- I signal `"ready for <next recording>"` so you can start the next one
+
+If guidde's UI doesn't expose something I expect (e.g. a tool I can't find), I'll narrate exactly what I see and ask you to point me at the right control. I haven't driven guidde's editor before; the first finalization pass will be exploratory and I'll learn the layout as we go.
 
 ---
 
