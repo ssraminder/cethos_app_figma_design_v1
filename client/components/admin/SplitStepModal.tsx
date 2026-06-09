@@ -244,17 +244,17 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[80] bg-slate-900/40 flex items-start justify-center p-6 overflow-y-auto"
+      className="fixed inset-0 z-[80] bg-slate-900/40 flex items-start justify-center p-6"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="bg-white rounded-xl shadow-lg w-full max-w-4xl overflow-hidden border border-slate-200 my-8"
+        className="bg-white rounded-xl shadow-lg w-full max-w-4xl overflow-hidden border border-slate-200 my-8 flex flex-col max-h-[calc(100vh-4rem)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100">
+        <div className="shrink-0 flex items-start justify-between px-6 py-4 border-b border-slate-100">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">Split step across multiple assignees</h3>
             <p className="text-[13px] text-slate-500 mt-0.5">{titleSegments.join(" · ")}</p>
@@ -270,8 +270,10 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
           </div>
         ) : (
           <>
-            {/* Body: two-pane */}
-            <div className="grid grid-cols-[300px_1fr] gap-0 max-h-[560px]">
+            {/* Body: two-pane. flex-1 + min-h-0 so the grid claims remaining flex space
+                and child overflow-y-auto actually scrolls inside the modal instead of
+                pushing the footer off-screen. */}
+            <div className="grid grid-cols-[300px_1fr] gap-0 flex-1 min-h-0">
               {/* Left: files */}
               <div className="border-r border-slate-100 p-5 bg-slate-50/50 overflow-y-auto">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-3">
@@ -354,7 +356,7 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-slate-100">
+            <div className="shrink-0 px-6 py-4 border-t border-slate-100 bg-white">
               <div
                 className={`flex items-center gap-2 text-[13px] font-medium mb-3 ${
                   allAssigned ? "text-emerald-600" : "text-amber-600"
