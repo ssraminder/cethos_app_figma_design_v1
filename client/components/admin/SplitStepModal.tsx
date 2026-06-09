@@ -57,8 +57,39 @@ interface Partition {
   assigned_staff_id: string;
   rate: string;
   currency: string;
+  /** Date in yyyy-MM-dd (HTML <input type="date">). */
   deadline: string;
+  /** Time in HH:mm 24-hour (e.g. "17:00"). Combined with `deadline` + the
+   *  user's local timezone offset when the payload is built. */
+  deadline_time: string;
 }
+
+/* === 30-minute time slots for the deadline picker. 48 options total. ====== */
+const TIME_OPTIONS: Array<{ value: string; label: string }> = (() => {
+  const out: Array<{ value: string; label: string }> = [];
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 30]) {
+      const value = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      const hh12 = h % 12 === 0 ? 12 : h % 12;
+      const ap = h < 12 ? "AM" : "PM";
+      const label = `${hh12}:${String(m).padStart(2, "0")} ${ap}`;
+      out.push({ value, label });
+    }
+  }
+  return out;
+})();
+
+/** Browser's local IANA timezone (e.g. "America/Toronto"). */
+const LOCAL_TZ_IANA = Intl.DateTimeFormat().resolvedOptions().timeZone;
+/** Short abbr (e.g. "EDT", "PDT") for the badge. */
+const LOCAL_TZ_ABBR = (() => {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(new Date());
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    return "";
+  }
+})();
 
 interface Props {
   open: boolean;
@@ -78,7 +109,11 @@ interface Props {
 }
 
 let _uid = 0;
-const newPartition = (defaultCurrency: string, defaultDeadline: string): Partition => ({
+const newPartition = (
+  defaultCurrency: string,
+  defaultDeadline: string,
+  defaultDeadlineTime: string,
+): Partition => ({
   uid: `p${++_uid}`,
   files: [],
   assigneeKind: "vendor",
@@ -87,11 +122,23 @@ const newPartition = (defaultCurrency: string, defaultDeadline: string): Partiti
   rate: "",
   currency: defaultCurrency,
   deadline: defaultDeadline,
+  deadline_time: defaultDeadlineTime,
 });
 
 export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: Props) {
   const defaultCurrency = parentStep.vendor_currency ?? "CAD";
-  const defaultDeadline = parentStep.deadline ? parentStep.deadline.slice(0, 10) : "";
+  /* Derive both date + time from the parent step deadline if it has one,
+   * snapping the time to the nearest 30-min slot. Otherwise fall back to
+   * 5:00 PM local time (matches the prior hardcoded behaviour). */
+  const defaultDeadline = parentStep.deadline ? new Date(parentStep.deadline).toLocaleDateString("en-CA") : "";
+  const defaultDeadlineTime = (() => {
+    if (!parentStep.deadline) return "17:00";
+    const d = new Date(parentStep.deadline);
+    const h = d.getHours();
+    const m = d.getMinutes() >= 45 ? 0 : d.getMinutes() >= 15 ? 30 : 0;
+    const hh = d.getMinutes() >= 45 ? (h + 1) % 24 : h;
+    return `${String(hh).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  })();
 
   const [files, setFiles] = useState<QuoteFile[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -106,7 +153,7 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
     if (!open) return;
     let cancelled = false;
     setLoading(true);
-    setPartitions([newPartition(defaultCurrency, defaultDeadline)]);
+    setPartitions([newPartition(defaultCurrency, defaultDeadline, defaultDeadlineTime)]);
 
     (async () => {
       try {
@@ -211,7 +258,12 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
             assignee_kind: p.assigneeKind,
             vendor_id: isVendor ? p.vendor_id : undefined,
             assigned_staff_id: !isVendor ? p.assigned_staff_id : undefined,
-            deadline: p.deadline ? new Date(p.deadline + "T17:00:00").toISOString() : undefined,
+            /* Combine yyyy-MM-dd date + HH:mm time in the user's local timezone,
+             * then serialize as UTC ISO. Falls back to 5 PM if the time slot
+             * is somehow empty (matches the prior default). */
+            deadline: p.deadline
+              ? new Date(`${p.deadline}T${p.deadline_time || "17:00"}:00`).toISOString()
+              : undefined,
             vendor_rate: isVendor && Number.isFinite(rateNum) ? rateNum : undefined,
             vendor_rate_unit: isVendor && Number.isFinite(rateNum) ? ("per_word" as const) : undefined,
             vendor_currency: isVendor ? p.currency : undefined,
@@ -346,7 +398,7 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
                 </div>
                 <button
                   onClick={() =>
-                    setPartitions((ps) => [...ps, newPartition(defaultCurrency, defaultDeadline)])
+                    setPartitions((ps) => [...ps, newPartition(defaultCurrency, defaultDeadline, defaultDeadlineTime)])
                   }
                   className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-dashed border-slate-300 text-[13px] font-medium text-slate-500 hover:border-cethos-teal hover:text-cethos-teal transition-colors"
                 >
@@ -558,11 +610,11 @@ function PartitionCard({
                   <option>INR</option>
                 </select>
               </div>
-              <input
-                className={sel}
-                type="date"
-                value={p.deadline}
-                onChange={(e) => onUpdate({ deadline: e.target.value })}
+              <DeadlinePicker
+                date={p.deadline}
+                time={p.deadline_time}
+                onChange={(patch) => onUpdate(patch)}
+                sel={sel}
               />
               <p className="text-[11px] text-slate-400">
                 Rate is optional — leave blank to set later via Manage Payable on the child step.
@@ -583,16 +635,69 @@ function PartitionCard({
                   </option>
                 ))}
               </select>
-              <input
-                className={sel}
-                type="date"
-                value={p.deadline}
-                onChange={(e) => onUpdate({ deadline: e.target.value })}
+              <DeadlinePicker
+                date={p.deadline}
+                time={p.deadline_time}
+                onChange={(patch) => onUpdate(patch)}
+                sel={sel}
               />
               <p className="text-[11px] text-slate-400">In-house work has no payable — rate fields hidden.</p>
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * DeadlinePicker — date + 30-min time slot + timezone badge.
+ *
+ * Stores date as yyyy-MM-dd and time as HH:mm 24-hour. The submit handler
+ * combines them into a full ISO datetime in the user's local timezone before
+ * sending to the edge function.
+ * ============================================================================ */
+interface DeadlinePickerProps {
+  date: string;
+  time: string;
+  onChange: (patch: { deadline?: string; deadline_time?: string }) => void;
+  sel: string;
+}
+
+function DeadlinePicker({ date, time, onChange, sel }: DeadlinePickerProps) {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        Deadline
+      </div>
+      <div className="grid grid-cols-[1.4fr_1fr_auto] gap-2 items-center">
+        <input
+          className={sel}
+          type="date"
+          value={date}
+          onChange={(e) => onChange({ deadline: e.target.value })}
+          aria-label="Deadline date"
+        />
+        <select
+          className={sel}
+          value={time || "17:00"}
+          onChange={(e) => onChange({ deadline_time: e.target.value })}
+          disabled={!date}
+          aria-label="Deadline time"
+          title={!date ? "Pick a date first" : "Deadline time"}
+        >
+          {TIME_OPTIONS.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <span
+          className="text-[11px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-1.5 rounded-md whitespace-nowrap"
+          title={LOCAL_TZ_IANA}
+        >
+          {LOCAL_TZ_ABBR || "Local"}
+        </span>
       </div>
     </div>
   );
