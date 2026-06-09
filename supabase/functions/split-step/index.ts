@@ -181,11 +181,11 @@ serve(async (req) => {
       }
       seenFiles.add(fid);
     }
-    if (p.assignee_kind === "vendor") {
-      if (!p.vendor_id) return json({ error: "vendor_partition_missing_vendor_id", partition_index: i }, 400);
-    } else if (p.assignee_kind === "staff") {
-      if (!p.assigned_staff_id) return json({ error: "staff_partition_missing_assigned_staff_id", partition_index: i }, 400);
-    } else {
+    /* vendor_id / assigned_staff_id are OPTIONAL. A partition can be created
+     * with the kind picked but no concrete assignee — the resulting child
+     * step lands in 'pending' so the PM can use the rich Find Vendor flow
+     * (with language pair + Match Score filtering) on the child afterwards. */
+    if (p.assignee_kind !== "vendor" && p.assignee_kind !== "staff") {
       return json({ error: "invalid_assignee_kind", partition_index: i }, 400);
     }
   }
@@ -196,8 +196,15 @@ serve(async (req) => {
   }
 
   // --- 6. Verify assignees -----------------------------------------------------
-  const vendorIds = [...new Set(partitions.filter((p) => p.assignee_kind === "vendor").map((p) => p.vendor_id!))];
-  const staffIds = [...new Set(partitions.filter((p) => p.assignee_kind === "staff").map((p) => p.assigned_staff_id!))];
+  /* Filter out partitions where vendor_id / assigned_staff_id is missing — those
+   * are intentionally unassigned and will be filled in via Find Vendor on the
+   * child step afterwards. */
+  const vendorIds = [...new Set(
+    partitions.filter((p) => p.assignee_kind === "vendor" && p.vendor_id).map((p) => p.vendor_id!),
+  )];
+  const staffIds = [...new Set(
+    partitions.filter((p) => p.assignee_kind === "staff" && p.assigned_staff_id).map((p) => p.assigned_staff_id!),
+  )];
 
   if (vendorIds.length > 0) {
     const { data: vRows } = await supabase
@@ -287,6 +294,11 @@ serve(async (req) => {
   for (let i = 0; i < partitions.length; i++) {
     const p = partitions[i];
     const isStaff = p.assignee_kind === "staff";
+    /* A partition is "fully assigned" when its concrete assignee was supplied.
+     * If not, the child step lands in 'pending' with no assignee — the PM then
+     * uses Find Vendor (external) or the staff dropdown (in-house) on the
+     * resulting child row to complete assignment. */
+    const isAssigned = isStaff ? Boolean(p.assigned_staff_id) : Boolean(p.vendor_id);
     const childRow: Record<string, unknown> = {
       workflow_id: parent.workflow_id,
       order_id: parent.order_id,
@@ -298,11 +310,15 @@ serve(async (req) => {
       source_language: parent.source_language,
       target_language: parent.target_language,
       actor_type: isStaff ? "internal_work" : "external_vendor",
-      vendor_id: isStaff ? null : p.vendor_id,
-      assigned_staff_id: isStaff ? p.assigned_staff_id : staff.id,
-      assigned_by: staff.id,
-      assigned_at: new Date().toISOString(),
-      status: isStaff ? "assigned" : "assigned",
+      vendor_id: isStaff ? null : (p.vendor_id ?? null),
+      /* For in-house partitions, prefer the explicit staff member; if none was
+       * supplied, leave it null so the standard "Select staff member…" picker
+       * appears on the child row. (Previously we fell back to the assigning
+       * staff which silently mis-attributed the work.) */
+      assigned_staff_id: isStaff ? (p.assigned_staff_id ?? null) : (isAssigned ? staff.id : null),
+      assigned_by: isAssigned ? staff.id : null,
+      assigned_at: isAssigned ? new Date().toISOString() : null,
+      status: isAssigned ? "assigned" : "pending",
       deadline: p.deadline ?? parent.deadline,
       vendor_rate: !isStaff && p.vendor_rate != null ? p.vendor_rate : null,
       vendor_rate_unit: !isStaff && p.vendor_rate_unit ? p.vendor_rate_unit : null,
@@ -339,7 +355,10 @@ serve(async (req) => {
   // --- 12. Optional vendor_payables creation per vendor child ----------------
   for (const c of created) {
     const p = c.partition;
-    if (p.assignee_kind !== "vendor" || p.vendor_rate == null) continue;
+    /* Skip payable creation when no vendor was named at split time — the PM
+     * will create the payable via Manage Payable on the child step once Find
+     * Vendor lands a vendor there. */
+    if (p.assignee_kind !== "vendor" || !p.vendor_id || p.vendor_rate == null) continue;
     const payable = {
       workflow_step_id: c.id,
       vendor_id: p.vendor_id!,

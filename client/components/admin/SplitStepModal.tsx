@@ -230,10 +230,11 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
   const unassigned = useMemo(() => files.filter((f) => !assignedIds.has(f.id)), [files, assignedIds]);
   const allAssigned = unassigned.length === 0 && files.length > 0;
   const everyPartHasFile = partitions.every((p) => p.files.length > 0);
-  const everyPartHasAssignee = partitions.every((p) =>
-    p.assigneeKind === "vendor" ? Boolean(p.vendor_id) : Boolean(p.assigned_staff_id),
-  );
-  const canSave = allAssigned && everyPartHasFile && everyPartHasAssignee && partitions.length >= 2 && !submitting;
+  /* Vendor / staff are OPTIONAL at split time. Partitions can be saved with no
+   * assignee — each child step will then expose its own Find Vendor button so
+   * the proper rich filter UI (language pair, rating, Match Score, etc.) can
+   * be used on the resulting child instead of the flat dropdown here. */
+  const canSave = allAssigned && everyPartHasFile && partitions.length >= 2 && !submitting;
 
   const update = (uid: string, patch: Partial<Partition>) =>
     setPartitions((ps) => ps.map((p) => (p.uid === uid ? { ...p, ...patch } : p)));
@@ -617,7 +618,9 @@ function PartitionCard({
                 sel={sel}
               />
               <p className="text-[11px] text-slate-400">
-                Rate is optional — leave blank to set later via Manage Payable on the child step.
+                {p.vendor_id
+                  ? "Rate is optional — leave blank to set later via Manage Payable on the child step."
+                  : "Vendor optional — leave blank to assign later via Find Vendor on the child step (better language-pair + Match Score filtering)."}
               </p>
             </div>
           ) : (
@@ -641,7 +644,10 @@ function PartitionCard({
                 onChange={(patch) => onUpdate(patch)}
                 sel={sel}
               />
-              <p className="text-[11px] text-slate-400">In-house work has no payable — rate fields hidden.</p>
+              <p className="text-[11px] text-slate-400">
+                In-house work has no payable — rate fields hidden.
+                {!p.assigned_staff_id && " Staff member optional — leave blank to assign later on the child step."}
+              </p>
             </div>
           )}
         </div>
