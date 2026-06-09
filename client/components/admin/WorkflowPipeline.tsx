@@ -2987,6 +2987,36 @@ function WorkflowPipeline({
                         )}
                       </div>
                     )}
+                    {/* Unassigned child actions — let the PM assign a vendor /
+                        staff member on the child here (the better filter UI
+                        than the flat dropdown in the Split modal). */}
+                    {!child.vendor_id && !child.assigned_staff_id && child.status === "pending" && (
+                      <div className="mt-2 pt-2 border-t border-slate-100">
+                        {child.actor_type === "external_vendor" && (
+                          <button
+                            className="text-xs px-3 py-1 border border-cethos-teal-600 text-cethos-teal-600 rounded hover:bg-cethos-teal-600/5 font-medium"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onFindVendor(child);
+                            }}
+                          >
+                            Find Vendor
+                          </button>
+                        )}
+                        {child.actor_type === "internal_work" && (
+                          <StaffPickerDropdown
+                            disabled={actionLoading === child.id}
+                            onConfirm={async ({ staff_id, deadline, instructions }) =>
+                              handleStepAction(child.id, "assign_staff", {
+                                staff_id,
+                                deadline,
+                                instructions,
+                              })
+                            }
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
