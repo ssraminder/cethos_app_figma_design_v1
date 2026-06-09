@@ -53,6 +53,11 @@ const TIER_LABELS: Record<string, string> = { standard: "Standard", senior: "Sen
 const TIER_COLORS: Record<string, string> = { standard: "bg-gray-100 text-gray-600", senior: "bg-blue-100 text-blue-700", expert: "bg-purple-100 text-purple-700" };
 
 const EXPERIENCE_LABELS: Record<number, string> = { 0: "Less than 1 year", 1: "1–3 years", 3: "3–5 years", 5: "5–10 years", 10: "10+ years" };
+const EXPERIENCE_BRACKET_LABELS: Record<string, string> = { "0": "Less than 1 year", "1": "1–3 years", "3": "3–5 years", "5": "5–10 years", "10": "10+ years" };
+const INTERVIEWS_CONDUCTED_LABELS: Record<string, string> = { "0": "None yet", "1-10": "1–10 interviews", "11-50": "11–50 interviews", "51-200": "51–200 interviews", "200+": "200+ interviews" };
+const INTERVIEW_MODE_LABELS: Record<string, string> = { in_person: "In-person", telephone: "Telephone", video: "Video" };
+const ECOA_PLATFORM_LABELS: Record<string, string> = { signant: "Signant Health", clario_ert: "Clario / ERT", medidata: "Medidata", calyx: "Calyx", yprime: "YPrime", iqvia: "IQVIA", cognigen: "Cognigen", none: "None / paper-only", other: "Other" };
+const SPECIAL_POPULATIONS_LABELS: Record<string, string> = { pediatric: "Pediatric", elderly: "Elderly", cognitively_impaired: "Cognitively impaired", rare_disease: "Rare disease", immigrant_refugee: "Immigrant / refugee", lgbtq: "LGBTQ+", none: "None / general adult only" };
 const EDUCATION_LABELS: Record<string, string> = { bachelor: "Bachelor's", master: "Master's", phd: "PhD", diploma_certificate: "Diploma / Certificate", other: "Other" };
 const CERT_LABELS: Record<string, string> = { ATA: "ATA", CTTIC: "CTTIC", ITI: "ITI", CIOL: "CIOL", ISO_17100: "ISO 17100" };
 const DOMAIN_LABELS: Record<string, string> = { legal: "Legal", medical: "Medical", immigration: "Immigration", financial: "Financial", technical: "Technical", general: "General" };
@@ -112,6 +117,21 @@ interface Application {
   cog_sample_report_path: string | null;
   cog_availability: string | null;
   cog_rate_expectation: number | null;
+  cog_rate_currency: string | null;
+  cog_interviews_conducted: string | null;
+  cog_conducts_direct_patient_interviews: boolean | null;
+  cog_interview_modes: string[] | null;
+  cog_ecoa_platforms: string[] | null;
+  cog_ema_familiarity: string | null;
+  cog_concept_elicitation_years: string | null;
+  cog_special_populations: string[] | null;
+  cog_gcp_trained: boolean | null;
+  cog_gcp_year: number | null;
+  cog_license_type: string | null;
+  cog_license_jurisdiction: string | null;
+  cog_license_number: string | null;
+  cog_license_active: boolean | null;
+  cog_timezone: string | null;
   status: string;
   ai_prescreening_score: number | null;
   ai_prescreening_result: Record<string, unknown> | null;
@@ -5285,10 +5305,52 @@ export default function RecruitmentDetail() {
                 {app.cog_therapy_areas.length > 0 && (
                   <InfoRow label="Therapy Areas" value={<div className="flex flex-wrap gap-1">{app.cog_therapy_areas.map(t => <span key={t} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">{t}</span>)}</div>} />
                 )}
+                <InfoRow label="Pharma / CRO Clients" value={app.cog_pharma_clients} />
                 <InfoRow label="ISPOR Familiarity" value={app.cog_ispor_familiarity ? FAMILIARITY_LABELS[app.cog_ispor_familiarity] || app.cog_ispor_familiarity : null} />
                 <InfoRow label="FDA COA Familiarity" value={app.cog_fda_familiarity ? FAMILIARITY_LABELS[app.cog_fda_familiarity] || app.cog_fda_familiarity : null} />
                 <InfoRow label="Prior Debrief Reports" value={app.cog_prior_debrief_reports ? "Yes" : "No"} />
+                <InfoRow label="Sample Report on File" value={app.cog_sample_report_path ? "Yes" : "No"} />
                 <InfoRow label="Availability" value={app.cog_availability ? AVAILABILITY_LABELS[app.cog_availability] || app.cog_availability : null} />
+                <InfoRow label="Time Zone" value={app.cog_timezone} />
+              </dl>
+            </Section>
+          )}
+
+          {isCog && (app.cog_interviews_conducted || app.cog_interview_modes?.length || app.cog_ecoa_platforms?.length || app.cog_conducts_direct_patient_interviews !== null) && (
+            <Section title="Patient Interview Experience">
+              <dl className="space-y-1 mt-2">
+                <InfoRow label="CD Interviews Conducted" value={app.cog_interviews_conducted ? INTERVIEWS_CONDUCTED_LABELS[app.cog_interviews_conducted] || app.cog_interviews_conducted : null} />
+                <InfoRow label="Direct Patient Interviews" value={app.cog_conducts_direct_patient_interviews === null ? null : (app.cog_conducts_direct_patient_interviews ? "Yes" : "No")} />
+                {app.cog_interview_modes && app.cog_interview_modes.length > 0 && (
+                  <InfoRow label="Interview Modes" value={<div className="flex flex-wrap gap-1">{app.cog_interview_modes.map(t => <span key={t} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">{INTERVIEW_MODE_LABELS[t] || t}</span>)}</div>} />
+                )}
+                {app.cog_ecoa_platforms && app.cog_ecoa_platforms.length > 0 && (
+                  <InfoRow label="Remote eCOA Platforms" value={<div className="flex flex-wrap gap-1">{app.cog_ecoa_platforms.map(t => <span key={t} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">{ECOA_PLATFORM_LABELS[t] || t}</span>)}</div>} />
+                )}
+              </dl>
+            </Section>
+          )}
+
+          {isCog && (app.cog_ema_familiarity || app.cog_concept_elicitation_years || app.cog_special_populations?.length || app.cog_gcp_trained !== null) && (
+            <Section title="Regulatory & Specialized Experience">
+              <dl className="space-y-1 mt-2">
+                <InfoRow label="EMA COA Familiarity" value={app.cog_ema_familiarity ? FAMILIARITY_LABELS[app.cog_ema_familiarity] || app.cog_ema_familiarity : null} />
+                <InfoRow label="Concept-Elicitation Experience" value={app.cog_concept_elicitation_years ? EXPERIENCE_BRACKET_LABELS[app.cog_concept_elicitation_years] || app.cog_concept_elicitation_years : null} />
+                {app.cog_special_populations && app.cog_special_populations.length > 0 && (
+                  <InfoRow label="Special Populations" value={<div className="flex flex-wrap gap-1">{app.cog_special_populations.map(t => <span key={t} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">{SPECIAL_POPULATIONS_LABELS[t] || t}</span>)}</div>} />
+                )}
+                <InfoRow label="GCP Trained" value={app.cog_gcp_trained === null ? null : (app.cog_gcp_trained ? (app.cog_gcp_year ? `Yes (${app.cog_gcp_year})` : "Yes") : "No")} />
+              </dl>
+            </Section>
+          )}
+
+          {isCog && (app.cog_license_type || app.cog_license_jurisdiction || app.cog_license_number) && (
+            <Section title="Professional License">
+              <dl className="space-y-1 mt-2">
+                <InfoRow label="License Type" value={app.cog_license_type} />
+                <InfoRow label="Jurisdiction" value={app.cog_license_jurisdiction} />
+                <InfoRow label="License Number" value={app.cog_license_number} />
+                <InfoRow label="Active / In Good Standing" value={app.cog_license_active === null ? null : (app.cog_license_active ? "Yes" : "No")} />
               </dl>
             </Section>
           )}
@@ -5302,7 +5364,7 @@ export default function RecruitmentDetail() {
           <Section title="Rate & Referral">
             <dl className="space-y-1 mt-2">
               {isTranslator && <InfoRow label="Expected Rate (per page, CAD)" value={app.rate_expectation ? `$${Number(app.rate_expectation).toFixed(2)}` : null} />}
-              {isCog && <InfoRow label="Expected Rate (CAD)" value={app.cog_rate_expectation ? `$${Number(app.cog_rate_expectation).toFixed(2)}` : null} />}
+              {isCog && <InfoRow label={`Expected Rate (${app.cog_rate_currency || "CAD"})`} value={app.cog_rate_expectation ? `${Number(app.cog_rate_expectation).toFixed(2)}` : null} />}
               <InfoRow label="Agreed Rate" value={app.final_agreed_rate ? `$${Number(app.final_agreed_rate).toFixed(2)}` : null} />
               <InfoRow label="Referral Source" value={app.referral_source} />
             </dl>
