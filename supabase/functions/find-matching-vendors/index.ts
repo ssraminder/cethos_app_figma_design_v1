@@ -1,9 +1,15 @@
-// find-matching-vendors v36 — resolves UUID language IDs to ISO codes before querying vendor_language_pairs.
+// find-matching-vendors v37 — resolves UUID language IDs to ISO codes before querying vendor_language_pairs.
 // Filters vendors by language pair, service rate, availability, geography, then per-vendor
 // QMS check. In gating_mode='warn' (default), every call writes a row to
 // qms.assignment_eligibility_events; behavior unchanged. In 'block', ineligible vendors are
 // filtered out. Annotation fields qms_eligible / qms_reason / qms_required_role / qms_gating_mode
 // added to each result for UI display.
+//
+// v37 (2026-06-09, bug_reports/f9e5b95a): treat source_language='ANY' and target_language='ANY'
+// in vendor_language_pairs as wildcards. Pre-fix, .eq("source_language", X) silently dropped the
+// 19 vendors who had legacy "Any"-source pairs migrated verbatim into VLP. Now we use
+// .in("source_language", [X, "ANY"]) so a vendor declaring (ANY → EN) matches any source → EN
+// request. Same for target.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -69,9 +75,22 @@ serve(async (req) => {
     let vendorIds: Set<string> | null = null;
 
     if (source_language || target_language) {
+      // v37: honor "ANY" wildcards in vendor_language_pairs. A vendor with (ANY → EN) matches
+      // any source → EN request; (ZH-CN → ANY) matches ZH-CN → any target. Skipped when the
+      // request itself is "ANY" (would just duplicate the predicate).
       let lpQuery = sb.from("vendor_language_pairs").select("vendor_id").eq("is_active", true);
-      if (source_language) lpQuery = lpQuery.eq("source_language", source_language);
-      if (target_language) lpQuery = lpQuery.eq("target_language", target_language);
+      if (source_language) {
+        const src = source_language.toUpperCase() === "ANY"
+          ? [source_language]
+          : [source_language, "ANY"];
+        lpQuery = lpQuery.in("source_language", src);
+      }
+      if (target_language) {
+        const tgt = target_language.toUpperCase() === "ANY"
+          ? [target_language]
+          : [target_language, "ANY"];
+        lpQuery = lpQuery.in("target_language", tgt);
+      }
       const { data: lpMatches } = await lpQuery;
       vendorIds = new Set((lpMatches || []).map(r => r.vendor_id));
       if (vendorIds.size === 0) return jsonResp({ success: true, vendors: [], total_matches: 0, filters_applied: { source_language, target_language } });
@@ -142,9 +161,21 @@ serve(async (req) => {
     let lpCounts: Record<string, number> = {};
     let lpDetails: Record<string, Array<{ source: string; target: string }>> = {};
     if (vendorIdsFound.length > 0) {
+      // v37: mirror the wildcard handling from the gating query above so the matching_pairs
+      // annotation surfaces (ANY → X) rows instead of dropping them.
       let lpDetailQuery = sb.from("vendor_language_pairs").select("vendor_id, source_language, target_language").in("vendor_id", vendorIdsFound).eq("is_active", true);
-      if (source_language) lpDetailQuery = lpDetailQuery.eq("source_language", source_language);
-      if (target_language) lpDetailQuery = lpDetailQuery.eq("target_language", target_language);
+      if (source_language) {
+        const src = source_language.toUpperCase() === "ANY"
+          ? [source_language]
+          : [source_language, "ANY"];
+        lpDetailQuery = lpDetailQuery.in("source_language", src);
+      }
+      if (target_language) {
+        const tgt = target_language.toUpperCase() === "ANY"
+          ? [target_language]
+          : [target_language, "ANY"];
+        lpDetailQuery = lpDetailQuery.in("target_language", tgt);
+      }
 
       const { data: lpData } = await lpDetailQuery;
       for (const r of lpData || []) {
