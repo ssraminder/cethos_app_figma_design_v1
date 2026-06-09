@@ -682,9 +682,8 @@ function DeadlinePicker({ date, time, onChange, sel }: DeadlinePickerProps) {
           className={sel}
           value={time || "17:00"}
           onChange={(e) => onChange({ deadline_time: e.target.value })}
-          disabled={!date}
           aria-label="Deadline time"
-          title={!date ? "Pick a date first" : "Deadline time"}
+          title="Deadline time"
         >
           {TIME_OPTIONS.map((t) => (
             <option key={t.value} value={t.value}>
