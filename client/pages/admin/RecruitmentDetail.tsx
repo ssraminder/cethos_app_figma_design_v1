@@ -3655,6 +3655,12 @@ interface DecisionModalProps {
    *  step and only proceeds to notes/preview after the staff has selected
    *  at least one combination and provided a per-domain rationale. */
   approvalContext?: ApprovalDomainContext;
+  /** True when the application is an agency (role_type='agency'). Agency
+   *  approvals skip the per-domain selection step — there are no test
+   *  combinations to approve at the agency level; per-linguist
+   *  qualifications live on the blinded roster. The modal jumps
+   *  straight to notes → preview. */
+  isAgency?: boolean;
 }
 
 function DecisionModal({
@@ -3665,13 +3671,15 @@ function DecisionModal({
   busy,
   initialNotes,
   approvalContext,
+  isAgency,
 }: DecisionModalProps) {
   const cfg = DECISION_CONFIGS[decision];
   // For 'approved' the flow is domains → notes → preview. For everything
-  // else it stays at the original notes → preview.
+  // else it stays at the original notes → preview. Agency approvals
+  // skip the domains step entirely (no test combinations to approve).
   const isApprove = decision === "approved";
   const [step, setStep] = useState<"domains" | "notes" | "preview">(
-    isApprove ? "domains" : "notes",
+    isApprove && !isAgency ? "domains" : "notes",
   );
   const [notes, setNotes] = useState(initialNotes ?? "");
   const [preview, setPreview] = useState<DecisionPreview | null>(null);
@@ -3887,7 +3895,7 @@ function DecisionModal({
         {step === "notes" && (
           <>
             <p className="text-sm text-gray-600 mb-3">{cfg.intro}</p>
-            {isApprove && (
+            {isApprove && !isAgency && (
               <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded text-xs">
                 <strong className="text-emerald-900">Approving {selectedArr.length} domain{selectedArr.length === 1 ? "" : "s"}.</strong>{" "}
                 <button
@@ -3897,6 +3905,13 @@ function DecisionModal({
                 >
                   ← change selection
                 </button>
+              </div>
+            )}
+            {isApprove && isAgency && (
+              <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded text-xs">
+                <strong className="text-emerald-900">Approving as an agency.</strong>{" "}
+                The agency vendor will be provisioned with roster_required=true and cannot accept jobs
+                until at least one roster linguist is added for the language pair + service.
               </div>
             )}
             <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -6347,6 +6362,10 @@ export default function RecruitmentDetail() {
             decisionModal === "approved"
               ? { combinations, languages }
               : undefined
+          }
+          isAgency={
+            app?.role_type === "agency" ||
+            (app as { applicant_type?: string } | null)?.applicant_type === "agency"
           }
         />
       )}
