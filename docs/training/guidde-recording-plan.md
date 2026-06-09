@@ -1,8 +1,8 @@
 # Guidde recording plan — Vendor Management training
 
-> **Status:** Awaiting your free-browser session. When ready, message me with `"go <recording-name>"` (e.g. `"go split"`) and I'll drive the listed sequence with deliberate pacing.
+> **Status:** Awaiting your free-browser session. When ready, message me with one of the triggers below (e.g. `"go session 1"` or `"go all sessions"`) and I'll run end-to-end — capture, finalize in guidde dashboard, embed back into the training lessons, smoke-check the live portal — with no further input from you.
 >
-> **One recording per row.** Stop guidde between recordings so each video is its own training asset, then start a fresh recording for the next row.
+> **Default mode is continuous-per-session.** One guidde recording per session, then I split into N component videos in the editor. If your guidde plan has a per-recording length cap, mention it in your `go` reply and I'll switch to per-recording sub-blocks instead.
 
 ---
 
@@ -350,32 +350,76 @@ Once a video has a final share URL:
 
 12. **Smoke check** the live lesson page in the admin portal to confirm the video link is clickable + opens in the right place.
 
-### Per-recording finalization signal
+### Autonomous mode — single `go` signal runs the entire session
 
-After each recording stops:
+**Operative rule:** once you reply `"go session N"` (or `"go all sessions"`), I drive everything through to completion with **zero further input from you**. No mid-flow confirmations, no per-recording `finalize` handshake, no "ready for next?" gates.
 
-- You reply `"finalize <recording-id>"` (e.g. `"finalize split"`)
-- I navigate to the guidde dashboard tab + open the newly-recorded video
-- I run cleanup steps 1-9 from the standard list above
-- I report the share URL back to you
-- I update the matching lesson's body_markdown with the embed
-- I confirm the lesson loads clean on portal.cethos.com
-- I signal `"ready for <next recording>"` so you can start the next one
+#### What "autonomous" means in practice
 
-If guidde's UI doesn't expose something I expect (e.g. a tool I can't find), I'll narrate exactly what I see and ask you to point me at the right control. I haven't driven guidde's editor before; the first finalization pass will be exploratory and I'll learn the layout as we go.
+For each session, when you say go:
+
+1. **One-time pre-flight check** — I verify Chrome MCP is connected to the right browser group, the admin (and vendor, if needed) tabs are loaded, and the state-prep for the FIRST recording in the session is in place. Anything off, I report once and stop. Otherwise I proceed silently.
+2. **Guidde recording mode** — assume the session is captured as **one continuous guidde recording** that we split in the editor afterwards. Before driving, I confirm the `recording` indicator is visible in the guidde UI (you start guidde once at session start, stop it once at session end — those are your only two physical actions).
+3. **Drive all click sequences back-to-back** for every recording in the session. Between recordings, I insert a **2-second frozen scene-break** (no clicks, no scrolls, no cursor movement) on a clean state — this gives a natural cut point for splitting in the editor and visually signals "topic change" if you decide not to split.
+4. **State transitions between recordings handled silently** — if recording B requires me to navigate to a different page than recording A ended on, or impersonate a different vendor, I do it without asking. Each per-recording entry already lists its `Pre-state` requirements; I chain them.
+5. **End-of-session signal** — when the last click sequence of the session ends, I display a clear `=== SESSION N CLICKS DONE — STOP GUIDDE RECORDING ===` line in chat. You press stop in guidde once. No other action from you.
+6. **Auto-finalize all videos in the session** — I navigate to the guidde dashboard tab, find the new recording, split it into the N component videos using the scene-breaks as cut points, then for each split video run the full cleanup loop (rename, title, cover slide, end CTA, tags, visibility, share URL).
+7. **Auto-embed all share URLs** — I run one SQL UPDATE per lesson with the new guidde deep-link, then load each affected lesson on portal.cethos.com via Chrome MCP and screenshot it to prove the embed renders.
+8. **Single end-of-session report** — only at the very end, I post one summary message with: which recordings were captured, which share URLs were generated, which lessons were embedded, and any anomalies that need your attention (e.g. "guidde couldn't auto-detect cut at scene-break #2; I split manually at the timestamp 04:17"). No interim updates.
+
+#### Decisions I make without asking
+
+Every judgment call below is pre-committed so I don't need to ping you mid-flow:
+
+| Situation | What I do silently |
+|---|---|
+| guidde rendering an editor control I don't recognize | Best-guess from screenshot context + standard SaaS-editor patterns. Note in end-of-session report. |
+| Cut-point ambiguous (e.g. extra cursor jitter at scene-break) | Cut at the closest stationary frame; if none clean, cut at the timestamp I logged while driving. |
+| guidde renames a step to something nonsensical | Override with the caption from the per-recording "Guidde caption ideas" list. |
+| Video title would collide with an existing one | Append ` (v2)` and note it. |
+| Lesson SQL UPDATE finds a prior `Watch the walkthrough on guidde →` line | Replace it (assume re-recording supersedes the old link). |
+| Smoke-check fails on a lesson | Hard reload once; if still failing, note in end-of-session report and continue. |
+| State-prep error during session (e.g. test order missing) | Report once and **stop the session**. Do not skip to the next recording silently — partial output would corrupt the lesson set. |
+| guidde split tool not present in the editor | Fall back to: download MP4 → ffmpeg cut by timestamp → re-upload as N separate videos. Slow but lossless. |
+| Edge case I can't categorize | Log it, do the most conservative thing (no destructive write), continue. |
+
+#### What I will NOT do silently
+
+- **Stop guidde recording on your behalf** — the start/stop buttons are physical UI on your machine; I cannot reach them. Hence the explicit `STOP GUIDDE` signal at end-of-session.
+- **Publish a video to a public URL** — workspace-only visibility is always the default; public requires your explicit ask.
+- **Delete an existing guidde video** — even when re-recording. Old videos get untouched; the lesson embed simply points to the new one.
+- **Skip a state-prep error** — if a precondition for recording N fails, I stop and report. Skipping risks rendering N+1, N+2 against the wrong state and producing misleading training content.
+
+#### If a single guidde recording can't span a full session
+
+If your guidde plan caps individual recordings (e.g. 10-minute hard limit), session 1 (~20 min) and session 2 (~15 min) overflow. Fallback:
+
+- I drive in **per-recording sub-blocks** instead — for each recording I display `=== START GUIDDE FOR <recording-id> ===` before driving and `=== STOP GUIDDE — RECORDING <recording-id> CAPTURED ===` when its sequence ends.
+- You press start/stop per recording (12 presses total instead of 3) but still don't make any decisions.
+- Cleanup still runs autonomously at session end against all N captured videos.
+- Tell me your guidde plan's per-recording limit in your first `go` reply and I'll pick continuous vs sub-block automatically. If you don't mention it, I default to **continuous** and fall back to sub-blocks only if guidde stops me mid-driving.
+
+#### Caveats — things I genuinely cannot do alone
+
+- I can't see the guidde control panel (it's a browser extension popup that lives outside the MCP-readable DOM). I can only observe `recording` indicator pixels in the captured tab if guidde paints one. If guidde silently fails to record, I won't notice — I'll drive happily and you'll find no video at the end. Mitigation: at the start of each session I'll display `=== START GUIDDE NOW — confirm red dot or timer is visible before I proceed ===` and wait 8 seconds. That gives you time to abort if guidde didn't start cleanly. (This is the **only** input I'll wait on after `go`.)
+- I can't influence guidde's caption auto-generation, narration TTS settings, or any account-level guidde preferences — those are pre-session config on your side.
+- If guidde's editor requires drag-and-drop for splitting (some video editors do), I'll need to use computer-use mouse tools instead of Chrome MCP DOM clicks — but Chrome is a tier-"read" app for computer-use, so I genuinely cannot. In that case I'd fall back to ffmpeg download/cut/upload as noted above.
 
 ---
 
 ## When you're ready
 
 Reply with one of:
-- `"go session 1"` (I run A1's pre-state reset, then drive recordings D1 → A3 in order, pausing between each so you can stop + save + start guidde fresh)
-- `"go session 2"` (B1 → B4)
-- `"go session 3"` (C1 → C3 — I prep vendor impersonation first)
-- `"go <single recording-id>"` (e.g. `"go split"` for just A1)
+- `"go session 1"` — drives D1 → D2 → A1 → A2 → A3, autonomously through capture + finalize + embed + smoke-check
+- `"go session 2"` — drives B1 → B2 → B3 → B4, autonomously
+- `"go session 3"` — drives C1 → C2 → C3, autonomously (vendor impersonation prepped first)
+- `"go all sessions"` — runs sessions 1 → 2 → 3 back-to-back. Between sessions I display `=== SESSION N DONE — STOP GUIDDE / START SESSION N+1 ===`; you press stop, then start once, then I continue. **One initial `go` covers all 12 recordings end-to-end** — three physical button presses on your side for the whole training set.
+- `"go <single recording-id>"` (e.g. `"go split"` for just A1) — autonomous capture + finalize + embed of that single video
 - `"prep <recording-id>"` (I do the state prep but don't drive — useful if you want to skim a screen before recording)
 
-I'll always state the cleanup / pre-state action explicitly before starting any session.
+**One mandatory pause point** — at the start of every session I display `=== START GUIDDE NOW — confirm red dot / timer ===` and wait 8 seconds before driving. That's so a silent guidde failure doesn't waste a full session of driving. No reply needed if guidde is recording cleanly; if it isn't, hit Ctrl+C to abort and restart.
+
+I'll always state the cleanup / pre-state action explicitly before starting any session. After that, no further input from you until end-of-session report.
 
 ---
 
