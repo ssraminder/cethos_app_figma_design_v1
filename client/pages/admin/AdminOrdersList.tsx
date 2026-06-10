@@ -37,6 +37,7 @@ import {
   PinOff,
   ArrowUp,
   ArrowDown,
+  ArrowUpDown,
   GripVertical,
   MessageSquare,
 } from "lucide-react";
@@ -112,6 +113,22 @@ const WORK_STATUS_OPTIONS = [
 ];
 
 const PAGE_SIZE = 25;
+
+// Sortable columns map to server-side PostgREST order terms so sorting
+// spans the full filtered dataset, not just the current 25-row page.
+// Derived columns (Vendor, Assignment, Profit) are computed client-side
+// per page and stay non-sortable. Customer sorts via the embedded
+// customers!inner join (PostgREST to-one embed ordering).
+type SortKey = "serial" | "order" | "customer" | "status" | "total" | "deadline";
+type SortDir = "asc" | "desc";
+const SORT_TERMS: Record<SortKey, (d: SortDir) => string> = {
+  serial: (d) => `serial_no.${d}`,
+  order: (d) => `order_number.${d}`,
+  customer: (d) => `customers(full_name).${d}`,
+  status: (d) => `status.${d}`,
+  total: (d) => `total_amount.${d}.nullslast`,
+  deadline: (d) => `estimated_delivery_at.${d}.nullslast,estimated_delivery_date.${d}.nullslast`,
+};
 
 const FILTERS_STORAGE_KEY = "adminOrdersFilters";
 const COLUMN_SETTINGS_KEY = "adminOrdersColumnSettings";
@@ -195,6 +212,7 @@ export default function AdminOrdersList() {
     "xtrfStatus", "xtrfInvStatus", "xtrfPayStatus", "po",
     "service", "company",
     "vendor", "srcLang", "tgtLang", "assignment",
+    "sortBy", "sortDir",
   ];
 
   // Restore filters from sessionStorage on mount if URL has no filter params
@@ -327,7 +345,37 @@ export default function AdminOrdersList() {
   const srcLangFilter = searchParams.get("srcLang") || ""; // languages.id
   const tgtLangFilter = searchParams.get("tgtLang") || ""; // languages.id
   const assignmentFilter = searchParams.get("assignment") || ""; // bucket label
+  // Column sort — empty sortBy = default order (pinned first, newest first).
+  const sortBy = (searchParams.get("sortBy") || "") as SortKey | "";
+  const sortDir: SortDir = searchParams.get("sortDir") === "desc" ? "desc" : "asc";
   const page = parseInt(searchParams.get("page") || "1", 10);
+
+  // Header click cycle: unsorted → asc → desc → back to default.
+  const handleSort = (key: SortKey) => {
+    const params = new URLSearchParams(searchParams);
+    if (sortBy !== key) {
+      params.set("sortBy", key);
+      params.set("sortDir", "asc");
+    } else if (sortDir === "asc") {
+      params.set("sortDir", "desc");
+    } else {
+      params.delete("sortBy");
+      params.delete("sortDir");
+    }
+    params.delete("page");
+    setSearchParams(params);
+  };
+
+  const sortIcon = (key: SortKey) =>
+    sortBy === key ? (
+      sortDir === "asc" ? (
+        <ArrowUp className="w-3 h-3 text-blue-600 shrink-0" />
+      ) : (
+        <ArrowDown className="w-3 h-3 text-blue-600 shrink-0" />
+      )
+    ) : (
+      <ArrowUpDown className="w-3 h-3 text-gray-300 group-hover:text-gray-400 shrink-0" />
+    );
 
   // Certified service UUID (for "certified / non-certified" filtering)
   const [certifiedServiceId, setCertifiedServiceId] = useState<string | null>(null);
@@ -833,9 +881,11 @@ export default function AdminOrdersList() {
       const to = from + PAGE_SIZE - 1;
 
       const filterStr = filters.length > 0 ? "&" + filters.join("&") : "";
-      // Pinned rows render at the top in pinned_position ASC (NULLs last);
-      // unpinned fall back to the original created_at DESC sort.
-      const qs = `orders?select=${encodeURIComponent(select)}${filterStr}&order=pinned_position.asc.nullslast,created_at.desc`;
+      // Pinned rows render at the top in pinned_position ASC (NULLs last)
+      // regardless of column sort; the user's chosen sort (if any) applies
+      // below them, with created_at DESC as the default / tiebreaker.
+      const sortTerm = sortBy ? SORT_TERMS[sortBy](sortDir) + "," : "";
+      const qs = `orders?select=${encodeURIComponent(select)}${filterStr}&order=pinned_position.asc.nullslast,${sortTerm}created_at.desc`;
 
       // Parallel: aggregate over the FULL filtered dataset so the stat cards
       // ("Rush Orders", "Avg Order Value", revenue) reflect every matching
@@ -992,7 +1042,7 @@ export default function AdminOrdersList() {
     // (null = still loading; once loaded, certifiedServiceLoaded flips true and we re-run)
     if (serviceFilter !== "all" && !certifiedServiceLoaded) return;
     fetchOrders();
-  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, poStatus, dueWhen, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, vendorFilter, srcLangFilter, tgtLangFilter, assignmentFilter, certifiedServiceLoaded]);
+  }, [restoredFromSession, search, status, workStatus, dateFrom, dateTo, rushOnly, xtrfStatus, poStatus, dueWhen, xtrfInvoiceStatuses.join(","), xtrfPaymentStatuses.join(","), page, serviceFilter, companyFilter, vendorFilter, srcLangFilter, tgtLangFilter, assignmentFilter, certifiedServiceLoaded, sortBy, sortDir]);
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -1600,21 +1650,55 @@ export default function AdminOrdersList() {
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
                   <th className="w-6 px-1.5 py-2.5" aria-label="Drag handle" />
-                  <th className="w-14 px-2 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" title="Stable internal serial number — never changes when rows are pinned or reordered">#</th>
-                  {isColVisible("orderDetails") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Order Details</th>}
-                  {isColVisible("customer") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Customer</th>}
+                  <th className="w-14 px-2 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" title="Stable internal serial number — never changes when rows are pinned or reordered">
+                    <button type="button" onClick={() => handleSort("serial")} className="group inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-700" title="Sort by serial number">
+                      #{sortIcon("serial")}
+                    </button>
+                  </th>
+                  {isColVisible("orderDetails") && (
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      <button type="button" onClick={() => handleSort("order")} className="group inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-700" title="Sort by order number">
+                        Order Details{sortIcon("order")}
+                      </button>
+                    </th>
+                  )}
+                  {isColVisible("customer") && (
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      <button type="button" onClick={() => handleSort("customer")} className="group inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-700" title="Sort by customer name">
+                        Customer{sortIcon("customer")}
+                      </button>
+                    </th>
+                  )}
                   {isColVisible("languagePair") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Languages</th>}
                   {isColVisible("vendor") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Vendor</th>}
                   {isColVisible("assignment") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Assignment</th>}
-                  {isColVisible("status") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>}
-                  {isColVisible("total") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>}
+                  {isColVisible("status") && (
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      <button type="button" onClick={() => handleSort("status")} className="group inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-700" title="Sort by status">
+                        Status{sortIcon("status")}
+                      </button>
+                    </th>
+                  )}
+                  {isColVisible("total") && (
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      <button type="button" onClick={() => handleSort("total")} className="group inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-700" title="Sort by total">
+                        Total{sortIcon("total")}
+                      </button>
+                    </th>
+                  )}
                   {isColVisible("clientTotal") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client Total</th>}
                   {isColVisible("vendorCost") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Vendor Cost</th>}
                   {isColVisible("profit") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit</th>}
                   {isColVisible("profitPct") && <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit %</th>}
                   {isColVisible("xtrfProject") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Project</th>}
                   {isColVisible("xtrfInvoice") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">XTRF Invoice</th>}
-                  {isColVisible("delivery") && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client Deadline</th>}
+                  {isColVisible("delivery") && (
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      <button type="button" onClick={() => handleSort("deadline")} className="group inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-700" title="Sort by client deadline">
+                        Client Deadline{sortIcon("deadline")}
+                      </button>
+                    </th>
+                  )}
                   <th className="px-3 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                     <span className="sr-only">Actions</span>
                   </th>
