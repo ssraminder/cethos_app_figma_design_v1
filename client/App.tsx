@@ -80,6 +80,8 @@ import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
 import AdminAIAnalytics from "./pages/admin/AdminAIAnalytics";
 import AdminReports from "./pages/admin/AdminReports";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminSops from "./pages/admin/AdminSops";
+import AdminSopDetail from "./pages/admin/AdminSopDetail";
 import AdminSmsTemplates from "./pages/admin/AdminSmsTemplates";
 import Patterns from "./pages/admin/Patterns";
 import Learning from "./pages/admin/Learning";
@@ -438,6 +440,8 @@ const App = () => (
                     <Route path="vendors/new" element={<AdminVendorNew />} />
                     <Route path="vendors/:vendorId" element={<AdminVendorDetail />} />
                     <Route path="iso-quizzes" element={<AdminIsoQuizzes />} />
+                    <Route path="sops" element={<AdminSops />} />
+                    <Route path="sops/:id" element={<AdminSopDetail />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
                     <Route path="recruitment/system/regrade-backfill" element={<RecruitmentRegradeBackfill />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
