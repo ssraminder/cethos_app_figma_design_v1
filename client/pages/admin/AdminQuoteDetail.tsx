@@ -3913,6 +3913,16 @@ export default function AdminQuoteDetail() {
                     {formatEntryPoint(quote.entry_point)}
                   </span>
                 </div>
+                {quote.customer_note && !hitlReview && (
+                  <div className="col-span-2 bg-blue-50 border border-blue-100 rounded-md p-3">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                      Customer Note
+                    </p>
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                      {quote.customer_note}
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-gray-500">No customer information</p>
