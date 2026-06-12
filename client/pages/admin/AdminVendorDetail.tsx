@@ -45,7 +45,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   payments: "Payments",
   documents: "Documents",
   auth: "Auth / Invitation",
-  nda: "NDA",
+  nda: "Agreements",
   qms: "QMS",
   jobs: "Jobs",
 };
