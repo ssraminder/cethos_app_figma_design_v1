@@ -170,6 +170,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Vendors",
   },
   {
+    label: "SOPs",
+    path: "/admin/sops",
+    icon: BookOpen,
+    section: "Quality",
+  },
+  {
     label: "Review Jobs",
     path: "/admin/tr/jobs",
     icon: Languages,
