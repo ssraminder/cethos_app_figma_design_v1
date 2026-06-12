@@ -67,7 +67,36 @@ export default function PublicSubmissionsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<StatusFilter>('unreviewed');
   const [detail, setDetail] = useState<Submission | null>(null);
+  const [converting, setConverting] = useState(false);
   const navigate = useNavigate();
+
+  const createQuoteFromSubmission = async (submission: Submission) => {
+    if (submission.converted_to_quote_id) {
+      navigate(`/admin/quotes/${submission.converted_to_quote_id}`);
+      return;
+    }
+    setConverting(true);
+    const tid = toast.loading('Creating quote from submission…');
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'convert-submission-to-quote',
+        { body: { submission_id: submission.id } },
+      );
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || 'Conversion failed');
+      const parts = [`Quote ${data.quote_number || ''} created`.trim()];
+      if (data.files_copied) parts.push(`${data.files_copied} file(s) attached`);
+      if (data.files_failed) parts.push(`${data.files_failed} file(s) failed`);
+      if (data.files_skipped_infected)
+        parts.push(`${data.files_skipped_infected} infected file(s) skipped`);
+      toast.success(parts.join(' — '), { id: tid });
+      navigate(`/admin/quotes/${data.quote_id}`);
+    } catch (err: any) {
+      toast.error(`Couldn't create quote: ${err.message}`, { id: tid });
+    } finally {
+      setConverting(false);
+    }
+  };
 
   const fetchRows = useCallback(async () => {
     setLoading(true);
@@ -316,8 +345,23 @@ export default function PublicSubmissionsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {r.order_or_quote_id ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-muted rounded text-xs font-mono">
+                    {r.converted_to_quote_id ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/admin/quotes/${r.converted_to_quote_id}`);
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-xs font-medium hover:bg-emerald-100"
+                        title="Open the quote created from this submission"
+                      >
+                        <Hash className="w-3 h-3" />
+                        Quote created
+                      </button>
+                    ) : r.order_or_quote_id ? (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-muted rounded text-xs font-mono"
+                        title="Reference provided by the customer — verify manually"
+                      >
                         <Hash className="w-3 h-3" />
                         {r.order_or_quote_id}
                       </span>
@@ -370,9 +414,8 @@ export default function PublicSubmissionsPage() {
           onPreview={previewFile}
           onDownloadAll={() => downloadAll(detail)}
           onMarkReviewed={markReviewed}
-          onCreateQuote={() => {
-            navigate(`/admin/orders/new?prefillFromSubmission=${detail.id}`);
-          }}
+          onCreateQuote={() => createQuoteFromSubmission(detail)}
+          converting={converting}
         />
       )}
     </div>
@@ -449,6 +492,7 @@ function DetailModal({
   onDownloadAll,
   onMarkReviewed,
   onCreateQuote,
+  converting,
 }: {
   submission: Submission;
   onClose: () => void;
@@ -457,6 +501,7 @@ function DetailModal({
   onDownloadAll: () => void;
   onMarkReviewed: (id: string) => void;
   onCreateQuote: () => void;
+  converting: boolean;
 }) {
   const infected = submission.scan_status === 'scan_infected';
   const scanning = submission.scan_status === 'scan_pending';
@@ -627,10 +672,19 @@ function DetailModal({
           <div className="flex gap-2">
             <button
               onClick={onCreateQuote}
-              disabled={infected || scanning}
+              disabled={infected || scanning || converting}
               className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+              title={
+                submission.converted_to_quote_id
+                  ? 'Open the quote created from this submission'
+                  : 'Create a draft quote with these documents attached'
+              }
             >
-              Create quote
+              {converting
+                ? 'Creating…'
+                : submission.converted_to_quote_id
+                  ? 'Open quote'
+                  : 'Create quote'}
             </button>
             {!submission.reviewed_at && (
               <button
