@@ -109,9 +109,13 @@ serve(async (req: Request) => {
   const { data: quote, error: qErr } = await supabase
     .from("quotes")
     .select(
+      // Disambiguate the customers embed: quotes has TWO FKs to customers
+      // (customer_id + approved_by_customer_id). A bare `customers(...)` embed
+      // is ambiguous → PostgREST 400 → this function mis-reported every quote
+      // as quote_not_found, so NO acknowledgment email ever sent.
       `id, quote_number, created_at, customer_id, service_id, internal_project_id,
        source_language_id, target_language_id, target_language_other,
-       customers (id, full_name, email, company_name)`,
+       customers!quotes_customer_id_fkey (id, full_name, email, company_name)`,
     )
     .eq("id", quoteId)
     .maybeSingle();

@@ -229,6 +229,25 @@ serve(async (req: Request) => {
       console.error("submission stamp failed:", stampErr.message);
     }
 
+    // 5. Fire the customer "We've got your request" acknowledgment so the
+    // submitter hears back once their documents become a quote. Non-blocking
+    // and idempotent (notify-customer-quote-ack dedups per quote_id), mirroring
+    // the customer-quote-finalize-files path.
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrl && serviceRoleKey) {
+      fetch(`${supabaseUrl}/functions/v1/notify-customer-quote-ack`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ quote_id: quote.id }),
+      }).catch((e) =>
+        console.warn("quote-ack notify failed (non-blocking):", e?.message ?? e),
+      );
+    }
+
     return jsonResponse({
       success: true,
       quote_id: quote.id,
