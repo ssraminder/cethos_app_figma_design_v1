@@ -73,14 +73,10 @@ serve(async (req) => {
       return json({ success: false, error: "Could not resolve acting staff user (staff_id missing or not linked to an auth user)." }, 401);
     }
 
-    // Scoped client for qms schema RPCs (record_qualification lives in qms).
-    const qmsClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { db: { schema: "qms" } },
-    );
-
-    const { data: result, error } = await qmsClient.rpc("record_qualification", {
+    // PostgREST does not expose the qms schema, so { db: { schema: 'qms' } }
+    // clients fail with "Invalid schema: qms" even under service_role. Call
+    // the public SECURITY DEFINER wrapper instead (2026-06-12 audit fix).
+    const { data: result, error } = await supabase.rpc("qms_record_qualification_wrapper", {
       p_vendor_id: vendor_id,
       p_role_code: role_code,
       p_competence_basis_code: competence_basis_code,
