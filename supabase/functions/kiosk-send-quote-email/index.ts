@@ -61,7 +61,9 @@ serve(async (req: Request) => {
     const { data: quote, error: quoteErr } = await supabase
       .from("quotes")
       .select(
-        "id, quote_number, customer_id, total, kiosk_device_id, customers(id, email, full_name)",
+        // Disambiguate: quotes has two FKs to customers (customer_id +
+        // approved_by_customer_id); a bare customers(...) embed 400s.
+        "id, quote_number, customer_id, total, kiosk_device_id, customers!quotes_customer_id_fkey(id, email, full_name)",
       )
       .eq("id", quoteId)
       .maybeSingle();
