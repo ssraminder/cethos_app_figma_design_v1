@@ -76,6 +76,7 @@ serve(async (req) => {
       jobsRes,
       cvRes,
       ndaRes,
+      gvsaRes,
     ] = await Promise.all([
       // 1. Vendor record
       supabase.from("vendors").select("*").eq("id", vendorId).single(),
@@ -142,7 +143,16 @@ serve(async (req) => {
         .from("vendor_nda_signatures")
         .select("id", { count: "exact", head: true })
         .eq("vendor_id", vendorId)
-        .eq("is_current", true),
+        .eq("is_current", true)
+        .eq("agreement_type", "nda"),
+
+      // 10. Current signed GVSA (General Vendor Service Agreement).
+      supabase
+        .from("vendor_nda_signatures")
+        .select("id", { count: "exact", head: true })
+        .eq("vendor_id", vendorId)
+        .eq("is_current", true)
+        .eq("agreement_type", "gvsa"),
     ]);
 
     if (vendorRes.error) {
@@ -224,6 +234,7 @@ serve(async (req) => {
     const isAgency = String(vendor.vendor_type ?? "").toLowerCase() === "agency";
     const hasCv = isAgency || (cvRes.count ?? 0) > 0;
     const hasNda = (ndaRes.count ?? 0) > 0;
+    const hasGvsa = (gvsaRes.count ?? 0) > 0;
     const hasPaymentInfo = paymentInfoRes.data !== null;
 
     // Even-weighted 8-item profile completeness checklist.
@@ -261,6 +272,7 @@ serve(async (req) => {
       active_job_count: activeJobs.length,
       has_cv: hasCv,
       has_nda: hasNda,
+      has_gvsa: hasGvsa,
       profile_completeness: profileCompleteness,
       profile_checks: completenessChecks,
       activation_eligible: activationEligible,
