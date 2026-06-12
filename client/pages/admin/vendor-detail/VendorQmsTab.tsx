@@ -60,6 +60,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
   const [loading, setLoading] = useState(true);
   const [qualifications, setQualifications] = useState<RoleQualificationRow[]>([]);
   const [ndas, setNdas] = useState<NdaRow[]>([]);
+  const [portalNdaSignedAt, setPortalNdaSignedAt] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -83,6 +84,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
       }
       setQualifications((data.qualifications as RoleQualificationRow[]) ?? []);
       setNdas((data.ndas as NdaRow[]) ?? []);
+      setPortalNdaSignedAt((data.portal_nda_signed_at as string | null) ?? null);
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to load QMS data");
     } finally {
@@ -130,9 +132,17 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
       <div className="rounded-lg border bg-white p-4">
         <div className="text-sm font-medium text-gray-700 mb-2">NDA on file</div>
         {ndas.length === 0 ? (
-          <div className="text-sm text-gray-500 flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-amber-500" /> No NDA recorded. One will be created when you record the first qualification.
-          </div>
+          portalNdaSignedAt ? (
+            <div className="text-sm text-gray-700 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-teal-600" />
+              Signed via vendor portal {new Date(portalNdaSignedAt).toLocaleDateString()}
+              <span className="text-gray-400 text-xs">(agreements system — QMS record will be created with the first qualification)</span>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-500" /> No NDA recorded. One will be created when you record the first qualification.
+            </div>
+          )
         ) : (
           <ul className="text-sm text-gray-700 space-y-1">
             {ndas.map((n) => (
