@@ -23,7 +23,12 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
-const PROMPT_VERSION = "auto-qualify-v2";
+const PROMPT_VERSION = "auto-qualify-v3";
+// v3 (rules only, extraction prompt unchanged): §3.1.4(a)/(b) require a real
+// higher-education degree (bachelor/master/phd) — Amd.1:2017 says "recognized
+// institution of higher education", so course/diploma-level translation
+// training no longer satisfies (a). Found in the 2026-06-12 audit sampling.
+const DEGREE_LEVELS = ["bachelor", "master", "phd"];
 const MODEL = "claude-sonnet-4-6";
 const CV_BUCKET = "vendor-cvs";
 
@@ -151,8 +156,11 @@ function decide(args: {
 
   const ex = args.extraction;
   const claimedYears = num(ex.translation_experience?.total_years_estimate);
-  const transDegree = (ex.degrees ?? []).find((d) => d.is_translation_degree && d.quote?.trim());
-  const anyDegree = (ex.degrees ?? []).find((d) => d.quote?.trim());
+  const higherEdDegrees = (ex.degrees ?? []).filter(
+    (d) => d.quote?.trim() && DEGREE_LEVELS.includes((d.level ?? "").toLowerCase()),
+  );
+  const transDegree = higherEdDegrees.find((d) => d.is_translation_degree);
+  const anyDegree = higherEdDegrees[0];
 
   // Contradiction: CV timeline vs self-declared years differ wildly.
   if (claimedYears != null && args.selfYears != null && Math.abs(claimedYears - args.selfYears) > 3) {
@@ -431,6 +439,181 @@ serve(async (req) => {
         by_basis: tally((r) => r.basis_code as string | null),
         reviser_also: (results ?? []).filter((r) => (r.roles as string[] | null)?.includes("reviser")).length,
         nda_missing: (results ?? []).filter((r) => (r.flags as string[] | null)?.includes("nda_missing")).length,
+      });
+    }
+
+    // Re-decide every processed row of a prior run from its STORED extraction —
+    // no Claude calls, so a rules change (e.g. v3's degree-level fix) can be
+    // re-applied across the roster in seconds. Produces a fresh run for audit.
+    if (action === "reevaluate") {
+      const { source_run_id } = body;
+      if (!source_run_id) return json({ success: false, error: "source_run_id required" }, 400);
+
+      const { data: run, error: rErr } = await qms
+        .from("qms_auto_qualification_runs")
+        .insert({ mode: "dry_run", prompt_version: PROMPT_VERSION, model: MODEL, params: { reevaluated_from: source_run_id } })
+        .select("*")
+        .single();
+      if (rErr) return json({ success: false, error: rErr.message }, 400);
+
+      let copied = 0;
+      const PAGE = 200;
+      for (let offset = 0; ; offset += PAGE) {
+        const { data: rows, error } = await qms
+          .from("qms_auto_qualification_results")
+          .select("*")
+          .eq("run_id", source_run_id)
+          .order("created_at")
+          .range(offset, offset + PAGE - 1);
+        if (error) return json({ success: false, error: error.message }, 400);
+        if (!rows?.length) break;
+
+        const newRows = rows.map((row) => {
+          if (row.status !== "processed") {
+            return { run_id: run.id, vendor_id: row.vendor_id, status: row.status, error: row.error, inputs: row.inputs, extraction: row.extraction };
+          }
+          const inputs = row.inputs ?? {};
+          const verdict = inputs.extraction_error
+            ? { decision: "escalate" as const, basis: null, roles: [], confidence: 0, reasons: [String(inputs.extraction_error)], flags: ["extraction_failed"] }
+            : decide({
+                vendorType: inputs.vendor_type ?? null,
+                hasCv: !!row.extraction,
+                extraction: row.extraction,
+                selfYears: num(inputs.self_years),
+                internalJobs: num(inputs.internal_jobs) ?? 0,
+                internalTenureYears: num(inputs.internal_tenure_years) ?? 0,
+                revisionSteps: num(inputs.revision_steps) ?? 0,
+                hasNda: !!inputs.has_nda,
+              });
+          return {
+            run_id: run.id,
+            vendor_id: row.vendor_id,
+            status: "processed",
+            decision: verdict.decision,
+            roles: verdict.roles,
+            basis_code: verdict.basis,
+            confidence: verdict.confidence,
+            reasons: verdict.reasons,
+            flags: verdict.flags,
+            inputs,
+            extraction: row.extraction,
+            processed_at: new Date().toISOString(),
+          };
+        });
+        const { error: insErr } = await qms.from("qms_auto_qualification_results").insert(newRows);
+        if (insErr) return json({ success: false, error: insErr.message }, 400);
+        copied += rows.length;
+        if (rows.length < PAGE) break;
+      }
+      const { error: doneErr } = await qms
+        .from("qms_auto_qualification_runs")
+        .update({ vendor_count: copied, status: "completed", finished_at: new Date().toISOString() })
+        .eq("id", run.id);
+      if (doneErr) return json({ success: false, error: doneErr.message }, 400);
+      return json({ success: true, run_id: run.id, vendor_count: copied });
+    }
+
+    // Release auto_qualify rows into real qms records. Gated on SOP-001 being
+    // ACTIVE (the §3.1.1 signoff) and on a staff identity — the acting user
+    // becomes qualified_by while the evidence stays machine-labelled.
+    if (action === "apply") {
+      const { run_id, staff_id, result_id } = body;
+      const limit = Math.min(Math.max(num(body.limit) ?? 25, 1), 100);
+      if (!run_id || !staff_id) return json({ success: false, error: "run_id + staff_id required" }, 400);
+
+      // Two-step read — sops↔sop_versions has two FK relationships, and
+      // PostgREST embeds across ambiguous FKs have silently failed before.
+      const { data: sop } = await sb
+        .from("sops")
+        .select("id, current_version_id")
+        .eq("slug", "qualify-translators-revisers")
+        .maybeSingle();
+      let sopStatus: string | null = null;
+      if (sop?.current_version_id) {
+        const { data: ver } = await sb.from("sop_versions").select("status").eq("id", sop.current_version_id).maybeSingle();
+        sopStatus = ver?.status ?? null;
+      }
+      if (sopStatus !== "active") {
+        return json({
+          success: false,
+          code: "SOP_NOT_ACTIVE",
+          error: "SOP-001 (How we qualify translators and revisers) must be approved and active before qualifications can be applied. Activate it at /admin/sops.",
+        }, 409);
+      }
+
+      const { data: staffRow } = await sb.from("staff_users").select("auth_user_id, full_name").eq("id", staff_id).maybeSingle();
+      const actingUserId = staffRow?.auth_user_id ?? null;
+      if (!actingUserId) return json({ success: false, error: "staff_id is not linked to an auth user" }, 401);
+
+      let q = qms
+        .from("qms_auto_qualification_results")
+        .select("id")
+        .eq("run_id", run_id)
+        .eq("status", "processed")
+        .eq("decision", "auto_qualify")
+        .is("applied_at", null)
+        .limit(limit);
+      if (result_id) q = q.eq("id", result_id);
+      const { data: targets, error: tErr } = await q;
+      if (tErr) return json({ success: false, error: tErr.message }, 400);
+
+      const applied: Array<Record<string, unknown>> = [];
+      const failed: Array<Record<string, unknown>> = [];
+      for (const t of targets ?? []) {
+        const { data, error } = await sb.rpc("qms_apply_auto_qualification", {
+          p_result_id: t.id,
+          p_acting_user_id: actingUserId,
+        });
+        if (error) failed.push({ result_id: t.id, error: error.message });
+        else applied.push({ result_id: t.id, ...data });
+      }
+      const { count: remaining } = await qms
+        .from("qms_auto_qualification_results")
+        .select("id", { count: "exact", head: true })
+        .eq("run_id", run_id)
+        .eq("status", "processed")
+        .eq("decision", "auto_qualify")
+        .is("applied_at", null);
+      return json({ success: true, applied: applied.length, failed, remaining: remaining ?? 0 });
+    }
+
+    if (action === "latest_run") {
+      const { data: run, error } = await qms
+        .from("qms_auto_qualification_runs")
+        .select("*")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json({ success: true, run });
+    }
+
+    if (action === "list_results") {
+      const { run_id, decision } = body;
+      const limit = Math.min(Math.max(num(body.limit) ?? 50, 1), 200);
+      const offset = Math.max(num(body.offset) ?? 0, 0);
+      if (!run_id) return json({ success: false, error: "run_id required" }, 400);
+
+      let q = qms
+        .from("qms_auto_qualification_results")
+        .select("id, vendor_id, status, decision, roles, basis_code, confidence, reasons, flags, applied_at, error", { count: "exact" })
+        .eq("run_id", run_id)
+        .order("confidence", { ascending: false, nullsFirst: false })
+        .range(offset, offset + limit - 1);
+      if (decision) q = decision === "error" ? q.eq("status", "error") : q.eq("decision", decision);
+      const { data: rows, count, error } = await q;
+      if (error) return json({ success: false, error: error.message }, 400);
+
+      const vendorIds = [...new Set((rows ?? []).map((r) => r.vendor_id))];
+      let vendorMap: Record<string, unknown> = {};
+      if (vendorIds.length) {
+        const { data: vendors } = await sb.from("vendors").select("id, full_name, business_name, email").in("id", vendorIds);
+        vendorMap = Object.fromEntries((vendors ?? []).map((v) => [v.id, { name: v.full_name ?? v.business_name, email: v.email }]));
+      }
+      return json({
+        success: true,
+        total: count ?? 0,
+        results: (rows ?? []).map((r) => ({ ...r, vendor: vendorMap[r.vendor_id] ?? null })),
       });
     }
 

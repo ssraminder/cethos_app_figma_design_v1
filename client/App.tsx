@@ -82,6 +82,7 @@ import AdminReports from "./pages/admin/AdminReports";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminSops from "./pages/admin/AdminSops";
 import AdminSopDetail from "./pages/admin/AdminSopDetail";
+import AdminQmsQueue from "./pages/admin/AdminQmsQueue";
 import AdminSmsTemplates from "./pages/admin/AdminSmsTemplates";
 import Patterns from "./pages/admin/Patterns";
 import Learning from "./pages/admin/Learning";
@@ -442,6 +443,7 @@ const App = () => (
                     <Route path="iso-quizzes" element={<AdminIsoQuizzes />} />
                     <Route path="sops" element={<AdminSops />} />
                     <Route path="sops/:id" element={<AdminSopDetail />} />
+                    <Route path="qms/queue" element={<AdminQmsQueue />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
                     <Route path="recruitment/system/regrade-backfill" element={<RecruitmentRegradeBackfill />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
