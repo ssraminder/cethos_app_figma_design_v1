@@ -18,6 +18,14 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-13 — Vendor iso-evidence upload form improvements (VENDOR repo PR #233)
+- **Three improvements to `apps/vendor/src/components/iso-evidence/IsoEvidencePage.tsx`** (vendor.cethos.com), completing the Phase F directive's "improve the form" part:
+  1. **AI disclaimer + vendor@cethos.com fallback** on the form when the request was AI-generated — mirrors the email. `vendor-resolve-doc-request` (vendor repo) now selects `ai_drafted_message` and returns `ai_generated: !!ai_drafted_message`; `isoEvidence.ts` ResolvedDocRequest gained `ai_generated?`.
+  2. **Per-item guidance always visible** — the rich `isoEvidenceGuide.ts` description (every slug has description+examples+tips) now shows under each item by default; examples+tips stay behind the "Examples we accept & tips" toggle (was entirely hidden behind a "What counts?" toggle).
+  3. **Route-aware "What's still needed to qualify" banner** — lists outstanding items, names the chosen §3.1.4 route (uses existing routeContext + QUALIFYING_ROUTES). 
+- **Verified live on vendor.cethos.com** via an existing non-AI request token (Farah): banner renders with the 3 outstanding items + "pick a route" hint; per-item always-on description + "Examples we accept & tips" toggle confirmed; no AI disclaimer (correct — non-AI request). AI-disclaimer rendering is logic-verified (endpoint returns the flag; conditional is trivial) — will show on real AI requests once sent.
+- **Both repos now carry the AI disclaimer** (admin email via PR #949, vendor form via #233). Shared backend project lmzoyezvsjgsxveoakdr.
+
 ### 2026-06-13 — QMS Phase F: AI-tailored evidence requests for insufficient-evidence vendors (PR #949)
 - **User directive:** for insufficient-evidence profiles ask for more info; improve the upload form; send directly/automated; email must carry an AI disclaimer ("generated using AI, may contain errors") + "if this doesn't apply, email vendor@cethos.com".
 - **Built:** `vendor-request-documents` gains `ai_generated` flag → appends the AI disclaimer + vendor@cethos.com fallback to the email (and stores `ai_drafted_message`). `qms-request-documents-bulk` insufficient_evidence cohort is now per-vendor: deterministic gap routing (higher-ed degree present (71/90) → ask 2y-experience + degree cert + optional cert; else (19/90) → translation degree or 5y-experience) picks items; Claude **haiku-4-5** writes a tailored message grounded in the stored CV extraction (temp 0.3, deterministic fallback if API down). Preview generates ONE real AI sample via dry-run so staff see it; Queue confirm shows it. AI cohort batches at 15 (model call per vendor).
