@@ -182,6 +182,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Quality",
   },
   {
+    label: "Staff Competence",
+    path: "/admin/qms/staff",
+    icon: GraduationCap,
+    section: "Quality",
+  },
+  {
     label: "Review Jobs",
     path: "/admin/tr/jobs",
     icon: Languages,

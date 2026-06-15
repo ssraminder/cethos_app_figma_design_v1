@@ -16,6 +16,7 @@ import type { TabProps } from "./types";
 const ROLE_CODES = [
   { code: "translator",  label: "Translator" },
   { code: "reviser",     label: "Reviser" },
+  { code: "reviewer",    label: "Reviewer (domain specialist)" },
   { code: "post_editor", label: "Post-editor" },
   { code: "interpreter", label: "Interpreter" },
 ] as const;
