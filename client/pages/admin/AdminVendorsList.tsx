@@ -256,6 +256,7 @@ export default function AdminVendorsList() {
   const [portalFilter, setPortalFilter] = useState("");
   const [cvFilter, setCvFilter] = useState<"" | "has_cv" | "no_cv">("");
   const [ndaFilter, setNdaFilter] = useState<"" | "has_nda" | "no_nda">("");
+  const [qualFilter, setQualFilter] = useState<"" | "qualified" | "not_qualified">("");
   const [countries, setCountries] = useState<string[]>([]);
   // Pre-loaded ID sets for vendors who have CV / signed NDA. These are the
   // small side of the join (~300 each out of ~1500) so an .in()/.not(in)
@@ -264,6 +265,9 @@ export default function AdminVendorsList() {
   // newly-uploaded CVs / signed NDAs appear without a full reload.
   const [vendorsWithCv, setVendorsWithCv] = useState<string[] | null>(null);
   const [vendorsWithNda, setVendorsWithNda] = useState<string[] | null>(null);
+  const [vendorsQualified, setVendorsQualified] = useState<string[] | null>(null);
+  // vendor_id → qualified role codes, for the "Qualified" column chips.
+  const [qualRoles, setQualRoles] = useState<Record<string, string[]>>({});
   // Per-row doc metadata for the CV + NDA columns. Keyed by vendor_id.
   // The CV map gives us the storage path so we can mint signed URLs on
   // demand; the NDA map gives us the HTML snapshot to render inline
@@ -336,6 +340,21 @@ export default function AdminVendorsList() {
         }
         setNdaDocs(map);
         setVendorsWithNda([...ids]);
+      });
+    // QMS qualification summary (public view over qms.role_qualifications).
+    supabase
+      .from("qms_vendor_qualified_roles" as any)
+      .select("vendor_id, role_codes")
+      .then(({ data }) => {
+        const map: Record<string, string[]> = {};
+        const ids = new Set<string>();
+        for (const r of (data ?? []) as { vendor_id: string; role_codes: string[] }[]) {
+          if (!r.vendor_id) continue;
+          ids.add(r.vendor_id);
+          map[r.vendor_id] = r.role_codes ?? [];
+        }
+        setQualRoles(map);
+        setVendorsQualified([...ids]);
       });
 
     Promise.all([
@@ -424,6 +443,18 @@ export default function AdminVendorsList() {
         query = query.not("id", "in", `(${vendorsWithNda.join(",")})`);
       }
     }
+    // Qualification filter — same pre-loaded ID-set pattern.
+    if (qualFilter === "qualified" && vendorsQualified) {
+      if (vendorsQualified.length === 0) {
+        query = query.eq("id", "00000000-0000-0000-0000-000000000000");
+      } else {
+        query = query.in("id", vendorsQualified);
+      }
+    } else if (qualFilter === "not_qualified" && vendorsQualified) {
+      if (vendorsQualified.length > 0) {
+        query = query.not("id", "in", `(${vendorsQualified.join(",")})`);
+      }
+    }
 
     const { data, count, error } = await query;
     if (!error) {
@@ -442,8 +473,10 @@ export default function AdminVendorsList() {
     portalFilter,
     cvFilter,
     ndaFilter,
+    qualFilter,
     vendorsWithCv,
     vendorsWithNda,
+    vendorsQualified,
   ]);
 
   // Clear selection when data changes
@@ -512,6 +545,7 @@ export default function AdminVendorsList() {
     portalFilter,
     cvFilter,
     ndaFilter,
+    qualFilter,
   ]);
 
   useEffect(() => {
@@ -576,6 +610,7 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
     setPortalFilter("");
     setCvFilter("");
     setNdaFilter("");
+    setQualFilter("");
     setPage(1);
   };
 
@@ -586,6 +621,7 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
     vendorTypeFilter ||
     languageFilter ||
     countryFilter ||
+    qualFilter ||
     portalFilter ||
     cvFilter ||
     ndaFilter;
@@ -794,6 +830,22 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
             </select>
           </div>
 
+          {/* QMS qualification */}
+          <div className="min-w-[140px]">
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              ISO Qualified
+            </label>
+            <select
+              value={qualFilter}
+              onChange={(e) => setQualFilter(e.target.value as "" | "qualified" | "not_qualified")}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="">All</option>
+              <option value="qualified">Qualified</option>
+              <option value="not_qualified">Not qualified</option>
+            </select>
+          </div>
+
           {/* Clear Filters */}
           {hasActiveFilters && (
             <button
@@ -846,6 +898,9 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Docs
                 </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Qualified
+                </th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Jobs
                 </th>
@@ -872,14 +927,14 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr>
-                  <td colSpan={13} className="text-center py-12 text-gray-400">
+                  <td colSpan={14} className="text-center py-12 text-gray-400">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
                     Loading vendors...
                   </td>
                 </tr>
               ) : vendors.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="text-center py-12 text-gray-400">
+                  <td colSpan={14} className="text-center py-12 text-gray-400">
                     No vendors found
                   </td>
                 </tr>
@@ -983,6 +1038,23 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {(qualRoles[v.id]?.length ?? 0) > 0 ? (
+                        <div className="flex flex-wrap gap-1" title={`ISO 17100 qualified: ${qualRoles[v.id].join(", ")}`}>
+                          {qualRoles[v.id].map((role) => (
+                            <span
+                              key={role}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-teal-50 text-teal-700 capitalize"
+                            >
+                              <ShieldCheck className="w-3 h-3" />
+                              {role}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-300 text-xs" title="No ISO 17100 qualification on file">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-sm text-gray-700">
                       {v.total_projects}
