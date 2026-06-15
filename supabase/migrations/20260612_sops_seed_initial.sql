@@ -59,9 +59,9 @@ WITH s2 AS (
 
 **Why this exists:** ISO 17100 says it is not enough to qualify someone once. We must show their skills are **maintained by regular work** and **kept current**, and we must keep records of this.
 
-## The 24-month cycle
+## The 12-month cycle
 
-Every qualification gets a **review date 24 months** after it is granted.
+Every qualification gets a **review date 12 months** after it is granted.
 
 Once a month, the system checks every qualification coming up for review:
 
