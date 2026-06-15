@@ -1725,6 +1725,10 @@ function SendTestsControls({
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [skipNotes, setSkipNotes] = useState("");
+  // ISO 17100 §3.1.4 basis for skip-test onboarding (required — keeps the
+  // §3.1.1 evidence record non-empty even when no test is taken).
+  const [qualBasis, setQualBasis] = useState<"" | "degree_translation" | "degree_other_plus_2y" | "experience_5y">("");
+  const [requestRefs, setRequestRefs] = useState(true);
   const [busy, setBusy] = useState(false);
 
   // Phase — preview state. `picks` is the dryRun response; each entry
@@ -1890,18 +1894,40 @@ function SendTestsControls({
   };
 
   const handleSkipToApprove = async () => {
-    if (skipNotes.trim().length < 10) {
-      toast.error("Explain why you're skipping testing (min 10 chars)");
+    if (!qualBasis) {
+      toast.error("Select the ISO 17100 §3.1.4 qualification basis");
       return;
     }
+    if (skipNotes.trim().length < 10) {
+      toast.error("Explain the basis / why you're skipping testing (min 10 chars)");
+      return;
+    }
+    const isExperience = qualBasis === "degree_other_plus_2y" || qualBasis === "experience_5y";
     setBusy(true);
     try {
       await callEdgeFunction("cvp-approve-application", {
         applicationId: app.id,
         staffId,
-        staffNotes: `[TESTING SKIPPED] ${skipNotes.trim()}`,
+        skipTesting: true,
+        qualificationBasis: qualBasis,
+        staffNotes: `[TESTING SKIPPED — §3.1.4 ${qualBasis}] ${skipNotes.trim()}`,
       });
-      toast.success("Application approved without testing — V11 welcome sent");
+      // Offer to document experience via the existing references flow.
+      if (isExperience && requestRefs) {
+        try {
+          await callEdgeFunction("cvp-request-references", {
+            applicationId: app.id,
+            staffId,
+            staffMessage:
+              "As part of finalising your qualification with Cethos, we'd like to confirm your professional translation experience. Please provide a couple of professional references who can verify your translation work and the dates you worked with them.",
+          });
+          toast.success("Approved without testing — welcome sent + reference request sent");
+        } catch {
+          toast.success("Approved without testing — welcome sent (reference request failed; send it manually)");
+        }
+      } else {
+        toast.success("Application approved without testing — V11 welcome sent");
+      }
       setOpen(false);
       await onAfterAction();
     } catch (err) {
@@ -2275,10 +2301,46 @@ function SendTestsControls({
       {mode === "skip" && (
         <>
           <div className="mb-3 p-3 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-900">
-            <strong>No test will be sent.</strong> Application goes straight to approved, V11 welcome email fires with the password-setup link, and all pending combinations are approved at their default rates. Use this for senior applicants where the CV + references are enough.
+            <strong>No test will be sent.</strong> Application goes straight to approved, V11 welcome email fires with the password-setup link, and all declared combinations are approved at their default rates. ISO 17100 doesn't require a test — but §3.1.4 needs a documented qualification basis, so record it below.
           </div>
           <label className="block text-xs font-medium text-gray-700 mb-1">
-            Why are you skipping testing? (captured in cvp_application_decisions; AI may use the first line in the welcome email)
+            ISO 17100 §3.1.4 qualification basis <span className="text-red-500">*</span>
+          </label>
+          <div className="mb-3 space-y-1.5">
+            {[
+              { v: "degree_translation", l: "(a) Recognised degree in translation / linguistics / language studies" },
+              { v: "degree_other_plus_2y", l: "(b) Degree in another field + 2 years' translation experience" },
+              { v: "experience_5y", l: "(c) 5 years' professional translation experience" },
+            ].map((o) => (
+              <label key={o.v} className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
+                <input
+                  type="radio"
+                  name="qualBasis"
+                  checked={qualBasis === o.v}
+                  onChange={() => setQualBasis(o.v as typeof qualBasis)}
+                  disabled={busy}
+                  className="mt-0.5"
+                />
+                <span>{o.l}</span>
+              </label>
+            ))}
+          </div>
+          {(qualBasis === "degree_other_plus_2y" || qualBasis === "experience_5y") && (
+            <label className="mb-3 flex items-start gap-2 text-xs text-gray-700 cursor-pointer p-2 bg-blue-50 border border-blue-200 rounded">
+              <input
+                type="checkbox"
+                checked={requestRefs}
+                onChange={(e) => setRequestRefs(e.target.checked)}
+                disabled={busy}
+                className="mt-0.5"
+              />
+              <span>
+                Send a reference request to document this experience (references confirm start-year + domains — the §3.1.4 evidence). Recommended.
+              </span>
+            </label>
+          )}
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Basis notes / why you're skipping testing (captured in cvp_application_decisions + the §3.1.4 record; AI may use the first line in the welcome email)
           </label>
           <textarea
             value={skipNotes}
@@ -2300,7 +2362,7 @@ function SendTestsControls({
             <button
               type="button"
               onClick={handleSkipToApprove}
-              disabled={busy || skipNotes.trim().length < 10}
+              disabled={busy || !qualBasis || skipNotes.trim().length < 10}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md disabled:opacity-50"
             >
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
