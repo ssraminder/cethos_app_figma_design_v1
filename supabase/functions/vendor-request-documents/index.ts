@@ -86,6 +86,7 @@ function defaultEmailBody(args: {
   uploadLinkUrl: string;
   expiryDays: number;
   staffMessage: string | null;
+  aiGenerated?: boolean;
 }): { subject: string; html: string } {
   const seen = new Set<string>();
   const itemsHtml = args.items
@@ -125,6 +126,9 @@ function defaultEmailBody(args: {
       bulletList("Please complete the following", itemBullets),
       ctaButton({ label: "Open my evidence checklist", url: args.uploadLinkUrl }),
       hint(`This link expires in ${args.expiryDays} days. If you're missing any specific document, just reply and let us know — we can usually find an alternative.`),
+      ...(args.aiGenerated
+        ? [hint(`Please note: this message was generated using AI and may contain errors. If this request doesn't apply to you, please email <a href="mailto:vendor@cethos.com" style="color:#0d9488;">vendor@cethos.com</a>.`)]
+        : []),
     ].join(""),
     { replyTo: REPLY.vendorMgmt, template: TEMPLATE, preheader: `ISO 17100 evidence needed for your Cethos vendor profile.` },
   );
@@ -149,6 +153,7 @@ serve(async (req: Request) => {
     source_assessment_id?: string;
     expiry_days?: number;
     dry_run?: boolean;
+    ai_generated?: boolean;
   };
   try {
     body = await req.json();
@@ -216,6 +221,7 @@ serve(async (req: Request) => {
           uploadLinkUrl: `${vendorPortalUrl}/iso-evidence/PREVIEW-TOKEN`,
           expiryDays,
           staffMessage,
+          aiGenerated: body.ai_generated === true,
         });
     return json({ success: true, data: { dry_run: true, ...preview } });
   }
@@ -229,6 +235,7 @@ serve(async (req: Request) => {
       request_token_expires_at: expiresAt,
       staff_id: body.staff_id ?? null,
       staff_message: staffMessage,
+      ai_drafted_message: body.ai_generated ? staffMessage : null,
       subject: body.subject ?? null,
       body_html: body.body_html ?? null,
       requested_items: itemsForStorage,
@@ -250,6 +257,7 @@ serve(async (req: Request) => {
         uploadLinkUrl,
         expiryDays,
         staffMessage,
+        aiGenerated: body.ai_generated === true,
       });
 
   // Send via Brevo. Failures don't roll back the request row — the admin
