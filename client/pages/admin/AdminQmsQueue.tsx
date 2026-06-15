@@ -178,11 +178,16 @@ export default function AdminQmsQueue() {
       return;
     }
     const itemLabels = (pv.items ?? []).map((i: { label: string }) => i.label).join("; ");
+    const aiSample = pv.sample_email?.ai_message as string | undefined;
+    const message = pv.ai_generated && aiSample
+      ? `Each vendor gets a secure 30-day upload link with an AI-tailored request based on what their CV was missing. ` +
+        `The email carries an AI disclaimer + a vendor@cethos.com fallback. ${pv.already_requested ?? 0} vendor(s) with an open request are skipped.\n\n` +
+        `Example (generated for ${pv.sample_email?.vendor_first_name || "a vendor"}):\n"${aiSample.slice(0, 400)}${aiSample.length > 400 ? "…" : ""}"`
+      : `Each vendor gets a secure 30-day upload link asking for: ${itemLabels}. ` +
+        `Sent in batches. ${pv.already_requested ?? 0} vendor(s) with an open request are skipped (the reminder cron carries those forward).`;
     const ok = await confirm({
       title: `Request documents from ${pv.eligible} vendor${pv.eligible === 1 ? "" : "s"}?`,
-      message:
-        `Each vendor gets a secure 30-day upload link asking for: ${itemLabels}. ` +
-        `Sent in batches of 25. ${pv.already_requested ?? 0} vendor(s) with an open request are skipped (the reminder cron carries those forward).`,
+      message,
       confirmLabel: `Send to ${pv.eligible}`,
     });
     if (!ok) return;
