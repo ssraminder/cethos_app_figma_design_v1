@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-13 — QMS Phase F: AI-tailored evidence requests for insufficient-evidence vendors (PR #949)
+- **User directive:** for insufficient-evidence profiles ask for more info; improve the upload form; send directly/automated; email must carry an AI disclaimer ("generated using AI, may contain errors") + "if this doesn't apply, email vendor@cethos.com".
+- **Built:** `vendor-request-documents` gains `ai_generated` flag → appends the AI disclaimer + vendor@cethos.com fallback to the email (and stores `ai_drafted_message`). `qms-request-documents-bulk` insufficient_evidence cohort is now per-vendor: deterministic gap routing (higher-ed degree present (71/90) → ask 2y-experience + degree cert + optional cert; else (19/90) → translation degree or 5y-experience) picks items; Claude **haiku-4-5** writes a tailored message grounded in the stored CV extraction (temp 0.3, deterministic fallback if API down). Preview generates ONE real AI sample via dry-run so staff see it; Queue confirm shows it. AI cohort batches at 15 (model call per vendor).
+- **Verified live (no emails sent):** dry-run email contains disclaimer + vendor@cethos.com; bulk preview returns ai_generated:true + a correct tailored sample (Patricia → degree+2y route, referenced her real "bachelor's in Multimedia and Communication Technologies"); admin confirm dialog renders the sample; Cancelled.
+- **Form note (IMPORTANT, still open):** the vendor-facing upload form `apps/vendor/src/components/iso-evidence/IsoEvidencePage.tsx` (VENDOR repo D:\cethos-vendor) ALREADY shows `staff_message` (so the AI message appears there automatically), but does NOT show the AI disclaimer or a vendor@cethos.com "doesn't apply" affordance. Recommended form improvement = mirror those onto the form (needs the resolve endpoint `list-doc-requests`/`vendor-list-doc-requests` to expose ai_drafted_message or an ai_generated flag). Deferred pending user confirmation of what "improve the form" means.
+- **Chase cohort (161 no-CV) unchanged:** generic CV request, no AI message/disclaimer.
+
 ### 2026-06-13 — QMS Phase E: bulk document chase to qualify more vendors (PR #947)
 - **Goal (user directive):** stay on Human Resources, qualify MORE vendors by requesting missing docs from the "nearly qualified." Chosen scope: both cohorts (251), staff-triggered in batches.
 - **Cohorts (live, run ee6605ee, unapplied):** chase **161** (no CV → CV + credentials), escalate·insufficient_evidence **90** (have CV+NDA, no clear §3.1.4 basis → degree/experience/professional-cert). Red-flags (68) + contradiction (11) stay human-review, not doc-chase.
