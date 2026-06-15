@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronRight,
   PlayCircle,
+  Mail,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
@@ -79,10 +80,11 @@ export default function AdminQmsQueue() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
+  const [chasing, setChasing] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const invoke = async (body: Record<string, unknown>) => {
-    const { data, error } = await supabase.functions.invoke("qms-auto-qualify", { body });
+  const invoke = async (body: Record<string, unknown>, fn = "qms-auto-qualify") => {
+    const { data, error } = await supabase.functions.invoke(fn, { body });
     if (error) {
       // supabase.functions.invoke wraps non-2xx as FunctionsHttpError; pull the JSON body.
       const ctx = (error as any)?.context;
@@ -162,6 +164,46 @@ export default function AdminQmsQueue() {
     }
   };
 
+  // Document chase: chase tab → no-CV vendors; escalate tab → the
+  // insufficient-evidence subset. Both fan out vendor-request-documents.
+  const chaseCohort = tab === "chase" ? "chase" : "insufficient_evidence";
+  const canChase = tab === "chase" || tab === "escalate";
+
+  const handleChase = async () => {
+    if (!run || !staffId) return;
+    const pv = await invoke({ action: "preview", run_id: run.id, cohort: chaseCohort }, "qms-request-documents-bulk");
+    if (!pv?.success) { toast.error(pv?.error ?? "Preview failed"); return; }
+    if ((pv.eligible ?? 0) === 0) {
+      toast.info(`No eligible vendors to request from${pv.already_requested ? ` (${pv.already_requested} already have an open request)` : ""}.`);
+      return;
+    }
+    const itemLabels = (pv.items ?? []).map((i: { label: string }) => i.label).join("; ");
+    const ok = await confirm({
+      title: `Request documents from ${pv.eligible} vendor${pv.eligible === 1 ? "" : "s"}?`,
+      message:
+        `Each vendor gets a secure 30-day upload link asking for: ${itemLabels}. ` +
+        `Sent in batches of 25. ${pv.already_requested ?? 0} vendor(s) with an open request are skipped (the reminder cron carries those forward).`,
+      confirmLabel: `Send to ${pv.eligible}`,
+    });
+    if (!ok) return;
+    setChasing(true);
+    try {
+      let totalSent = 0;
+      let totalFailed = 0;
+      for (let guard = 0; guard < 40; guard++) {
+        const r = await invoke({ action: "send", run_id: run.id, cohort: chaseCohort, staff_id: staffId, limit: 25 }, "qms-request-documents-bulk");
+        if (!r?.success) { toast.error(r?.error ?? "Send failed"); break; }
+        totalSent += r.sent ?? 0;
+        totalFailed += (r.failed ?? []).length;
+        if ((r.remaining ?? 0) === 0) break;
+      }
+      if (totalFailed) toast.warning(`${totalFailed} request(s) failed to send.`, { duration: 8000 });
+      toast.success(`Document request sent to ${totalSent} vendor(s).`);
+    } finally {
+      setChasing(false);
+    }
+  };
+
   const decisionCounts = (report?.by_decision ?? {}) as Record<string, number>;
 
   return (
@@ -189,6 +231,19 @@ export default function AdminQmsQueue() {
           >
             {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
             Apply {unapplied} auto-qualification{unapplied === 1 ? "" : "s"}
+          </button>
+        )}
+        {canChase && (
+          <button
+            onClick={handleChase}
+            disabled={chasing}
+            title={tab === "chase"
+              ? "Email no-CV vendors a secure link to upload their CV + credentials"
+              : "Email insufficient-evidence vendors a secure link to upload degree / experience / certification evidence"}
+            className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+          >
+            {chasing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+            Request documents
           </button>
         )}
       </div>
