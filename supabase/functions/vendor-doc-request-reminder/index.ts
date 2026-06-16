@@ -136,6 +136,7 @@ function buildReminderHtml(args: {
       lead(args.tier.preamble),
       `<p style="margin:0 0 8px;font-size:14px;font-weight:600;color:${C.navy};">Still pending</p>`,
       `<ul style="margin:0 0 22px 20px;padding:0;font-size:14px;color:${C.gray};line-height:1.7;">${itemsHtml}</ul>`,
+      `<p style="margin:0 0 22px;padding:10px 14px;background:#f0fdfa;border-radius:6px;font-size:13px;color:${C.tealDeep};line-height:1.6;">A clear <strong>photo or scan works just as well as a PDF</strong> — you can snap a picture of each document with your phone and upload it directly. If an earlier upload didn't go through, it will now.</p>`,
       ctaButton({ label: "Open my evidence checklist", url: args.uploadLinkUrl }),
       hint(`Link expires ${new Date(args.expiresAt).toLocaleDateString()}. Reply to this email if anything is blocking you — we'll figure out a path.`),
     ].join(""),
