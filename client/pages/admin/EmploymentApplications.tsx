@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   RefreshCw,
+  Video,
 } from "lucide-react";
 
 // Full-time ("Careers") staff applications. Submitted by the public form on
@@ -29,6 +30,8 @@ interface FullTimeApplication {
   years_experience: string;
   resume_bucket: string | null;
   resume_path: string;
+  video_bucket: string | null;
+  video_path: string | null;
   screening_experience: string;
   screening_hours: string;
   expected_comp_amount: number | null;
@@ -92,20 +95,24 @@ export default function EmploymentApplications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, isSuperAdmin]);
 
-  async function downloadResume(app: FullTimeApplication) {
-    setDownloadingId(app.id);
+  async function openSigned(bucket: string, path: string, key: string) {
+    setDownloadingId(key);
     try {
       const { data, error } = await supabase.storage
-        .from(app.resume_bucket || "careers-applications")
-        .createSignedUrl(app.resume_path, 300);
+        .from(bucket)
+        .createSignedUrl(path, 300);
       if (error || !data?.signedUrl) {
-        alert(error?.message || "Could not generate download link.");
+        alert(error?.message || "Could not generate link.");
         return;
       }
       window.open(data.signedUrl, "_blank", "noopener,noreferrer");
     } finally {
       setDownloadingId(null);
     }
+  }
+
+  function downloadResume(app: FullTimeApplication) {
+    return openSigned(app.resume_bucket || "careers-applications", app.resume_path, app.id);
   }
 
   // Access control: super_admin only (also enforced by RLS at the DB layer).
@@ -260,6 +267,32 @@ export default function EmploymentApplications() {
                         <td></td>
                         <td colSpan={8} className="px-4 py-4">
                           <dl className="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                            {app.video_path && (
+                              <Field
+                                className="md:col-span-2"
+                                label="Intro video"
+                                value={
+                                  <button
+                                    onClick={() =>
+                                      openSigned(
+                                        app.video_bucket || "careers-videos",
+                                        app.video_path as string,
+                                        `${app.id}-video`,
+                                      )
+                                    }
+                                    disabled={downloadingId === `${app.id}-video`}
+                                    className="inline-flex items-center gap-1.5 text-teal-600 hover:text-teal-800 disabled:opacity-50"
+                                  >
+                                    {downloadingId === `${app.id}-video` ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Video className="w-4 h-4" />
+                                    )}
+                                    Play / download video
+                                  </button>
+                                }
+                              />
+                            )}
                             {app.phone && (
                               <Field label="Phone" value={app.phone} />
                             )}
