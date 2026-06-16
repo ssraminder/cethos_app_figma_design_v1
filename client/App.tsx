@@ -99,6 +99,7 @@ import PdfToWordPage from "./pages/admin/PdfToWordPage";
 import PublicSubmissionsPage from "./pages/admin/PublicSubmissionsPage";
 import AdminPartners from "./pages/admin/AdminPartners";
 import RecruitmentList from "./pages/admin/RecruitmentList";
+import EmploymentApplications from "./pages/admin/EmploymentApplications";
 import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
 import RecruitmentRegradeBackfill from "./pages/admin/RecruitmentRegradeBackfill";
 import AdminQuickPayment from "./pages/admin/AdminQuickPayment";
@@ -446,6 +447,7 @@ const App = () => (
                     <Route path="sops/:id" element={<AdminSopDetail />} />
                     <Route path="qms/queue" element={<AdminQmsQueue />} />
                     <Route path="qms/staff" element={<AdminQmsStaff />} />
+                    <Route path="employment-applications" element={<EmploymentApplications />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
                     <Route path="recruitment/system/regrade-backfill" element={<RecruitmentRegradeBackfill />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />

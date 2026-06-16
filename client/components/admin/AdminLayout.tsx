@@ -50,6 +50,8 @@ interface NavItem {
   icon: ElementType;
   section?: string;
   isChild?: boolean;
+  /** When true, only super_admin staff see this nav item. */
+  superAdminOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -162,6 +164,13 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/recruitment",
     icon: UserPlus,
     section: "Vendors",
+  },
+  {
+    label: "Employment Applications",
+    path: "/admin/employment-applications",
+    icon: Briefcase,
+    section: "Vendors",
+    superAdminOnly: true,
   },
   {
     label: "ISO 17100 quizzes",
@@ -491,7 +500,9 @@ function AdminLayoutInner() {
   const renderNavItems = (isMobile = false) => {
     let currentSection = "";
 
-    return NAV_ITEMS.map((item) => {
+    return NAV_ITEMS.filter(
+      (item) => !item.superAdminOnly || session?.staffRole === "super_admin",
+    ).map((item) => {
       const Icon = item.icon;
       const active = isActivePath(item.path);
 
