@@ -33,7 +33,7 @@ interface FullTimeApplication {
   screening_hours: string;
   expected_comp_amount: number | null;
   expected_comp_currency: string | null;
-  writing_sample: string;
+  about_you: string;
   how_heard: string | null;
   additional_notes: string | null;
   consent_privacy: boolean;
@@ -296,8 +296,8 @@ export default function EmploymentApplications() {
                             />
                             <Field
                               className="md:col-span-2"
-                              label="Writing sample / link"
-                              value={app.writing_sample}
+                              label="About them"
+                              value={app.about_you}
                             />
                             {app.additional_notes && (
                               <Field
