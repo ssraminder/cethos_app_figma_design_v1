@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import { toast } from "sonner";
 import {
   Loader2,
@@ -125,6 +126,27 @@ const newPartition = (
   deadline_time: defaultDeadlineTime,
 });
 
+/** Page through every active vendor (ordered by name) so the picker has the
+ *  full pool. A single un-ranged select is subject to PostgREST's max-rows
+ *  ceiling, which is what truncated the old `.limit(500)` list at "H". */
+async function fetchAllActiveVendors(): Promise<Vendor[]> {
+  const PAGE = 1000;
+  const all: Vendor[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("vendors")
+      .select("id, full_name, email")
+      .eq("status", "active")
+      .order("full_name")
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as Vendor[];
+    all.push(...batch);
+    if (batch.length < PAGE) break;
+  }
+  return all;
+}
+
 export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: Props) {
   const defaultCurrency = parentStep.vendor_currency ?? "CAD";
   /* Derive both date + time from the parent step deadline if it has one,
@@ -166,7 +188,7 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
         if (orderErr) throw orderErr;
         if (!orderRow?.quote_id) throw new Error("Order has no associated quote");
 
-        const [filesRes, aiRes, vendorsRes, staffRes] = await Promise.all([
+        const [filesRes, aiRes, vendorsAll, staffRes] = await Promise.all([
           supabase
             .from("quote_files")
             .select("id, original_filename, custom_label")
@@ -178,12 +200,13 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
             .select("quote_file_id, word_count, page_count")
             .eq("quote_id", orderRow.quote_id)
             .is("deleted_at", null),
-          supabase
-            .from("vendors")
-            .select("id, full_name, email")
-            .eq("status", "active")
-            .order("full_name")
-            .limit(500),
+          // Load the FULL active-vendor pool, not a single capped page. There
+          // are ~1,400 active vendors; the previous `.limit(500)` silently
+          // truncated the list at the letter "H" (the first 500 names sort
+          // through H), so PMs couldn't pick anyone past it. Page through with
+          // .range() so we get every vendor regardless of any PostgREST
+          // max-rows ceiling.
+          fetchAllActiveVendors(),
           supabase
             .from("staff_users")
             .select("id, full_name, email")
@@ -192,7 +215,6 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
         ]);
         if (cancelled) return;
         if (filesRes.error) throw filesRes.error;
-        if (vendorsRes.error) throw vendorsRes.error;
         if (staffRes.error) throw staffRes.error;
 
         // Merge ai counts (per-file rows) onto the file list. Quote-wide
@@ -210,7 +232,7 @@ export function SplitStepModal({ open, onClose, onSplit, parentStep, orderId }: 
           page_count: aiByFile.get(f.id)?.pc ?? null,
         }));
         setFiles(filesWithCounts);
-        setVendors(vendorsRes.data ?? []);
+        setVendors(vendorsAll);
         setStaff(staffRes.data ?? []);
       } catch (e: any) {
         console.error("SplitStepModal load failed:", e);
@@ -577,19 +599,15 @@ function PartitionCard({
 
           {isExternal ? (
             <div className="space-y-2">
-              <select
-                className={sel}
+              <SearchableSelect
                 value={p.vendor_id}
-                onChange={(e) => onUpdate({ vendor_id: e.target.value })}
-              >
-                <option value="">Vendor — search…</option>
-                {vendors.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.full_name}
-                    {v.email ? ` (${v.email})` : ""}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => onUpdate({ vendor_id: val })}
+                placeholder="Search vendor by name or email…"
+                options={vendors.map((v) => ({
+                  value: v.id,
+                  label: v.email ? `${v.full_name} (${v.email})` : v.full_name,
+                }))}
+              />
               <div className="grid grid-cols-2 gap-2">
                 <div className="relative">
                   <input
