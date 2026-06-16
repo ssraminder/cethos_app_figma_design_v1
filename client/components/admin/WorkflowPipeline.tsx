@@ -1117,7 +1117,12 @@ function WorkflowPipeline({
           </button>
         </div>
 
-        {topLevelSteps.map((step) => {
+        {(() => {
+        const renderStepCard = (
+          step: WorkflowStep,
+          ctx: { isChild?: boolean; parentStepNumber?: number } = {},
+        ) => {
+          const isChild = !!ctx.isChild;
           const isActive = [
             "offered",
             "accepted",
@@ -1176,11 +1181,13 @@ function WorkflowPipeline({
                   <div className="flex items-center gap-2">
                     <span>{STEP_STATUS_ICONS[step.status] || "⏳"}</span>
                     <span className="font-medium text-sm">
-                      Step {step.step_number}: {step.name}
+                      {isChild
+                        ? `Step ${ctx.parentStepNumber}.${(step.partition_index ?? 0) + 1}: ${step.name}`
+                        : `Step ${step.step_number}: ${step.name}`}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {step.status === 'pending' && (
+                    {!isChild && step.status === 'pending' && (
                       <span className="flex gap-0.5">
                         {step.step_number > 1 && (
                           <button
@@ -2947,81 +2954,22 @@ function WorkflowPipeline({
                 assignee, and a small file-count badge. */}
             {step.is_split && splitChildren.length > 0 && (
               <div className="ml-10 mb-3 border-l-2 border-cethos-teal-600/30 pl-4 space-y-2">
-                {splitChildren.map((child) => (
-                  <div
-                    key={child.id}
-                    className="bg-white rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[11px] font-bold text-slate-400 tabular-nums">
-                          {step.step_number}.{(child.partition_index ?? 0) + 1}
-                        </span>
-                        <span className="font-medium text-slate-800 truncate">
-                          {child.vendor_name ?? child.assigned_staff_name ?? (
-                            <span className="italic text-slate-400">Not assigned</span>
-                          )}
-                        </span>
-                        <span className="text-[11px] text-slate-400">
-                          · {child.step_files?.length ?? 0} file{(child.step_files?.length ?? 0) === 1 ? "" : "s"}
-                        </span>
-                        {child.actor_type === "internal_work" && (
-                          <span className="text-[10px] uppercase tracking-wide bg-cethos-navy/10 text-cethos-navy px-1.5 py-0.5 rounded font-semibold">
-                            In-house
-                          </span>
-                        )}
-                      </div>
-                      <StepStatusBadge status={child.status} />
-                    </div>
-                    {child.deadline && (
-                      <div className="text-xs text-slate-500 mt-1">
-                        Deadline: {new Date(child.deadline).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                        {child.vendor_total != null && (
-                          <span className="ml-2">
-                            · {child.vendor_currency} ${Number(child.vendor_total).toFixed(2)}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {/* Unassigned child actions — let the PM assign a vendor /
-                        staff member on the child here (the better filter UI
-                        than the flat dropdown in the Split modal). */}
-                    {!child.vendor_id && !child.assigned_staff_id && child.status === "pending" && (
-                      <div className="mt-2 pt-2 border-t border-slate-100">
-                        {child.actor_type === "external_vendor" && (
-                          <button
-                            className="text-xs px-3 py-1 border border-cethos-teal-600 text-cethos-teal-600 rounded hover:bg-cethos-teal-600/5 font-medium"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onFindVendor(child);
-                            }}
-                          >
-                            Find Vendor
-                          </button>
-                        )}
-                        {child.actor_type === "internal_work" && (
-                          <StaffPickerDropdown
-                            disabled={actionLoading === child.id}
-                            onConfirm={async ({ staff_id, deadline, instructions }) =>
-                              handleStepAction(child.id, "assign_staff", {
-                                staff_id,
-                                deadline,
-                                instructions,
-                              })
-                            }
-                          />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-cethos-teal-600/80">
+                  {childrenDelivered}/{splitChildren.length} partition{splitChildren.length === 1 ? "" : "s"} delivered
+                </div>
+                {/* Children render through the SAME full step card as parents,
+                    so each partition gets the complete feature set (Find Vendor
+                    with filters, instructions, Manage Payable, offers/counter,
+                    deadline, Switch Type, unassign). Parent-only affordances
+                    (reorder, split, insert-point) are suppressed via isChild. */}
+                {splitChildren.map((child) =>
+                  renderStepCard(child, { isChild: true, parentStepNumber: step.step_number }),
+                )}
               </div>
             )}
 
+            {!isChild && (
+            <>
             {/* Insert point between steps — shows on hover */}
             <div className="relative flex items-center justify-center h-2 group">
               <button
@@ -3035,9 +2983,13 @@ function WorkflowPipeline({
                 +
               </button>
             </div>
+            </>
+            )}
             </div>
           );
-        })}
+        };
+        return topLevelSteps.map((s) => renderStepCard(s));
+        })()}
       </div>
 
       {/* Admin file-upload modal (available on any step that requires files) */}
