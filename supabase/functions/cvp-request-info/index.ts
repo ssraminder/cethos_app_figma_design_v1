@@ -39,6 +39,8 @@ interface Body {
   staffNotes?: string;
   /** Legacy alias for staffNotes (early callers used this name). */
   requestDetails?: string;
+  /** Internal-auto alias for staffNotes (system-generated missing-docs text). */
+  systemNotes?: string;
   deadlineDays?: number;
   /** Preview-only: run AI + render V17, return without sending or updating status. */
   dryRun?: boolean;
@@ -46,15 +48,27 @@ interface Body {
   editedRequest?: string;
   /** Staff-edited subject line (replaces template default when sending). */
   editedSubject?: string;
+  /**
+   * Internal-auto invocation (e.g. cvp-prescreen-application). When true the
+   * caller MUST present the service-role key as the Bearer token; staff JWT is
+   * not required and the decision is logged with actor = system (staffId from
+   * actingStaffId, else null). Mirrors cvp-approve-application's internal-auto.
+   */
+  internalAuto?: boolean;
+  /** Optional accountable staff id recorded on a system-triggered request. */
+  actingStaffId?: string;
+  /**
+   * Internal-auto only: send the request email + log the decision but DO NOT
+   * change cvp_applications.status. Used when the applicant is also advancing
+   * on another track (e.g. a test in flight) so the documentation chase
+   * doesn't clobber the test-path status. When omitted, status→info_requested.
+   */
+  skipStatusUpdate?: boolean;
 }
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
-
-  const authed = await requireStaff(req);
-  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
-  const staffId = authed.staff.staffId;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -68,7 +82,24 @@ serve(async (req: Request) => {
     return json({ success: false, error: "invalid_json" }, 400);
   }
 
-  const staffNotes = (body.staffNotes ?? body.requestDetails ?? "").trim();
+  // Auth: internal-auto (service-role Bearer) bypasses requireStaff and acts as
+  // the system; otherwise a staff JWT is required. External callers can't use
+  // internalAuto because they don't hold the service-role key.
+  let staffId: string | null;
+  if (body.internalAuto === true) {
+    const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!serviceKey || token !== serviceKey) {
+      return json({ success: false, error: "internal_auto_requires_service_role" }, 403);
+    }
+    staffId = body.actingStaffId ?? null;
+  } else {
+    const authed = await requireStaff(req);
+    if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+    staffId = authed.staff.staffId;
+  }
+
+  const staffNotes = (body.staffNotes ?? body.requestDetails ?? body.systemNotes ?? "").trim();
   if (!body.applicationId) {
     return json({ success: false, error: "applicationId_required" }, 400);
   }
@@ -129,16 +160,25 @@ serve(async (req: Request) => {
     });
   }
 
-  await supabase
-    .from("cvp_applications")
-    .update({
-      status: "info_requested",
-      staff_review_notes: staffNotes,
-      staff_reviewed_by: staffId,
-      staff_reviewed_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    })
-    .eq("id", body.applicationId);
+  // Internal-auto with skipStatusUpdate: send + log only, leave status untouched
+  // (applicant is progressing on another track, e.g. a test in flight).
+  if (body.skipStatusUpdate === true) {
+    await supabase
+      .from("cvp_applications")
+      .update({ updated_at: now.toISOString() })
+      .eq("id", body.applicationId);
+  } else {
+    await supabase
+      .from("cvp_applications")
+      .update({
+        status: "info_requested",
+        staff_review_notes: staffNotes,
+        staff_reviewed_by: staffId,
+        staff_reviewed_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      })
+      .eq("id", body.applicationId);
+  }
 
   const result = await sendMailgunEmail({
     to: { email: app.email as string, name: app.full_name as string },
