@@ -647,6 +647,21 @@ serve(async (req: Request) => {
     // ---- Safe mode: while active, no auto-advance + no auto V2/V8 email ----
     const safeMode = await getSafeModeStatus(supabase);
 
+    // ---- Auto documentation-request toggle (Phase 1, default OFF) ----
+    // When enabled, after the CV review we auto-email the applicant for any
+    // missing required documentation (via cvp-request-info internal-auto)
+    // instead of leaving them for a human to chase. Gated like auto_approve.
+    const { data: autoDocCfg } = await supabase
+      .from("cvp_system_config")
+      .select("value")
+      .eq("key", "auto_doc_request")
+      .maybeSingle();
+    const autoDocEnabled =
+      (autoDocCfg?.value as { enabled?: boolean } | null)?.enabled === true;
+    const autoDocActingStaffId =
+      (autoDocCfg?.value as { acting_staff_id?: string | null } | null)
+        ?.acting_staff_id ?? null;
+
     // ---- Build staff-guidance prefix from prior verdicts (global learning) ----
     // Aggregates cvp_prescreen_flag_feedback rows where staff marked the same
     // red flag as `invalid` ≥2x with ≥70% invalid rate; tells Claude not to
@@ -976,6 +991,93 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
       console.error(
         `Error in auto-send-General hook for ${applicationId}:`,
         autoSendErr,
+      );
+    }
+
+    // ---- Auto documentation-request (Phase 1) ----
+    // When the toggle is on, after the CV review we automatically email the
+    // applicant for any MISSING required documentation and log it — instead of
+    // leaving the application for a human to chase. Deterministic missing-doc
+    // detection here; the applicant-facing message is AI-written inside
+    // cvp-request-info (the house "deterministic value + AI prose" split).
+    // If the application would otherwise dead-end in staff_review, the request
+    // becomes its live status (info_requested). If it's advancing to a test,
+    // we send + log but keep the test-path status (skipStatusUpdate).
+    // Translators only in Phase 1; cognitive-debriefing is a fast-follow.
+    try {
+      const aiFailed = aiResult.error === "ai_fallback";
+      if (
+        autoDocEnabled &&
+        !safeMode.active &&
+        !aiFailed &&
+        app.role_type === "translator"
+      ) {
+        const missing: string[] = [];
+        if (!cv.read) {
+          missing.push("an up-to-date CV/résumé in PDF format");
+        }
+        const certQuality = (aiResult as Record<string, unknown>)
+          .certification_quality as string | undefined;
+        const hasCerts =
+          Array.isArray(app.certifications) && app.certifications.length > 0;
+        if (certQuality === "none" || certQuality === "low" || !hasCerts) {
+          missing.push(
+            "documentary evidence of your translation qualifications — a degree or diploma certificate, and/or a professional translation certification (e.g. ATA, CTTIC) if you hold one",
+          );
+        }
+        const workSamples = (application as Record<string, unknown>)
+          .work_samples;
+        const hasSamples = Array.isArray(workSamples)
+          ? workSamples.length > 0
+          : Boolean(workSamples);
+        if (!hasSamples) {
+          missing.push("one or two short samples of your translation work");
+        }
+
+        if (missing.length > 0) {
+          const systemNotes =
+            `To complete the review of your application we need the following: ${
+              missing.join("; ")
+            }.`;
+          // staff_review would dead-end → make the doc request the live status.
+          // Otherwise (advancing to a test) send + log but keep the test path.
+          const skipStatusUpdate = newStatus !== "staff_review";
+          const fnUrl =
+            (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "") +
+            "/functions/v1/cvp-request-info";
+          fetch(fnUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${
+                Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+              }`,
+            },
+            body: JSON.stringify({
+              applicationId,
+              internalAuto: true,
+              systemNotes,
+              actingStaffId: autoDocActingStaffId,
+              skipStatusUpdate,
+              deadlineDays: 14,
+            }),
+          }).catch((e) =>
+            console.error(
+              `Auto doc-request failed for ${applicationId}:`,
+              e instanceof Error ? e.message : String(e),
+            )
+          );
+          console.log(
+            `Auto doc-request queued for ${applicationId}: missing=${
+              JSON.stringify(missing)
+            } skipStatusUpdate=${skipStatusUpdate}`,
+          );
+        }
+      }
+    } catch (docErr) {
+      console.error(
+        `Error in auto doc-request hook for ${applicationId}:`,
+        docErr,
       );
     }
 
