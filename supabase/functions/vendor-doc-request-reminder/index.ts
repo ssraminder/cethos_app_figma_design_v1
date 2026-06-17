@@ -182,6 +182,7 @@ serve(async (req: Request) => {
   const sent: string[] = [];
   const closedByResync: string[] = [];
   const errors: string[] = [];
+  const logErrors: string[] = [];
 
   let query = sb
     .from("vendor_document_requests")
@@ -321,7 +322,7 @@ serve(async (req: Request) => {
       await sb.from("vendor_document_requests").update(updatePayload).eq("id", r.id);
 
       try {
-        await sb.from("notification_log").insert({
+        const { error: logInsertErr } = await sb.from("notification_log").insert({
           event_type: "vendor_document_request_reminder",
           recipient_type: "vendor",
           recipient_email: vendor.email,
@@ -338,8 +339,13 @@ serve(async (req: Request) => {
             brevo_message_id: brevoMessageId,
           },
         });
+        if (logInsertErr) {
+          console.error("notification_log insert returned error:", logInsertErr.message);
+          logErrors.push(`req ${r.id}: ${logInsertErr.message}`);
+        }
       } catch (logErr) {
-        console.error("notification_log insert failed:", logErr);
+        console.error("notification_log insert threw:", logErr);
+        logErrors.push(`req ${r.id} threw: ${logErr instanceof Error ? logErr.message : String(logErr)}`);
       }
 
       if (emailSent) sent.push(r.id);
@@ -355,5 +361,6 @@ serve(async (req: Request) => {
     sent: sent.length,
     closed_by_resync: closedByResync.length,
     errors,
+    log_errors: logErrors,
   });
 });
