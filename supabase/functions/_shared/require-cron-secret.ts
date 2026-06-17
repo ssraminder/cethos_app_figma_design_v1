@@ -1,10 +1,18 @@
 /**
  * requireCronSecret() — authentication helper for cron-only edge functions.
  *
- * Mirrors cethosvendorportal's `supabase/functions/_shared/require-cron-secret.ts`.
- * Keep the algorithms identical — pg_cron sends one secret in the
- * `x-cron-secret` header; either repo's cron edge functions verify it the
- * same way. Audit finding H-5.
+ * Audit finding H-5. The cron-only edge functions (cvp-*-send,
+ * cvp-*-followups, cvp-*-recruitment-status, vendor-*-cron, etc.)
+ * were deployed with verify_jwt=false and had no internal auth gate —
+ * anyone with the URL could POST and force-flush queued sends.
+ *
+ * Pattern: caller (pg_cron via net.http_post) sends the shared secret
+ * in the `x-cron-secret` header. The secret lives in vault.secrets
+ * (name: cron_shared_secret); the edge function fetches it through a
+ * SECURITY DEFINER RPC and timing-safe compares.
+ *
+ * Returns 401 on missing/wrong header. Returns 503 if the secret
+ * isn't configured (loud failure so we notice during deploy).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
