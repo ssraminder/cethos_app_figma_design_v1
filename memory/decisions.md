@@ -18,6 +18,15 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-17 — Recruitment Phase 1: auto-request missing documentation (LIVE)
+- **Decision:** After the AI CV pre-screen, the system now automatically emails an applicant for any missing required documentation (CV, credential/§3.1.4 evidence, work samples) and logs it — instead of dead-ending in `staff_review` for a human to chase. Built, e2e-verified on a test applicant, and **enabled in production** (`cvp_system_config.auto_doc_request.enabled = true`, acting staff = Raminder Shah).
+- **Rationale:** the recruitment system was designed to be automatic but document-requesting was 100% manual; this closes that gap. User chose the broad trigger (any missing doc) + auto-enable after e2e.
+- **Mechanism:** `cvp-request-info` gained an internal-auto path (service-role + `internalAuto`, actor = system, AI-written message via `claudeRewrite`, logged via `logDecision`) + `skipStatusUpdate`; `cvp-prescreen-application` computes missing docs deterministically and fires it. `staff_review` cases become `info_requested`; test-advancing cases send+log but keep the test path. Gated by a config toggle (default OFF) as a kill-switch.
+- **Human-only (unchanged):** final approval decision + the activation/welcome email (`cvp-approve-application`).
+- **Scope:** translators only in Phase 1; cognitive-debriefing is a fast-follow. Functions deployed `--no-verify-jwt` (preserved). E2E test trigger (`forceAutoDoc`) removed from prod after verification.
+- **Status:** active (Phase 1 of a multi-phase plan — see `docs/audits/2026-06-iqvia/recruitment-automation-spec.md`).
+- **Affects:** `cvp-prescreen-application`, `cvp-request-info`, `cvp_system_config`, recruitment pipeline.
+
 ### 2026-06-17 — Archived all `cvp-*` recruitment edge functions into git
 - **Decision:** Pulled the deployed source of ~50 `cvp-*` recruitment edge functions (plus shared `_shared/` modules: `decision-ai.ts`, `prescreen-guidance.ts`, `safe-mode.ts`, `red-flag-weights.ts`, email transports/templates) into `supabase/functions/` and committed them, closing the source-control gap (previously only `cvp-suggest-vendor-rate` was on disk).
 - **Rationale:** The recruitment backend was deployed-only (not version-controlled), making it un-auditable and unsafe to change. This pristine archival commit is the baseline so the upcoming recruitment-automation work lands as a clean, reviewable diff. Driven by the IQVIA-audit recruitment-automation review (see `docs/audits/2026-06-iqvia/recruitment-automation-audit.md` + `-spec.md`).
