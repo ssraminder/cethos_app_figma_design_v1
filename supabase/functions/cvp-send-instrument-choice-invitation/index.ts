@@ -146,9 +146,14 @@ serve(async (req: Request) => {
   // step is redundant for COA applicants. Skip the chooser and issue the COA
   // quiz directly via cvp-record-instrument-choice (which detects COA + sets
   // is_coa). Non-COA applicants keep the test/quiz choice below.
-  const COA_DOMAINS = ["medical", "life_sciences", "pharmaceutical"];
-  const isCoa = app.role_type === "cognitive_debriefing" ||
-    (app.domains_offered ?? []).some((d) => COA_DOMAINS.includes(d));
+  //
+  // IMPORTANT: key COA strictly on the cognitive_debriefing ROLE — do NOT also
+  // trigger on domains_offered. A regular translator who merely lists medical/
+  // pharma/life-sciences domains is not a cognitive-debriefer; the old domain
+  // trigger mis-routed ~25 pending translators into a COA quiz they have no
+  // EN→Target combos for (no-op + inconsistent instrument_choice). They should
+  // get the normal test/quiz choice below.
+  const isCoa = app.role_type === "cognitive_debriefing";
   if (isCoa) {
     const fnUrl = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "") +
       "/functions/v1/cvp-record-instrument-choice";
