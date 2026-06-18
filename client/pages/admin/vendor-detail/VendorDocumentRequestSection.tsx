@@ -87,7 +87,12 @@ function StatusBadge({ status }: { status: DocumentRequest["status"] }) {
 
 export default function VendorDocumentRequestSection({ vendorId, vendorFirstName, staffId }: Props) {
   const [loading, setLoading] = useState(true);
+  // latestRequest = most recent ACTIVE request (sent/partial/completed/…) that
+  // tracks the vendor's actual submission. draftRequest = the auto-created
+  // "smart draft" pending staff send. Kept separate so a fresh draft doesn't
+  // shadow the vendor's real progress in the panel.
   const [latestRequest, setLatestRequest] = useState<DocumentRequest | null>(null);
+  const [draftRequest, setDraftRequest] = useState<DocumentRequest | null>(null);
   const [latestAssessment, setLatestAssessment] = useState<LatestAssessment | null>(null);
   const [history, setHistory] = useState<DocumentRequest[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -119,8 +124,11 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
     setLoading(false);
     if (reqRes.error) toast.error(`Could not load document requests: ${reqRes.error.message}`);
     const requests = (reqRes.data ?? []) as DocumentRequest[];
-    setLatestRequest(requests[0] ?? null);
-    setHistory(requests.slice(1));
+    const draft = requests.find((r) => r.status === "draft") ?? null;
+    const active = requests.find((r) => r.status !== "draft") ?? null;
+    setDraftRequest(draft);
+    setLatestRequest(active);
+    setHistory(requests.filter((r) => r.id !== draft?.id && r.id !== active?.id));
     setLatestAssessment((asmRes.data ?? null) as LatestAssessment | null);
   }, [vendorId]);
 
@@ -132,8 +140,8 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
     // 2) Otherwise pull from the latest assessment evidence.
     // 3) Otherwise fall back to the generic baseline.
     let initial: string[];
-    if (latestRequest?.status === "draft" && latestRequest.requested_items.length > 0) {
-      initial = latestRequest.requested_items.map((it) => it.slug);
+    if (draftRequest && draftRequest.requested_items.length > 0) {
+      initial = draftRequest.requested_items.map((it) => it.slug);
     } else {
       const suggested = latestAssessment
         ? suggestRequestSlugsFromAssessment(latestAssessment.result as { criteria?: Record<string, { evidence?: string[] }> } | null)
@@ -240,7 +248,7 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
   }
 
   const hasOpenRequest = latestRequest && ["sent", "partial"].includes(latestRequest.status);
-  const hasDraft = latestRequest?.status === "draft";
+  const hasDraft = !!draftRequest;
   const insufficientEvidence = latestAssessment?.overall_verdict === "insufficient_evidence";
   const showSmartHint = insufficientEvidence && !hasOpenRequest && !hasDraft;
 
@@ -267,7 +275,7 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
         <div className="mb-3 p-3 rounded-lg border border-amber-200 bg-amber-50 flex items-start gap-2 text-xs">
           <Sparkles className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
           <div className="text-amber-900">
-            <strong>Smart draft ready</strong> — {latestRequest!.requested_items.length} item{latestRequest!.requested_items.length === 1 ? "" : "s"} auto-selected from the latest insufficient-evidence assessment. Review and click <em>Review draft &amp; send</em> to email the vendor.
+            <strong>Smart draft ready</strong> — {draftRequest!.requested_items.length} item{draftRequest!.requested_items.length === 1 ? "" : "s"} auto-selected from the latest insufficient-evidence assessment. Review and click <em>Review draft &amp; send</em> to email the vendor.
           </div>
         </div>
       )}
@@ -285,9 +293,13 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
         </div>
-      ) : !latestRequest ? (
+      ) : !latestRequest && !draftRequest ? (
         <p className="text-xs text-gray-400 italic">
           No document requests yet. Click "Request documents" to email the vendor a checklist with a 14-day upload link.
+        </p>
+      ) : !latestRequest ? (
+        <p className="text-xs text-gray-500">
+          A smart draft is ready above — review and send it to email the vendor. No vendor submission to track yet.
         </p>
       ) : (
         <>
