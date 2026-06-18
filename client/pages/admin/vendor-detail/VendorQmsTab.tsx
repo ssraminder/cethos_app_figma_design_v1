@@ -210,6 +210,23 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
     finally { setSubmitting(false); }
   };
 
+  // Generate first-party experience evidence from Cethos payment/PO records.
+  const [buildingFp, setBuildingFp] = useState(false);
+  const handleBuildFirstParty = async () => {
+    setBuildingFp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-qms-evidence", {
+        body: { action: "build_first_party", staff_id: staffId, vendor_id: vendorId, dry_run: false },
+      });
+      if (error || !data?.success) { toast.error(data?.error ?? error?.message ?? "Generate failed"); return; }
+      const r = data.result ?? {};
+      if (r.found === false) { toast.info("No Cethos payment records on file for this vendor (legacy/XTRF history not imported)."); return; }
+      toast.success(`First-party evidence recorded: ${r.jobs} job(s), ${r.earliest} → ${r.latest}`);
+      await loadData();
+    } catch (e: any) { toast.error(e?.message ?? "Generate failed"); }
+    finally { setBuildingFp(false); }
+  };
+
   // Add a new document into the locker (optionally linked to a qualification).
   const handleAddEvidence = async (payload: {
     evidence_type_code: string; title: string; issuing_organization?: string;
@@ -367,12 +384,22 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
       <div className="rounded-lg border bg-white">
         <div className="px-4 py-2 border-b flex items-center justify-between">
           <span className="text-sm font-medium text-gray-700">Evidence locker</span>
-          <button
-            onClick={() => openUpload(null, "vendor evidence locker")}
-            className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 inline-flex items-center gap-1"
-          >
-            <Upload className="w-3 h-3" /> Upload document
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBuildFirstParty}
+              disabled={buildingFp}
+              title="Record verified first-party experience evidence from this vendor's Cethos payment/PO records (ISO §3.1.4)."
+              className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 inline-flex items-center gap-1 disabled:opacity-50"
+            >
+              {buildingFp ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />} Generate from payment history
+            </button>
+            <button
+              onClick={() => openUpload(null, "vendor evidence locker")}
+              className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 inline-flex items-center gap-1"
+            >
+              <Upload className="w-3 h-3" /> Upload document
+            </button>
+          </div>
         </div>
         {loading ? (
           <div className="p-4 text-sm text-gray-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
