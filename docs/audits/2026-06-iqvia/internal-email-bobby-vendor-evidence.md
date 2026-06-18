@@ -8,7 +8,7 @@
 
 Hi Bobby,
 
-We have an IQVIA vendor-qualification audit on **29–30 June** for our COA (Clinical Outcome Assessment) translation work. Since you coordinate directly with the linguists below, you're the best person to pull their history together. To qualify them under ISO 17100, I need two things for each — most of this lives in **XTRF** and your project records, since these are long-standing partners from before the portal.
+We have an IQVIA vendor-qualification audit on **29–30 June** for our COA (Clinical Outcome Assessment) translation work. Since you coordinate directly with the linguists below, you're the best person to pull their history together. To qualify them under ISO 17100, I need three things for each — most of this lives in **XTRF** and your project records, since these are long-standing partners from before the portal.
 
 Please get me what you can **by EOD Friday, 20 June 2026**.
 
@@ -22,6 +22,9 @@ The single most important point is each vendor's **earliest job date** with us �
 A few **representative examples of clinical/life-sciences work** each one translated or reviewed — especially **RWS, TransPerfect, or other COA/clinical projects** (project name, document/instrument type, date, and whether they translated or revised). Redacted or sample-level is fine — I just need evidence of the subject-matter experience, not the full confidential files.
 
 > ⚠️ Some of this is clinical-trial material — please share via secure transfer only, not plain email.
+
+### 3. Degree / qualification certificate
+A **copy of each vendor's translation (or relevant) degree or professional qualification certificate** — diploma, transcript, or accreditation/certification document. This is the strongest evidence for the ISO §3.1.4 qualification route, and an auditor expects the actual credential, not just the CV claim. If you have these on file already, great; otherwise a quick request to each linguist for a scan is fine. (If a vendor has no degree, their 5-year payment history above covers the experience route instead — so this is per-vendor, not mandatory for everyone.)
 
 ### Vendors
 | Vendor | XTRF # | Languages |
