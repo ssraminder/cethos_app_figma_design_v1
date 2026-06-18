@@ -47,6 +47,8 @@ interface DocumentRequest {
     label: string;
     kind: "file" | "profile_field";
     completed_at: string | null;
+    declined_at?: string | null;
+    decline_reason?: string | null;
   }>;
   source_assessment_id: string | null;
   status: "draft" | "sent" | "partial" | "completed" | "expired" | "superseded";
@@ -319,23 +321,44 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
               <p className="mt-2 text-[11px] text-gray-700 italic">"{latestRequest.staff_message}"</p>
             )}
 
-            {/* Per-item checklist with completion status */}
-            <ul className="mt-3 space-y-1">
-              {latestRequest.requested_items.map((it) => (
-                <li key={it.slug} className="flex items-start gap-2 text-[11px]">
-                  {it.completed_at ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
-                  ) : (
-                    <Clock className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-                  )}
-                  <span className={it.completed_at ? "text-gray-500 line-through" : "text-gray-800"}>
-                    {it.label}
-                    <span className="ml-1 text-[10px] text-gray-400">
-                      {it.kind === "profile_field" ? "(profile field)" : "(file)"}
+            {/* Per-item submission detail: uploaded / declined-with-reason / filled */}
+            <ul className="mt-3 space-y-1.5">
+              {latestRequest.requested_items.map((it) => {
+                const declined = !!it.declined_at;
+                const done = !!it.completed_at;
+                return (
+                  <li key={it.slug} className="flex items-start gap-2 text-[11px]">
+                    {declined ? (
+                      <XIcon className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                    ) : done ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
+                    ) : (
+                      <Clock className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                    )}
+                    <span className="flex-1">
+                      <span className={declined ? "text-gray-700" : done ? "text-gray-700" : "text-gray-800"}>
+                        {it.label}
+                        <span className="ml-1 text-[10px] text-gray-400">
+                          {it.kind === "profile_field" ? "(profile field)" : "(file)"}
+                        </span>
+                      </span>
+                      {declined ? (
+                        <span className="block text-amber-700 mt-0.5">
+                          Declined{it.decline_reason ? `: "${it.decline_reason}"` : " (no reason given)"}
+                        </span>
+                      ) : done ? (
+                        <span className="block text-gray-500 mt-0.5">
+                          {it.kind === "profile_field"
+                            ? "Filled in their profile."
+                            : "Uploaded — open it from the Evidence locker on the QMS tab (AI-screened)."}
+                        </span>
+                      ) : (
+                        <span className="block text-gray-400 mt-0.5">Awaiting submission.</span>
+                      )}
                     </span>
-                  </span>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
