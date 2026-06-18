@@ -54,6 +54,17 @@ interface Vendor {
 
 const PAGE_SIZE = 25;
 
+// QMS qualification status → badge label + color. Mirrors STATUS_META in
+// VendorQmsTab so the list and the detail tab read identically.
+const QUAL_STATUS_META: Record<string, { label: string; chip: string }> = {
+  qualified: { label: "Qualified", chip: "bg-green-50 text-green-700" },
+  preliminary: { label: "Ready for approval", chip: "bg-blue-50 text-blue-700" },
+  under_review: { label: "Under review", chip: "bg-amber-50 text-amber-700" },
+  suspended: { label: "Suspended", chip: "bg-red-50 text-red-700" },
+  expired: { label: "Expired", chip: "bg-gray-100 text-gray-600" },
+  withdrawn: { label: "Withdrawn", chip: "bg-gray-100 text-gray-600" },
+};
+
 const StatusBadge = ({ status }: { status: string }) => {
   const styles: Record<string, string> = {
     active: "bg-green-100 text-green-800",
@@ -256,7 +267,8 @@ export default function AdminVendorsList() {
   const [portalFilter, setPortalFilter] = useState("");
   const [cvFilter, setCvFilter] = useState<"" | "has_cv" | "no_cv">("");
   const [ndaFilter, setNdaFilter] = useState<"" | "has_nda" | "no_nda">("");
-  const [qualFilter, setQualFilter] = useState<"" | "qualified" | "not_qualified">("");
+  type QualFilter = "" | "qualified" | "preliminary" | "under_review" | "suspended" | "none";
+  const [qualFilter, setQualFilter] = useState<QualFilter>("");
   const [countries, setCountries] = useState<string[]>([]);
   // Pre-loaded ID sets for vendors who have CV / signed NDA. These are the
   // small side of the join (~300 each out of ~1500) so an .in()/.not(in)
@@ -268,6 +280,14 @@ export default function AdminVendorsList() {
   const [vendorsQualified, setVendorsQualified] = useState<string[] | null>(null);
   // vendor_id → qualified role codes, for the "Qualified" column chips.
   const [qualRoles, setQualRoles] = useState<Record<string, string[]>>({});
+  // vendor_id → highest-priority QMS status (qualified / preliminary /
+  // under_review / suspended / expired / withdrawn). Drives the status badge
+  // + the granular qualification filter. Vendors absent from the map have no
+  // role_qualification record at all ("none"). vendorsWithStatus is the small
+  // side (~130) used for the "none" not-in filter — same URL-safe pattern as
+  // the CV/NDA sets above.
+  const [vendorStatusMap, setVendorStatusMap] = useState<Record<string, string>>({});
+  const [vendorsWithStatus, setVendorsWithStatus] = useState<string[] | null>(null);
   // Per-row doc metadata for the CV + NDA columns. Keyed by vendor_id.
   // The CV map gives us the storage path so we can mint signed URLs on
   // demand; the NDA map gives us the HTML snapshot to render inline
@@ -356,6 +376,22 @@ export default function AdminVendorsList() {
         setQualRoles(map);
         setVendorsQualified([...ids]);
       });
+    // Full QMS status per vendor (all statuses, highest-priority) — powers the
+    // status badge column + the granular qualification filter.
+    supabase
+      .from("qms_vendor_status" as any)
+      .select("vendor_id, qual_status")
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        const ids: string[] = [];
+        for (const r of (data ?? []) as { vendor_id: string; qual_status: string }[]) {
+          if (!r.vendor_id || !r.qual_status) continue;
+          map[r.vendor_id] = r.qual_status;
+          ids.push(r.vendor_id);
+        }
+        setVendorStatusMap(map);
+        setVendorsWithStatus(ids);
+      });
 
     Promise.all([
       supabase.from("vendors").select("id", { count: "exact", head: true }),
@@ -443,16 +479,19 @@ export default function AdminVendorsList() {
         query = query.not("id", "in", `(${vendorsWithNda.join(",")})`);
       }
     }
-    // Qualification filter — same pre-loaded ID-set pattern.
-    if (qualFilter === "qualified" && vendorsQualified) {
-      if (vendorsQualified.length === 0) {
+    // Qualification filter — granular by QMS status, same pre-loaded ID-set
+    // pattern. "none" = vendors with no role_qualification record at all
+    // (excludes everyone who has any status). Others match the specific status.
+    if (qualFilter === "none" && vendorsWithStatus) {
+      if (vendorsWithStatus.length > 0) {
+        query = query.not("id", "in", `(${vendorsWithStatus.join(",")})`);
+      }
+    } else if (qualFilter && vendorStatusMap && vendorsWithStatus) {
+      const matchIds = vendorsWithStatus.filter((id) => vendorStatusMap[id] === qualFilter);
+      if (matchIds.length === 0) {
         query = query.eq("id", "00000000-0000-0000-0000-000000000000");
       } else {
-        query = query.in("id", vendorsQualified);
-      }
-    } else if (qualFilter === "not_qualified" && vendorsQualified) {
-      if (vendorsQualified.length > 0) {
-        query = query.not("id", "in", `(${vendorsQualified.join(",")})`);
+        query = query.in("id", matchIds);
       }
     }
 
@@ -476,7 +515,8 @@ export default function AdminVendorsList() {
     qualFilter,
     vendorsWithCv,
     vendorsWithNda,
-    vendorsQualified,
+    vendorStatusMap,
+    vendorsWithStatus,
   ]);
 
   // Clear selection when data changes
@@ -831,18 +871,21 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
           </div>
 
           {/* QMS qualification */}
-          <div className="min-w-[140px]">
+          <div className="min-w-[160px]">
             <label className="block text-xs font-medium text-gray-500 mb-1">
-              ISO Qualified
+              ISO Qualification
             </label>
             <select
               value={qualFilter}
-              onChange={(e) => setQualFilter(e.target.value as "" | "qualified" | "not_qualified")}
+              onChange={(e) => setQualFilter(e.target.value as QualFilter)}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
             >
               <option value="">All</option>
               <option value="qualified">Qualified</option>
-              <option value="not_qualified">Not qualified</option>
+              <option value="preliminary">Ready for approval</option>
+              <option value="under_review">Under review</option>
+              <option value="suspended">Suspended</option>
+              <option value="none">No qualification</option>
             </select>
           </div>
 
@@ -899,7 +942,7 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
                   Docs
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Qualified
+                  ISO Qualification
                 </th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Jobs
@@ -1040,17 +1083,20 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {(qualRoles[v.id]?.length ?? 0) > 0 ? (
-                        <div className="flex flex-wrap gap-1" title={`ISO 17100 qualified: ${qualRoles[v.id].join(", ")}`}>
-                          {qualRoles[v.id].map((role) => (
-                            <span
-                              key={role}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-teal-50 text-teal-700 capitalize"
-                            >
-                              <ShieldCheck className="w-3 h-3" />
-                              {role}
+                      {vendorStatusMap[v.id] ? (
+                        <div className="flex flex-col gap-1">
+                          <span
+                            className={`inline-flex w-fit items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${QUAL_STATUS_META[vendorStatusMap[v.id]]?.chip ?? "bg-gray-100 text-gray-600"}`}
+                            title={`ISO 17100 status: ${QUAL_STATUS_META[vendorStatusMap[v.id]]?.label ?? vendorStatusMap[v.id]}`}
+                          >
+                            <ShieldCheck className="w-3 h-3" />
+                            {QUAL_STATUS_META[vendorStatusMap[v.id]]?.label ?? vendorStatusMap[v.id]}
+                          </span>
+                          {(qualRoles[v.id]?.length ?? 0) > 0 && (
+                            <span className="text-[11px] text-gray-500 capitalize" title={`Qualified roles: ${qualRoles[v.id].join(", ")}`}>
+                              {qualRoles[v.id].join(", ")}
                             </span>
-                          ))}
+                          )}
                         </div>
                       ) : (
                         <span className="text-gray-300 text-xs" title="No ISO 17100 qualification on file">—</span>
