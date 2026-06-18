@@ -210,12 +210,13 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
         body: {
           vendor_id: vendorId,
           requested_items: items,
-          subject,
-          // Keep the {{LINK}} placeholder literal — the edge function
-          // substitutes it with the full vendor-portal URL once the
-          // request_token exists. Pre-replacing here would drop the
-          // domain and leave only the bare UUID in the email.
-          body_html: bodyHtml,
+          // Use the server's branded email-shell template (Cethos logo,
+          // house styling, footer) — it also builds the correct
+          // vendor-portal upload link from the fresh request_token. The
+          // staff note flows in via staff_message; the item list + subject
+          // are rendered server-side. (Previously we sent a hand-built
+          // body_html whose "{{LINK}}" placeholder the function never
+          // substituted — shipping a dead button and an unbranded email.)
           staff_message: staffMessage.trim() || null,
           staff_id: staffId ?? null,
           source_assessment_id: latestAssessment?.id ?? null,
@@ -362,7 +363,7 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Request ISO 17100 evidence</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Tick what the vendor still owes you. Email body updates live.
+                  Tick what the vendor still owes you. A branded Cethos email is sent.
                 </p>
               </div>
               <button onClick={() => setModalOpen(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md">
@@ -430,26 +431,9 @@ export default function VendorDocumentRequestSection({ vendorId, vendorFirstName
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Subject</label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Email body (HTML — &#123;&#123;LINK&#125;&#125; is replaced with the upload link)
-                </label>
-                <textarea
-                  value={bodyHtml}
-                  onChange={(e) => setBodyHtml(e.target.value)}
-                  rows={12}
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-[11px] text-gray-600">
+                The vendor receives the standard <strong>branded Cethos email</strong> (logo + house styling),
+                listing the items ticked above with a secure upload button. Your optional message appears at the top.
               </div>
             </div>
 
