@@ -1,0 +1,160 @@
+// ============================================================================
+// cvp-auto-advance  (Phase A of "no human until final approval")
+//
+// Cron-driven, idempotent sweep that advances applicants through the recruitment
+// pipeline WITHOUT a human in the middle. The only human gate is final approval.
+//
+// Phase A scope — prescreen → assessment for TRANSLATORS:
+//   - HARD JUNK (test-data / spam / placeholder entries) → auto-reject (silent).
+//     Deliberately NARROW + high-precision: a real-but-weak applicant (e.g. a
+//     software engineer with no translation history) is NOT junk — they get the
+//     assessment and the AI-graded test/quiz (the real ISO §6.1.2 gate) decides.
+//   - EVERYONE ELSE in staff_review/prescreened with no instrument choice yet →
+//     bump staff_review→prescreened + send the test/quiz choice invitation.
+//
+// Re-spam guard: only invite when there is no LIVE instrument_choice_token, so
+// repeated cron runs never re-email the same applicant.
+//
+// Cognitive-debriefing (COA) and agency applicants are intentionally skipped
+// here — COA needs the cog-debrief quiz (Phase B); agencies have their own
+// onboarding path.
+//
+// POST /functions/v1/cvp-auto-advance
+// Body: { dry_run?: boolean, limit?: number }
+// Returns: { success, data: { considered, advanced, rejected, skipped, actions } }
+// ============================================================================
+
+import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+// Acting "system" staff user (Raminder) — stamped on automated transitions so
+// the audit trail shows who the automation ran as.
+const SYSTEM_STAFF_ID = "a8b2d97e-4832-41d4-9334-4d6a58558154";
+const DEFAULT_LIMIT = 25;
+
+function json(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+}
+
+// HARD-JUNK detection — high precision, low recall on purpose. Only unambiguous
+// test/spam/placeholder entries. Real-but-weak applicants must NOT match.
+function isHardJunk(fullName: string | null, email: string | null): string | null {
+  const name = (fullName ?? "").trim().toLowerCase();
+  const mail = (email ?? "").trim().toLowerCase();
+  if (!mail || !mail.includes("@")) return "missing/invalid email";
+  const domain = mail.split("@")[1] ?? "";
+  if (domain.endsWith(".invalid") || ["example.com", "test.com", "test.test", "mailinator.com"].includes(domain)) {
+    return `test/disposable email domain (${domain})`;
+  }
+  // Test-pattern names: pure placeholder / keyboard-mash / contains '=='.
+  if (
+    name === "" ||
+    name.includes("==") ||
+    /^(test|asdf|qwerty|aaa+|n\/?a|xxx+|abc|sample|demo|dummy)\b/.test(name) ||
+    /\btest\s+test\b/.test(name)
+  ) {
+    return `test-pattern name ("${fullName}")`;
+  }
+  return null;
+}
+
+serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
+
+  let body: { dry_run?: boolean; limit?: number } = {};
+  try { body = await req.json(); } catch { /* empty body ok for cron */ }
+  const dryRun = body.dry_run === true;
+  const limit = Math.min(Math.max(body.limit ?? DEFAULT_LIMIT, 1), 100);
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  const nowIso = new Date().toISOString();
+
+  // Candidates: translators parked at prescreen with no choice yet and no live
+  // invite token (so we never re-spam).
+  const { data: rows, error } = await supabase
+    .from("cvp_applications")
+    .select("id, full_name, email, status, instrument_choice_token, instrument_choice_token_expires_at")
+    .eq("role_type", "translator")
+    .in("status", ["staff_review", "prescreened"])
+    .is("instrument_choice", null)
+    .order("created_at", { ascending: true })
+    .limit(limit * 2); // over-fetch; token guard filters some out
+  if (error) return json({ success: false, error: error.message }, 500);
+
+  const candidates = (rows ?? []).filter((r: any) => {
+    const tok = r.instrument_choice_token;
+    const exp = r.instrument_choice_token_expires_at;
+    const liveToken = tok && exp && new Date(exp) > new Date();
+    return !liveToken; // skip anyone with a still-valid invite already out
+  }).slice(0, limit);
+
+  const actions: Array<Record<string, unknown>> = [];
+  let advanced = 0, rejected = 0, skipped = 0;
+
+  for (const a of candidates as any[]) {
+    const junkReason = isHardJunk(a.full_name, a.email);
+
+    if (junkReason) {
+      if (!dryRun) {
+        const { error: rErr } = await supabase
+          .from("cvp_applications")
+          .update({
+            status: "rejected",
+            staff_reviewed_by: SYSTEM_STAFF_ID,
+            staff_reviewed_at: nowIso,
+            staff_review_notes: `[auto] Hard-junk auto-reject: ${junkReason}. (cvp-auto-advance)`,
+            updated_at: nowIso,
+          })
+          .eq("id", a.id)
+          .eq("status", a.status); // optimistic guard
+        if (rErr) { skipped++; actions.push({ id: a.id, action: "reject_failed", error: rErr.message }); continue; }
+      }
+      rejected++;
+      actions.push({ id: a.id, name: a.full_name, action: "reject", reason: junkReason });
+      continue;
+    }
+
+    // Advance: bump staff_review→prescreened, then send the choice invite.
+    if (!dryRun) {
+      if (a.status === "staff_review") {
+        await supabase
+          .from("cvp_applications")
+          .update({
+            status: "prescreened",
+            staff_reviewed_by: SYSTEM_STAFF_ID,
+            staff_reviewed_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq("id", a.id);
+      }
+      const resp = await fetch(`${supabaseUrl}/functions/v1/cvp-send-instrument-choice-invitation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify({ applicationId: a.id }),
+      });
+      const out = await resp.json().catch(() => ({}));
+      if (!resp.ok || out?.success === false) {
+        skipped++;
+        actions.push({ id: a.id, name: a.full_name, action: "invite_failed", detail: out?.error ?? `http ${resp.status}` });
+        continue;
+      }
+    }
+    advanced++;
+    actions.push({ id: a.id, name: a.full_name, action: "advance_to_assessment" });
+  }
+
+  return json({
+    success: true,
+    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, skipped, actions },
+  });
+});
