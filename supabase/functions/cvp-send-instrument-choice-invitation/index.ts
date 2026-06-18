@@ -81,7 +81,7 @@ serve(async (req: Request) => {
   // mechanic).
   const { data: appData, error: appErr } = await supabase
     .from("cvp_applications")
-    .select("id, email, full_name, application_number, instrument_choice")
+    .select("id, email, full_name, application_number, instrument_choice, domains_offered, role_type")
     .eq("id", applicationId)
     .maybeSingle();
   if (appErr || !appData) {
@@ -93,6 +93,8 @@ serve(async (req: Request) => {
     full_name: string;
     application_number: string;
     instrument_choice: string | null;
+    domains_offered: string[] | null;
+    role_type: string | null;
   };
 
   if (app.instrument_choice) {
@@ -137,6 +139,32 @@ serve(async (req: Request) => {
       { success: false, error: "Failed to issue choice token. Please try again." },
       500,
     );
+  }
+
+  // COA single-route: the COA quiz already tests both knowledge (Part 1) and
+  // translation production (Part 2), so the two-path "choose your assessment"
+  // step is redundant for COA applicants. Skip the chooser and issue the COA
+  // quiz directly via cvp-record-instrument-choice (which detects COA + sets
+  // is_coa). Non-COA applicants keep the test/quiz choice below.
+  const COA_DOMAINS = ["medical", "life_sciences", "pharmaceutical"];
+  const isCoa = app.role_type === "cognitive_debriefing" ||
+    (app.domains_offered ?? []).some((d) => COA_DOMAINS.includes(d));
+  if (isCoa) {
+    const fnUrl = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "") +
+      "/functions/v1/cvp-record-instrument-choice";
+    const resp = await fetch(fnUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
+      },
+      body: JSON.stringify({ token, choice: "quiz" }),
+    });
+    const out = await resp.json().catch(() => ({}));
+    return jsonResponse({
+      success: true,
+      data: { applicationId, route: "coa_quiz_direct", token, dispatched: out?.data ?? out },
+    });
   }
 
   // Send the invitation email
