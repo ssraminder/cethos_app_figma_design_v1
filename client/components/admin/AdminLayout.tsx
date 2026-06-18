@@ -191,6 +191,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Quality",
   },
   {
+    label: "Qualification Approvals",
+    path: "/admin/qms/approvals",
+    icon: ShieldCheck,
+    section: "Quality",
+  },
+  {
     label: "Staff Competence",
     path: "/admin/qms/staff",
     icon: GraduationCap,
@@ -371,6 +377,7 @@ function AdminLayoutInner() {
   const [incompleteTrainings, setIncompleteTrainings] = useState(0);
   const [unackedInbound, setUnackedInbound] = useState(0);
   const [testsToReview, setTestsToReview] = useState(0);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
   const [rtStatus, setRtStatus] = useState<RealtimeStatus | null>(null);
   const location = useLocation();
   const branding = useBranding();
@@ -458,6 +465,33 @@ function AdminLayoutInner() {
     };
     fetchTestsToReview();
     const interval = window.setInterval(fetchTestsToReview, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [session, location.pathname]);
+
+  // Qualification-approvals badge: vendors whose role_qualification has fully
+  // assembled (competence + verified evidence + active NDA) and is awaiting a
+  // human sign-off — status='preliminary'. Polls every 60s.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    const fetchPending = async () => {
+      try {
+        const { count, error } = await supabase
+          .from("qms_vendor_status" as any)
+          .select("vendor_id", { count: "exact", head: true })
+          .eq("qual_status", "preliminary");
+        if (!cancelled && !error && typeof count === "number") {
+          setPendingApprovals(count);
+        }
+      } catch {
+        /* silent — badge is nice-to-have */
+      }
+    };
+    fetchPending();
+    const interval = window.setInterval(fetchPending, 60_000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -608,6 +642,15 @@ function AdminLayoutInner() {
                 title="Applicants with submitted or borderline tests awaiting review"
               >
                 {(sidebarOpen || isMobile) ? (testsToReview > 99 ? "99+" : testsToReview) : ""}
+              </span>
+            )}
+            {item.path === "/admin/qms/approvals" && pendingApprovals > 0 && (
+              <span className={`flex-shrink-0 bg-blue-500 text-white text-xs font-bold rounded-full ${
+                sidebarOpen || isMobile ? "px-1.5 py-0.5 min-w-[20px] text-center" : "w-2.5 h-2.5"
+              }`}
+                title="Vendors fully assembled and awaiting qualification sign-off"
+              >
+                {(sidebarOpen || isMobile) ? (pendingApprovals > 99 ? "99+" : pendingApprovals) : ""}
               </span>
             )}
             {item.path === "/admin/trainings" && incompleteTrainings > 0 && (
