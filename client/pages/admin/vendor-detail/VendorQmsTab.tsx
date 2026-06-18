@@ -26,6 +26,28 @@ const DIRECTIONS = [
   { value: "both_directions",  label: "Bidirectional" },
 ] as const;
 
+// Verification tier display. "verified" = a human checked the primary document;
+// "screened" = AI-extracted from the self-declared CV, pending verification.
+const TIER_META: Record<string, { label: string; chip: string }> = {
+  verified:   { label: "Verified",  chip: "bg-teal-50 text-teal-700 border border-teal-200" },
+  screened:   { label: "Screened — pending verification", chip: "bg-amber-50 text-amber-700 border border-amber-200" },
+  unverified: { label: "Unverified", chip: "bg-gray-100 text-gray-600 border border-gray-200" },
+};
+function tierOf(e: { verified: boolean; tier?: string | null; verification_method?: string | null }): "verified" | "screened" | "unverified" {
+  if (e.tier === "verified" || e.tier === "screened" || e.tier === "unverified") return e.tier;
+  if (e.verified) return "verified";
+  if (e.verification_method === "ai_cv_extraction") return "screened";
+  return "unverified";
+}
+// A qualification's overall standing = its weakest evidence tier.
+function qualTier(evidence?: Array<{ verified: boolean; tier?: string | null; verification_method?: string | null }>): "verified" | "screened" | "unverified" | null {
+  if (!evidence || evidence.length === 0) return null;
+  const tiers = evidence.map(tierOf);
+  if (tiers.includes("unverified")) return "unverified";
+  if (tiers.includes("screened")) return "screened";
+  return "verified";
+}
+
 interface RoleQualificationRow {
   id: string;
   status: string;
@@ -48,8 +70,10 @@ interface RoleQualificationRow {
     evidence_type: string | null;
     issuing_organization: string | null;
     verified: boolean;
+    tier?: "verified" | "screened" | "unverified" | null;
     verification_method: string | null;
     verification_notes: string | null;
+    verified_at: string | null;
     issued_date: string | null;
     expiry_date: string | null;
     has_file: boolean;
@@ -192,10 +216,18 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
           <ul className="divide-y">
             {qualifications.map((q) => (
               <li key={q.id} className="p-4 text-sm">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${q.status === 'qualified' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{q.status}</span>
                   <span className="font-medium text-gray-800">{q.role_type?.name ?? q.role_type?.code}</span>
                   {q.competence_basis && <span className="text-gray-500">— {q.competence_basis.short_label}</span>}
+                  {(() => {
+                    const t = qualTier(q.evidence);
+                    return t ? (
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${TIER_META[t].chip}`} title={t === 'screened' ? 'Qualified on AI-screened CV evidence; awaiting verification against a primary document.' : undefined}>
+                        {TIER_META[t].label}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
                 {q.qualified_at && (
                   <div className="text-xs text-gray-500 mt-1">
@@ -230,24 +262,28 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
                   <div className="mt-2 border-t border-gray-100 pt-2">
                     <div className="text-xs text-gray-500 mb-1">Evidence / proof</div>
                     <ul className="space-y-1.5">
-                      {q.evidence.map((e, i) => (
+                      {q.evidence.map((e, i) => {
+                        const t = tierOf(e);
+                        return (
                         <li key={i} className="text-xs text-gray-700">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {e.verified
+                            {t === 'verified'
                               ? <ShieldCheck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
                               : <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
                             <span className="font-medium text-gray-800">{e.title}</span>
                             {e.evidence_type && <span className="text-gray-500">· {e.evidence_type}</span>}
                             {e.issuing_organization && <span className="text-gray-500">· {e.issuing_organization}</span>}
+                            <span className={`px-1.5 py-0.5 rounded ${TIER_META[t].chip}`}>{TIER_META[t].label}</span>
                             {e.has_file && <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">document on file</span>}
                             {e.has_hash && <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">sha-256 ✓</span>}
-                            {e.verification_method && <span className="text-gray-400">{e.verification_method}</span>}
+                            {t === 'verified' && e.verified_at && <span className="text-gray-400">verified {new Date(e.verified_at).toLocaleDateString()}</span>}
                           </div>
                           {e.verification_notes && (
                             <div className="text-gray-500 mt-0.5 pl-5 whitespace-pre-wrap">{e.verification_notes}</div>
                           )}
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   </div>
                 )}
