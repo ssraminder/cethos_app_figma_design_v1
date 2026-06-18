@@ -28,6 +28,16 @@ const DIRECTIONS = [
 
 // Verification tier display. "verified" = a human checked the primary document;
 // "screened" = AI-extracted from the self-declared CV, pending verification.
+// Qualification status display. under_review = provisional (screened-only or
+// awaiting Tier-2 verification) — NOT ISO/COA-qualified until verified.
+const STATUS_META: Record<string, { label: string; chip: string }> = {
+  qualified:    { label: "qualified",  chip: "bg-green-50 text-green-700" },
+  under_review: { label: "Provisional — not ISO/COA qualified", chip: "bg-amber-50 text-amber-700" },
+  suspended:    { label: "suspended",  chip: "bg-red-50 text-red-700" },
+  expired:      { label: "expired",    chip: "bg-gray-100 text-gray-600" },
+  withdrawn:    { label: "withdrawn",  chip: "bg-gray-100 text-gray-600" },
+};
+
 const TIER_META: Record<string, { label: string; chip: string }> = {
   verified:   { label: "Verified",  chip: "bg-teal-50 text-teal-700 border border-teal-200" },
   screened:   { label: "Screened — pending verification", chip: "bg-amber-50 text-amber-700 border border-amber-200" },
@@ -312,7 +322,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
             {qualifications.map((q) => (
               <li key={q.id} className="p-4 text-sm">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${q.status === 'qualified' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{q.status}</span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_META[q.status]?.chip ?? 'bg-gray-100 text-gray-600'}`}>{STATUS_META[q.status]?.label ?? q.status}</span>
                   <span className="font-medium text-gray-800">{q.role_type?.name ?? q.role_type?.code}</span>
                   {q.competence_basis && <span className="text-gray-500">— {q.competence_basis.short_label}</span>}
                   {(() => {
