@@ -67,8 +67,8 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const { action, staff_id } = body ?? {};
-    if (!action || (action !== "add" && action !== "verify")) {
-      return json({ success: false, error: "action must be 'add' or 'verify'" }, 400);
+    if (!action || !["add", "verify", "build_first_party"].includes(action)) {
+      return json({ success: false, error: "action must be 'add', 'verify' or 'build_first_party'" }, 400);
     }
 
     const supabase = createClient(
@@ -88,6 +88,18 @@ serve(async (req) => {
     }
     if (!acting_user_id) {
       return json({ success: false, error: "Could not resolve acting staff user (staff_id missing or not linked to an auth user)." }, 401);
+    }
+
+    if (action === "build_first_party") {
+      const { vendor_id, dry_run } = body;
+      if (!vendor_id) return json({ success: false, error: "vendor_id required" }, 400);
+      const { data, error } = await supabase.rpc("qms_build_first_party_experience", {
+        p_vendor_id: vendor_id,
+        p_acting_user_id: acting_user_id,
+        p_dry_run: dry_run ?? false,
+      });
+      if (error) return json({ success: false, error: error.message, hint: error.hint }, 400);
+      return json({ success: true, result: data });
     }
 
     if (action === "verify") {
