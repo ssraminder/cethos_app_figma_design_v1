@@ -7,7 +7,7 @@
 // one transaction.
 
 import { useEffect, useState, useMemo } from "react";
-import { Loader2, Plus, ShieldCheck, ShieldAlert, AlertTriangle, Upload, X } from "lucide-react";
+import { Loader2, Plus, ShieldCheck, ShieldAlert, AlertTriangle, Upload, X, Download } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { toast } from "sonner";
@@ -58,7 +58,7 @@ function qualTier(evidence?: Array<{ verified: boolean; tier?: string | null; ve
   return "verified";
 }
 
-function EvidenceItem({ e, onVerify }: { e: EvidenceRow; onVerify: () => void }) {
+function EvidenceItem({ e, onVerify, onView }: { e: EvidenceRow; onVerify: () => void; onView: () => void }) {
   const t = tierOf(e);
   return (
     <li className="text-xs text-gray-700">
@@ -70,7 +70,11 @@ function EvidenceItem({ e, onVerify }: { e: EvidenceRow; onVerify: () => void })
         {e.evidence_type && <span className="text-gray-500">· {e.evidence_type}</span>}
         {e.issuing_organization && <span className="text-gray-500">· {e.issuing_organization}</span>}
         <span className={`px-1.5 py-0.5 rounded ${TIER_META[t].chip}`}>{TIER_META[t].label}</span>
-        {e.has_file && <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">document on file</span>}
+        {e.has_file && (
+          <button onClick={onView} className="px-1.5 py-0.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-100 inline-flex items-center gap-1">
+            <Download className="w-3 h-3" /> View document
+          </button>
+        )}
         {e.has_hash && <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">sha-256 ✓</span>}
         {t === "verified" && e.verified_at && <span className="text-gray-400">verified {new Date(e.verified_at).toLocaleDateString()}</span>}
         {t !== "verified" && (
@@ -202,6 +206,17 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
   const openUpload = async (roleQualificationId: string | null, label: string) => {
     await ensureLookups();
     setUploadTarget({ roleQualificationId, label });
+  };
+
+  // Open the uploaded document behind an evidence row (short-lived signed URL).
+  const handleViewEvidence = async (evidenceId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("qms-evidence-download", {
+        body: { evidence_id: evidenceId, staff_id: staffId },
+      });
+      if (error || !data?.success) { toast.error(data?.error ?? error?.message ?? "Could not open document"); return; }
+      window.open(data.signed_url as string, "_blank", "noopener");
+    } catch (e: any) { toast.error(e?.message ?? "Could not open document"); }
   };
 
   // Flip a screened/unverified evidence row to Tier-2 (verified).
@@ -376,7 +391,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
                   {q.evidence && q.evidence.length > 0 ? (
                     <ul className="space-y-1.5">
                       {q.evidence.map((e) => (
-                        <EvidenceItem key={e.id} e={e} onVerify={() => setVerifyTarget({ id: e.id, title: e.title })} />
+                        <EvidenceItem key={e.id} e={e} onVerify={() => setVerifyTarget({ id: e.id, title: e.title })} onView={() => handleViewEvidence(e.id)} />
                       ))}
                     </ul>
                   ) : (
@@ -418,7 +433,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
         ) : (
           <ul className="p-4 space-y-1.5">
             {unlinkedEvidence.map((e) => (
-              <EvidenceItem key={e.id} e={e} onVerify={() => setVerifyTarget({ id: e.id, title: e.title })} />
+              <EvidenceItem key={e.id} e={e} onVerify={() => setVerifyTarget({ id: e.id, title: e.title })} onView={() => handleViewEvidence(e.id)} />
             ))}
           </ul>
         )}
