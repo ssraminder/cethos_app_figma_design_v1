@@ -32,6 +32,7 @@ const DIRECTIONS = [
 // awaiting Tier-2 verification) — NOT ISO/COA-qualified until verified.
 const STATUS_META: Record<string, { label: string; chip: string }> = {
   qualified:    { label: "qualified",  chip: "bg-green-50 text-green-700" },
+  preliminary:  { label: "Ready for approval — awaiting sign-off", chip: "bg-blue-50 text-blue-700" },
   under_review: { label: "Provisional — not ISO/COA qualified", chip: "bg-amber-50 text-amber-700" },
   suspended:    { label: "suspended",  chip: "bg-red-50 text-red-700" },
   expired:      { label: "expired",    chip: "bg-gray-100 text-gray-600" },
@@ -215,6 +216,21 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
     setUploadTarget({ roleQualificationId, label });
   };
 
+  // Human approval of a fully-assembled (preliminary) qualification → qualified.
+  const [approving, setApproving] = useState(false);
+  const handleApproveQualification = async (roleQualificationId: string) => {
+    setApproving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-qms-evidence", {
+        body: { action: "approve_qualification", staff_id: staffId, vendor_id: vendorId, role_qualification_id: roleQualificationId },
+      });
+      if (error || !data?.success) { toast.error(data?.error ?? error?.message ?? "Approval failed"); return; }
+      toast.success("Qualification approved");
+      await loadData();
+    } catch (e: any) { toast.error(e?.message ?? "Approval failed"); }
+    finally { setApproving(false); }
+  };
+
   // Open the uploaded document behind an evidence row (short-lived signed URL).
   const handleViewEvidence = async (evidenceId: string) => {
     try {
@@ -355,6 +371,15 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
                       </span>
                     ) : null;
                   })()}
+                  {q.status === 'preliminary' && (
+                    <button
+                      onClick={() => handleApproveQualification(q.id)}
+                      disabled={approving}
+                      className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {approving ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />} Approve qualification
+                    </button>
+                  )}
                 </div>
                 {q.qualified_at && (
                   <div className="text-xs text-gray-500 mt-1">
