@@ -58,6 +58,13 @@ function qualTier(evidence?: Array<{ verified: boolean; tier?: string | null; ve
   return "verified";
 }
 
+// True when the AI screen flagged a concern (name mismatch / wrong doc type)
+// in the verification notes — staff should not blind-verify these.
+function hasAiConcern(e: { verification_notes?: string | null }): boolean {
+  const n = (e.verification_notes ?? "");
+  return /name match:\s*no\b/i.test(n) || /\bMISMATCH\b/.test(n) || /Concerns:\s*\S/.test(n);
+}
+
 function EvidenceItem({ e, onVerify, onView }: { e: EvidenceRow; onVerify: () => void; onView: () => void }) {
   const t = tierOf(e);
   return (
@@ -154,7 +161,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
   const [submitting, setSubmitting] = useState(false);
 
   // Verify a screened/unverified evidence row → Tier-2.
-  const [verifyTarget, setVerifyTarget] = useState<{ id: string; title: string } | null>(null);
+  const [verifyTarget, setVerifyTarget] = useState<{ id: string; title: string; concern: boolean } | null>(null);
   // Upload a new document into the locker (optionally linked to a qualification).
   const [uploadTarget, setUploadTarget] = useState<{ roleQualificationId: string | null; label: string } | null>(null);
 
@@ -391,7 +398,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
                   {q.evidence && q.evidence.length > 0 ? (
                     <ul className="space-y-1.5">
                       {q.evidence.map((e) => (
-                        <EvidenceItem key={e.id} e={e} onVerify={() => setVerifyTarget({ id: e.id, title: e.title })} onView={() => handleViewEvidence(e.id)} />
+                        <EvidenceItem key={e.id} e={e} onVerify={() => setVerifyTarget({ id: e.id, title: e.title, concern: hasAiConcern(e) })} onView={() => handleViewEvidence(e.id)} />
                       ))}
                     </ul>
                   ) : (
@@ -433,7 +440,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
         ) : (
           <ul className="p-4 space-y-1.5">
             {unlinkedEvidence.map((e) => (
-              <EvidenceItem key={e.id} e={e} onVerify={() => setVerifyTarget({ id: e.id, title: e.title })} onView={() => handleViewEvidence(e.id)} />
+              <EvidenceItem key={e.id} e={e} onVerify={() => setVerifyTarget({ id: e.id, title: e.title, concern: hasAiConcern(e) })} onView={() => handleViewEvidence(e.id)} />
             ))}
           </ul>
         )}
@@ -442,6 +449,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
       {verifyTarget && (
         <VerifyEvidenceModal
           title={verifyTarget.title}
+          concern={verifyTarget.concern}
           submitting={submitting}
           onCancel={() => setVerifyTarget(null)}
           onSubmit={handleVerify}
@@ -705,14 +713,17 @@ const VERIFY_METHODS = [
   { value: "professional_membership", label: "Professional membership confirmed" },
 ] as const;
 
-function VerifyEvidenceModal({ title, submitting, onCancel, onSubmit }: {
+function VerifyEvidenceModal({ title, concern, submitting, onCancel, onSubmit }: {
   title: string;
+  concern: boolean;
   submitting: boolean;
   onCancel: () => void;
   onSubmit: (method: string, notes: string) => void;
 }) {
   const [method, setMethod] = useState("document_review");
   const [notes, setNotes] = useState("");
+  // When the AI flagged a concern, require a written override reason before verifying.
+  const blocked = concern && notes.trim().length < 5;
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
@@ -722,6 +733,14 @@ function VerifyEvidenceModal({ title, submitting, onCancel, onSubmit }: {
         </div>
         <div className="p-4 space-y-3 text-sm">
           <div className="text-gray-600">Marking <span className="font-medium text-gray-800">{title}</span> as Tier-2 verified. This records you as the verifier, with the date and method, for the audit trail.</div>
+          {concern && (
+            <div className="flex items-start gap-2 p-2.5 rounded border border-red-200 bg-red-50 text-xs text-red-800">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <strong>The AI screen flagged a concern</strong> on this document (e.g. the name doesn't match the vendor, or it's the wrong document type). Review the document and the notes above before verifying. To proceed anyway, record an override reason below.
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-xs text-gray-500 mb-1">How was it verified?</label>
             <select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm">
@@ -729,15 +748,17 @@ function VerifyEvidenceModal({ title, submitting, onCancel, onSubmit }: {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Verification notes (what you checked)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="e.g. Confirmed BA Translation diploma scan against issuing university; dates match CV." />
+            <label className="block text-xs text-gray-500 mb-1">
+              {concern ? "Override reason — required (what you checked, why it's valid despite the flag)" : "Verification notes (what you checked)"}
+            </label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={`w-full border rounded px-2 py-1.5 text-sm ${blocked ? "border-red-300" : ""}`} placeholder="e.g. Confirmed BA Translation diploma scan against issuing university; dates match CV." />
           </div>
         </div>
         <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
           <button onClick={onCancel} disabled={submitting} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
-          <button onClick={() => onSubmit(method, notes)} disabled={submitting} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+          <button onClick={() => onSubmit(method, notes)} disabled={submitting || blocked} className={`px-4 py-2 text-sm text-white rounded disabled:opacity-50 inline-flex items-center gap-1.5 ${concern ? "bg-red-600 hover:bg-red-700" : "bg-teal-600 hover:bg-teal-700"}`}>
             {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Mark verified
+            {concern ? "Override & verify" : "Mark verified"}
           </button>
         </div>
       </div>

@@ -65,6 +65,14 @@ When the snapshot includes a "reference_competence_aggregate", it is anchored-MC
  - All references at (e) → no signal from references; fall back to other evidence.
  - Cite the aggregated count in the evidence array, e.g. "reference MCQ: 2 of 2 rated translation_competence at (a) or (b)".
 
+The snapshot includes "qms_record" — the FORMAL, authoritative QMS qualification state (this is what an ISO auditor relies on). Treat it as primary:
+ - A role_qualification with status="qualified" backed by at least one evidence item with tier="verified" means the TSP has formally qualified this translator against documented, staff-verified evidence → §6.1.4 qualifications verdict should be "pass" (cite the basis + verified evidence type, e.g. "QMS: Translator qualified on verified degree_translation").
+ - Verified evidence (tier="verified": degrees, references_verified, documented_translation_experience via first-party records) is authoritative primary evidence for the relevant competence/qualification. Cite it.
+ - tier="screened" evidence is supporting but NOT sufficient alone for a "pass" — it lends "partial".
+ - subject_matter entries support domain_competence for those domains.
+ - has_active_nda is contractual context, not a competence.
+Prefer qms_record over raw certification file-names: an unverified file with an odd name is weak signal, but a QMS-verified credential is strong.
+
 Be honest about gaps. "insufficient_evidence" is the correct verdict when the input doesn't support a confident judgment — do not infer competence from absence of negative signals.`;
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -161,7 +169,30 @@ serve(async (req: Request) => {
       .eq("vendor_id", vendorId)
       .eq("is_active", true);
 
+    // Formal QMS record — the authoritative qualification state (role
+    // qualifications + verified competence evidence + NDA). This is what an
+    // ISO auditor actually relies on; the assessment should reflect it, not
+    // just raw profile/cert file-names.
+    const { data: qmsData } = await sb.rpc("qms_list_vendor_qualifications", { p_vendor_id: vendorId });
+    const qmsRecord = (qmsData ?? {}) as {
+      qualifications?: Array<Record<string, unknown>>;
+      ndas?: Array<Record<string, unknown>>;
+    };
+    const qmsSummary = {
+      role_qualifications: (qmsRecord.qualifications ?? []).map((q) => ({
+        role: (q.role_type as { name?: string } | null)?.name ?? null,
+        status: q.status,
+        basis: (q.competence_basis as { short_label?: string } | null)?.short_label ?? null,
+        subject_matter: (q.subject_matter_qualifications as Array<{ subject_matter?: { name?: string } }> | null ?? [])
+          .map((s) => s.subject_matter?.name).filter(Boolean),
+        evidence: (q.evidence as Array<{ evidence_type?: string; tier?: string; verification_method?: string }> | null ?? [])
+          .map((e) => ({ type: e.evidence_type, tier: e.tier, method: e.verification_method })),
+      })),
+      has_active_nda: (qmsRecord.ndas ?? []).some((n) => n.status === "active"),
+    };
+
     const snapshot = {
+      qms_record: qmsSummary,
       vendor: {
         full_name: vendor.full_name,
         email: vendor.email,
