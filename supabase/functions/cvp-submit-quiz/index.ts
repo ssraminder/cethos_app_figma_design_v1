@@ -38,10 +38,11 @@ const STAFF_REVIEW_THRESHOLD = 70;
 interface SubmissionRow {
   id: string;
   application_id: string;
-  target_language_id: string;
+  target_language_id: string | null;
   token: string;
   token_expires_at: string;
   status: string;
+  is_cog_debrief: boolean;
 }
 
 interface ResponseItem {
@@ -94,7 +95,7 @@ serve(async (req: Request) => {
   // 1. Load submission
   const { data: subData, error: subErr } = await supabase
     .from("cvp_quiz_submissions")
-    .select("id, application_id, target_language_id, token, token_expires_at, status")
+    .select("id, application_id, target_language_id, token, token_expires_at, status, is_cog_debrief")
     .eq("token", token)
     .maybeSingle();
   if (subErr || !subData) {
@@ -242,6 +243,16 @@ serve(async (req: Request) => {
   // auto-approve a COA candidate who failed a sentence translation.
   if (anyTranslationFail && comboStatus === "approved") comboStatus = "assessed";
 
+  // Cognitive-debriefing: standalone knowledge quiz with NO translation combos.
+  // Settle the application directly on the quiz score — pass → test_assessed
+  // (ready for references/approval), fail → rejected. No combo bookkeeping.
+  if (sub.is_cog_debrief) {
+    const appStatus = scorePct >= APPROVE_THRESHOLD ? "test_assessed" : "rejected";
+    await supabase
+      .from("cvp_applications")
+      .update({ status: appStatus, updated_at: now.toISOString() })
+      .eq("id", sub.application_id);
+  } else {
   const comboUpdate: Record<string, unknown> = {
     status: comboStatus,
     instrument_kind: "quiz",
@@ -287,6 +298,7 @@ serve(async (req: Request) => {
       .update({ status: appStatus, updated_at: now.toISOString() })
       .eq("id", sub.application_id);
   }
+  } // end !is_cog_debrief combo routing
 
   // 7. Applicant confirmation email (reuse V7 — wording is generic enough).
   const { data: appData } = await supabase

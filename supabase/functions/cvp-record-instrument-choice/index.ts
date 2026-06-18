@@ -234,8 +234,16 @@ async function dispatchQuizPath(
   const domainsOffered =
     ((appMeta as { domains_offered: string[] | null } | null)?.domains_offered) ?? [];
   const roleType = (appMeta as { role_type: string | null } | null)?.role_type ?? "";
-  const isCoa = roleType === "cognitive_debriefing" ||
-    domainsOffered.some((d) => COA_DOMAINS.includes(d));
+
+  // Cognitive-debriefing consultants take a standalone knowledge quiz (COA
+  // methodology) — no translation language pair, no test combinations.
+  if (roleType === "cognitive_debriefing") {
+    return await dispatchCogDebriefQuiz(supabase, applicationId);
+  }
+
+  // For translators: COA-domain applicants get the COA 2-part quiz (is_coa);
+  // everyone else the standard 5-competence quiz.
+  const isCoa = domainsOffered.some((d) => COA_DOMAINS.includes(d));
 
   const { data: combos, error: comboErr } = await supabase
     .from("cvp_test_combinations")
@@ -312,6 +320,77 @@ async function dispatchQuizPath(
   }
 
   return { kind: "quiz", isCoa, issued, skipped };
+}
+
+// Cognitive-debriefing knowledge quiz — standalone, language-agnostic, no
+// translation combos. One cvp_quiz_submissions row (is_cog_debrief=true) drawn
+// from the coa_methodology bank by cvp-get-quiz.
+async function dispatchCogDebriefQuiz(
+  supabase: ReturnType<typeof createClient>,
+  applicationId: string,
+): Promise<Record<string, unknown>> {
+  const { count } = await supabase
+    .from("iso_competence_quizzes")
+    .select("id", { count: "exact", head: true })
+    .eq("competence_slug", "coa_methodology")
+    .eq("active", true)
+    .is("target_language_id", null);
+  if ((count ?? 0) < 8) {
+    return { kind: "cog_debrief_quiz", warning: `insufficient coa_methodology questions (have ${count ?? 0}, need 8)` };
+  }
+
+  const expiresAt = new Date(Date.now() + QUIZ_TTL_MS).toISOString();
+  const { data: inserted, error: insErr } = await supabase
+    .from("cvp_quiz_submissions")
+    .insert({
+      application_id: applicationId,
+      target_language_id: null,
+      token_expires_at: expiresAt,
+      status: "sent",
+      is_coa: false,
+      is_cog_debrief: true,
+    })
+    .select("id, token")
+    .single();
+  if (insErr || !inserted) {
+    console.error("dispatchCogDebriefQuiz insert failed:", insErr);
+    return { kind: "cog_debrief_quiz", error: insErr?.message ?? "insert_failed" };
+  }
+  const row = inserted as { id: string; token: string };
+  const quizUrl = `${APP_URL.replace(/\/$/, "")}/quiz/${row.token}`;
+
+  const { data: appRow } = await supabase
+    .from("cvp_applications")
+    .select("email, full_name, application_number")
+    .eq("id", applicationId)
+    .maybeSingle();
+  const app = appRow as { email: string; full_name: string; application_number: string } | null;
+  if (app) {
+    const subject = `Your Cethos cognitive-debriefing assessment is ready · ${app.application_number}`;
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111827;">
+        <p>Hi ${esc(app.full_name)},</p>
+        <p>The next step for application <strong>${esc(app.application_number)}</strong> is a short <strong>cognitive-debriefing knowledge assessment</strong> covering COA methodology, cognitive interviewing, and good clinical practice. It is multiple-choice and takes about 20 minutes.</p>
+        <p style="margin: 24px 0;">
+          <a href="${esc(quizUrl)}" style="display: inline-block; background: #0891B2; color: #fff; text-decoration: none; padding: 11px 22px; border-radius: 6px; font-weight: 600; font-size: 14px;">Open the assessment</a>
+        </p>
+        <p style="font-size: 13px; color: #6B7280;">This link expires in 240 hours and can be used once. Reply to this email if you need help.</p>
+      </div>`;
+    const text =
+      `Hi ${app.full_name},\n\n` +
+      `The next step for application ${app.application_number} is a short cognitive-debriefing knowledge assessment (COA methodology, cognitive interviewing, GCP). Multiple choice, ~20 minutes.\n\n` +
+      `Open: ${quizUrl}\n\nLink expires in 240 hours.\n`;
+    await sendMailgunEmail({
+      to: { email: app.email, name: app.full_name },
+      subject,
+      html,
+      text,
+      respectDoNotContactFor: app.email,
+      tags: ["v8-cog-debrief-quiz", applicationId],
+    });
+  }
+
+  return { kind: "cog_debrief_quiz", issued: [{ tokenUrl: quizUrl }] };
 }
 
 async function checkQuizCoverage(

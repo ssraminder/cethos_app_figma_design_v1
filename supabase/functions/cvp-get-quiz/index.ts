@@ -39,11 +39,12 @@ const QUESTIONS_PER_COMPETENCE = 8;
 interface QuizSubmissionRow {
   id: string;
   application_id: string;
-  target_language_id: string;
+  target_language_id: string | null;
   token: string;
   token_expires_at: string;
   status: string;
   is_coa: boolean;
+  is_cog_debrief: boolean;
 }
 
 interface QuizQuestionRow {
@@ -84,7 +85,7 @@ serve(async (req: Request) => {
   // 1. Resolve quiz submission by token
   const { data: subData, error: subErr } = await supabase
     .from("cvp_quiz_submissions")
-    .select("id, application_id, target_language_id, token, token_expires_at, status, is_coa")
+    .select("id, application_id, target_language_id, token, token_expires_at, status, is_coa, is_cog_debrief")
     .eq("token", token)
     .maybeSingle();
 
@@ -124,19 +125,22 @@ serve(async (req: Request) => {
     );
   }
 
-  // 2. Fetch applicant metadata + target language name
-  const [{ data: appData }, { data: langData }] = await Promise.all([
-    supabase
-      .from("cvp_applications")
-      .select("full_name, application_number")
-      .eq("id", sub.application_id)
-      .maybeSingle(),
-    supabase
+  // 2. Fetch applicant metadata + target language name (no target language for
+  // the cognitive-debriefing knowledge quiz — it is language-agnostic).
+  const { data: appData } = await supabase
+    .from("cvp_applications")
+    .select("full_name, application_number")
+    .eq("id", sub.application_id)
+    .maybeSingle();
+  let langData: Record<string, unknown> | null = null;
+  if (sub.target_language_id) {
+    const { data } = await supabase
       .from("languages")
       .select("name, code")
       .eq("id", sub.target_language_id)
-      .maybeSingle(),
-  ]);
+      .maybeSingle();
+    langData = data as Record<string, unknown> | null;
+  }
   const targetLanguageCode =
     ((langData as Record<string, unknown> | null)?.code as string) ?? "";
   const applicantName =
@@ -157,7 +161,31 @@ serve(async (req: Request) => {
     options: { label: string; value: string }[];
   }> = [];
 
-  for (const c of COMPETENCES) {
+  // Cognitive-debriefing: knowledge-only quiz drawn from the coa_methodology
+  // bank (language-agnostic). No target-scoped competences, no translation
+  // items — these consultants run COA interviews, they don't translate.
+  if (sub.is_cog_debrief) {
+    const { data: cdQ } = await supabase
+      .from("iso_competence_quizzes")
+      .select("id, competence_slug, question, options, difficulty")
+      .eq("competence_slug", "coa_methodology")
+      .eq("active", true)
+      .is("target_language_id", null);
+    const cdRows = ((cdQ ?? []) as QuizQuestionRow[])
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 15);
+    for (const r of cdRows) {
+      questions.push({
+        id: r.id,
+        competence: r.competence_slug,
+        difficulty: r.difficulty,
+        question: r.question,
+        options: r.options,
+      });
+    }
+  }
+
+  for (const c of (sub.is_cog_debrief ? [] : COMPETENCES)) {
     let q = supabase
       .from("iso_competence_quizzes")
       .select("id, competence_slug, question, options, difficulty")
@@ -259,12 +287,13 @@ serve(async (req: Request) => {
       token: sub.token,
       applicantName,
       applicationNumber,
-      targetLanguageName,
       expiresAt: sub.token_expires_at,
       remainingHours,
       remainingMinutes,
       status: sub.status === "sent" ? "viewed" : sub.status,
       isCoa: sub.is_coa,
+      isCogDebrief: sub.is_cog_debrief,
+      targetLanguageName: sub.is_cog_debrief ? "Cognitive Debriefing (COA methodology)" : targetLanguageName,
       questions,
       translationItems,
     },
