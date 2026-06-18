@@ -67,7 +67,11 @@ serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
-  let body: { token?: string; responses?: ResponseItem[] };
+  let body: {
+    token?: string;
+    responses?: ResponseItem[];
+    translations?: { item_id: string; translation: string }[];
+  };
   try {
     body = await req.json();
   } catch {
@@ -76,6 +80,7 @@ serve(async (req: Request) => {
 
   const token = (body.token ?? "").trim();
   const responses = Array.isArray(body.responses) ? body.responses : [];
+  const translations = Array.isArray(body.translations) ? body.translations : [];
   if (!token) {
     return jsonResponse({ success: false, error: "Token is required" }, 400);
   }
@@ -166,6 +171,45 @@ serve(async (req: Request) => {
   }
   const scorePct = totalCount > 0 ? (correctCount / totalCount) * 100 : 0;
 
+  // 3b. COA Part 2: grade each sentence translation reference-free (via
+  // cvp-coa-assess-translation, which stores each to cvp_coa_translation_responses),
+  // and collect verdicts so a failed translation blocks auto-approval.
+  let anyTranslationFail = false;
+  let translationsGraded = 0;
+  if (translations.length > 0) {
+    const { data: langRow } = await supabase
+      .from("languages").select("name, code").eq("id", sub.target_language_id).maybeSingle();
+    const langName = ((langRow as Record<string, unknown> | null)?.name as string) ?? "";
+    const langCode = ((langRow as Record<string, unknown> | null)?.code as string) ?? "";
+    const fnUrl = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "") +
+      "/functions/v1/cvp-coa-assess-translation";
+    for (const t of translations) {
+      if (!t?.item_id || !String(t?.translation ?? "").trim()) continue;
+      try {
+        const resp = await fetch(fnUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
+          },
+          body: JSON.stringify({
+            itemId: t.item_id,
+            targetLanguageCode: langCode,
+            targetLanguageName: langName,
+            translation: t.translation,
+            applicationId: sub.application_id,
+          }),
+        });
+        const out = await resp.json();
+        translationsGraded += 1;
+        if (out?.data?.verdict === "fail") anyTranslationFail = true;
+      } catch (e) {
+        console.error("COA translation grading failed:", e);
+        anyTranslationFail = true; // conservative — route to human review
+      }
+    }
+  }
+
   // 4. Persist submission
   const { error: updateErr } = await supabase
     .from("cvp_quiz_submissions")
@@ -194,6 +238,9 @@ serve(async (req: Request) => {
   if (scorePct >= APPROVE_THRESHOLD) comboStatus = "approved";
   else if (scorePct >= STAFF_REVIEW_THRESHOLD) comboStatus = "assessed"; // staff review
   else comboStatus = "rejected";
+  // COA-strict: a failed Part-2 translation blocks auto-approval — never
+  // auto-approve a COA candidate who failed a sentence translation.
+  if (anyTranslationFail && comboStatus === "approved") comboStatus = "assessed";
 
   const comboUpdate: Record<string, unknown> = {
     status: comboStatus,
@@ -336,6 +383,8 @@ serve(async (req: Request) => {
       submittedAt: now.toISOString(),
       scorePct: Number(scorePct.toFixed(2)),
       verdict: comboStatus,
+      translationsGraded,
+      anyTranslationFail,
     },
   });
 });

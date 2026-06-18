@@ -43,6 +43,7 @@ interface QuizSubmissionRow {
   token: string;
   token_expires_at: string;
   status: string;
+  is_coa: boolean;
 }
 
 interface QuizQuestionRow {
@@ -83,7 +84,7 @@ serve(async (req: Request) => {
   // 1. Resolve quiz submission by token
   const { data: subData, error: subErr } = await supabase
     .from("cvp_quiz_submissions")
-    .select("id, application_id, target_language_id, token, token_expires_at, status")
+    .select("id, application_id, target_language_id, token, token_expires_at, status, is_coa")
     .eq("token", token)
     .maybeSingle();
 
@@ -132,10 +133,12 @@ serve(async (req: Request) => {
       .maybeSingle(),
     supabase
       .from("languages")
-      .select("name")
+      .select("name, code")
       .eq("id", sub.target_language_id)
       .maybeSingle(),
   ]);
+  const targetLanguageCode =
+    ((langData as Record<string, unknown> | null)?.code as string) ?? "";
   const applicantName =
     ((appData as Record<string, unknown> | null)?.full_name as string) ?? "";
   const applicationNumber =
@@ -188,6 +191,45 @@ serve(async (req: Request) => {
     }
   }
 
+  // COA track: append the COA methodology MCQ set (cross-language) and load the
+  // Part-2 sentence-translation items (language-agnostic + this target language).
+  let translationItems: Array<{
+    id: string;
+    source_text: string;
+    construct: string;
+    difficulty: string | null;
+    flawed_draft: string | null;
+    target_language_code: string | null;
+  }> = [];
+  if (sub.is_coa) {
+    const { data: coaQ } = await supabase
+      .from("iso_competence_quizzes")
+      .select("id, competence_slug, question, options, difficulty")
+      .eq("competence_slug", "coa_methodology")
+      .eq("active", true)
+      .is("target_language_id", null);
+    const coaRows = ((coaQ ?? []) as QuizQuestionRow[])
+      .sort(() => Math.random() - 0.5)
+      .slice(0, QUESTIONS_PER_COMPETENCE);
+    for (const r of coaRows) {
+      questions.push({
+        id: r.id,
+        competence: r.competence_slug,
+        difficulty: r.difficulty,
+        question: r.question,
+        options: r.options,
+      });
+    }
+
+    const { data: tItems } = await supabase
+      .from("cvp_coa_translation_items")
+      .select("id, source_text, construct, difficulty, flawed_draft, target_language_code")
+      .eq("active", true)
+      .or(`target_language_code.is.null,target_language_code.eq.${targetLanguageCode}`)
+      .order("order_index", { ascending: true });
+    translationItems = (tItems ?? []) as typeof translationItems;
+  }
+
   if (questions.length === 0) {
     return jsonResponse(
       { success: false, error: "No quiz content available for this target language." },
@@ -222,7 +264,9 @@ serve(async (req: Request) => {
       remainingHours,
       remainingMinutes,
       status: sub.status === "sent" ? "viewed" : sub.status,
+      isCoa: sub.is_coa,
       questions,
+      translationItems,
     },
   });
 });
