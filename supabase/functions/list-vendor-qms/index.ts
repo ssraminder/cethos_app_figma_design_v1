@@ -34,6 +34,7 @@ serve(async (req) => {
     return json({
       success: true,
       qualifications: data?.qualifications ?? [],
+      unlinked_evidence: data?.unlinked_evidence ?? [],
       ndas: data?.ndas ?? [],
       portal_nda_signed_at: data?.portal_nda_signed_at ?? null,
     });
