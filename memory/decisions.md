@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-18 — §3.1.8 performance monitoring made operational
+- **Decision:** Fixed the linguist performance-monitoring surface and populated it. The `qms.linguist_performance_snapshot` materialized view was stale (never refreshed since the register filled) → refreshed (104 linguists visible). MD-approved one-time backfill of **43 factual `project_completed` events** from completed/delivered workflow steps; added a DB trigger (`qms.emit_project_completed`) emitting events on step completion going forward; scheduled a daily matview refresh cron. Recorded the June 2026 monthly review (§3.1.8 evidence).
+- **Rationale:** §3.1.8 / IQVIA expects ongoing competence monitoring with data + a recorded review; the tooling existed but the surface was empty. Closes that gap.
+- **Guardrail note:** the auto-mode classifier (correctly) required explicit value-level approval before backfilling audit-sampled QMS event records; done only after MD approval.
+- **Follow-ups:** wire revision_finding / late_delivery / client_complaint event sources; QM spot-check the 16 subject-matter quals.
+- **Status:** active · **Affects:** `qms.performance_events`, `qms.linguist_performance_snapshot`, `order_workflow_steps` trigger.
+
 ### 2026-06-17 — Recruitment Phase 1: auto-request missing documentation (LIVE)
 - **Decision:** After the AI CV pre-screen, the system now automatically emails an applicant for any missing required documentation (CV, credential/§3.1.4 evidence, work samples) and logs it — instead of dead-ending in `staff_review` for a human to chase. Built, e2e-verified on a test applicant, and **enabled in production** (`cvp_system_config.auto_doc_request.enabled = true`, acting staff = Raminder Shah).
 - **Rationale:** the recruitment system was designed to be automatic but document-requesting was 100% manual; this closes that gap. User chose the broad trigger (any missing doc) + auto-enable after e2e.
