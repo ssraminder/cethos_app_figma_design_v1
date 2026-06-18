@@ -287,6 +287,15 @@ ${JSON.stringify(snapshot, null, 2)}`;
       );
     }
 
+    // Surface received references on the QMS tab as competence evidence.
+    // No staff actor here → recorded Tier-1 (screened), pending a human
+    // Verify on the QMS tab. Fire-and-forget; never blocks the assessment.
+    try {
+      await sb.rpc("qms_ingest_vendor_references", { p_vendor_id: vendorId, p_acting_user_id: null });
+    } catch (e) {
+      console.error("qms_ingest_vendor_references failed:", e);
+    }
+
     // Phase 3 — auto-create a *draft* doc-request when the verdict is
     // insufficient_evidence and no open request already exists. Admin
     // sees a banner on the Documents tab; one click to send.
@@ -301,7 +310,22 @@ ${JSON.stringify(snapshot, null, 2)}`;
         .maybeSingle();
 
       if (!existing) {
-        const items = pickDraftItems(snapshot.vendor, snapshot.application !== null);
+        let items = pickDraftItems(snapshot.vendor, snapshot.application !== null);
+        // C — don't re-request what the vendor already resolved (uploaded or
+        // declined-with-reason) on their most recent request.
+        const { data: lastReq } = await sb
+          .from("vendor_document_requests")
+          .select("requested_items")
+          .eq("vendor_id", vendorId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const resolvedSlugs = new Set(
+          ((lastReq?.requested_items as Array<Record<string, unknown>>) ?? [])
+            .filter((it) => it.completed_at || it.declined_at)
+            .map((it) => String(it.slug)),
+        );
+        items = items.filter((it) => !resolvedSlugs.has(it.slug));
         if (items.length > 0) {
           const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
           const itemsForStorage = items.map((it) => ({
