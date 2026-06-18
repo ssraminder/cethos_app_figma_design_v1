@@ -222,6 +222,21 @@ async function dispatchQuizPath(
     .ilike("name", "English%");
   const englishIds = ((enLangs ?? []) as { id: string }[]).map((l) => l.id);
 
+  // COA detection: clinical / life-sciences applicants receive the COA 2-part
+  // quiz (COA methodology MCQs + Part-2 sentence translation). Driven by the
+  // applicant's declared domains or the cognitive-debriefing role.
+  const COA_DOMAINS = ["medical", "life_sciences", "pharmaceutical"];
+  const { data: appMeta } = await supabase
+    .from("cvp_applications")
+    .select("role_type, domains_offered")
+    .eq("id", applicationId)
+    .maybeSingle();
+  const domainsOffered =
+    ((appMeta as { domains_offered: string[] | null } | null)?.domains_offered) ?? [];
+  const roleType = (appMeta as { role_type: string | null } | null)?.role_type ?? "";
+  const isCoa = roleType === "cognitive_debriefing" ||
+    domainsOffered.some((d) => COA_DOMAINS.includes(d));
+
   const { data: combos, error: comboErr } = await supabase
     .from("cvp_test_combinations")
     .select("id, target_language_id, source_language_id, domain, status")
@@ -262,6 +277,7 @@ async function dispatchQuizPath(
         target_language_id: targetLanguageId,
         token_expires_at: expiresAt,
         status: "sent",
+        is_coa: isCoa,
       })
       .select("id, token")
       .single();
@@ -295,7 +311,7 @@ async function dispatchQuizPath(
     await sendV8QuizInvitation(supabase, applicationId, issued);
   }
 
-  return { kind: "quiz", issued, skipped };
+  return { kind: "quiz", isCoa, issued, skipped };
 }
 
 async function checkQuizCoverage(
