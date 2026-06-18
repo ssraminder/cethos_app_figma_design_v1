@@ -43,6 +43,18 @@ interface RoleQualificationRow {
     proficiency: string;
     notes: string | null;
   }>;
+  evidence?: Array<{
+    title: string;
+    evidence_type: string | null;
+    issuing_organization: string | null;
+    verified: boolean;
+    verification_method: string | null;
+    verification_notes: string | null;
+    issued_date: string | null;
+    expiry_date: string | null;
+    has_file: boolean;
+    has_hash: boolean;
+  }>;
 }
 
 interface NdaRow {
@@ -131,7 +143,7 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white rounded-md text-sm hover:bg-teal-700"
         >
           <Plus className="w-4 h-4" />
-          Mark vendor qualified
+          {qualifications.length > 0 ? "Add qualification" : "Mark vendor qualified"}
         </button>
       </div>
 
@@ -212,6 +224,31 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
                         </span>
                       ))}
                     </div>
+                  </div>
+                )}
+                {q.evidence && q.evidence.length > 0 && (
+                  <div className="mt-2 border-t border-gray-100 pt-2">
+                    <div className="text-xs text-gray-500 mb-1">Evidence / proof</div>
+                    <ul className="space-y-1.5">
+                      {q.evidence.map((e, i) => (
+                        <li key={i} className="text-xs text-gray-700">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {e.verified
+                              ? <ShieldCheck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                              : <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                            <span className="font-medium text-gray-800">{e.title}</span>
+                            {e.evidence_type && <span className="text-gray-500">· {e.evidence_type}</span>}
+                            {e.issuing_organization && <span className="text-gray-500">· {e.issuing_organization}</span>}
+                            {e.has_file && <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">document on file</span>}
+                            {e.has_hash && <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">sha-256 ✓</span>}
+                            {e.verification_method && <span className="text-gray-400">{e.verification_method}</span>}
+                          </div>
+                          {e.verification_notes && (
+                            <div className="text-gray-500 mt-0.5 pl-5 whitespace-pre-wrap">{e.verification_notes}</div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </li>
