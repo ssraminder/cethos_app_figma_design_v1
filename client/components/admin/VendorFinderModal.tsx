@@ -159,6 +159,37 @@ export default function VendorFinderModal({
   const [availability, setAvailability] = useState("");
   const [searchText, setSearchText] = useState("");
   const [sortBy, setSortBy] = useState("match_score");
+  // Hide vendors who explicitly failed the ISO 17100 / QMS competence check
+  // for this service + language pair. Vendors with an unknown check (null —
+  // e.g. no service selected) are kept. Policy is warn-with-override, so this
+  // is a view filter, not a hard gate.
+  const [onlyQualified, setOnlyQualified] = useState(false);
+
+  // Eligible-first ordering + optional "qualified only" filter, applied on top
+  // of the server sort so QMS-passing vendors always surface first.
+  const displayVendors = useMemo(() => {
+    const rank = (v: any) => (v?.qms_eligible === true ? 0 : v?.qms_eligible == null ? 1 : 2);
+    const filtered = onlyQualified ? vendors.filter((v) => v?.qms_eligible !== false) : vendors;
+    return [...filtered].sort((a, b) => rank(a) - rank(b));
+  }, [vendors, onlyQualified]);
+
+  // Assign/offer with a warn-and-override guard: if the vendor failed the QMS
+  // check for this service/language pair, confirm before proceeding. The check
+  // itself is already audit-logged server-side (qms.assignment_eligibility_events).
+  const handleSelectVendor = useCallback(
+    (v: any, mode: "assign" | "offer") => {
+      if (v?.qms_eligible === false) {
+        const reason = v.qms_reason ? `\n\nReason: ${v.qms_reason}` : "";
+        const role = v.qms_required_role ? ` as ${v.qms_required_role}` : "";
+        const ok = window.confirm(
+          `${v.full_name} is NOT QMS-qualified${role} for this service / language pair (ISO 17100 §6.1).${reason}\n\n${mode === "assign" ? "Assign" : "Send an offer to"} this vendor anyway?`,
+        );
+        if (!ok) return;
+      }
+      onSelectVendor(v, mode);
+    },
+    [onSelectVendor],
+  );
 
   const doSearch = useCallback(async () => {
     setSearching(true);
@@ -570,16 +601,26 @@ export default function VendorFinderModal({
 
           {/* Select all + count */}
           <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm text-gray-600">
-              <input
-                type="checkbox"
-                checked={vendors.length > 0 && selectedIds.size === vendors.length}
-                onChange={toggleSelectAll}
-              />
-              Select all (for batch offer)
-            </label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={vendors.length > 0 && selectedIds.size === vendors.length}
+                  onChange={toggleSelectAll}
+                />
+                Select all (for batch offer)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-600" title="Hide vendors who failed the ISO 17100 / QMS competence check for this service + language pair">
+                <input
+                  type="checkbox"
+                  checked={onlyQualified}
+                  onChange={(e) => setOnlyQualified(e.target.checked)}
+                />
+                Qualified only
+              </label>
+            </div>
             <span className="text-sm text-gray-500 flex items-center gap-3">
-              {searching ? "Searching..." : `${totalMatches} vendor(s) found`}
+              {searching ? "Searching..." : `${totalMatches} vendor(s) found${onlyQualified && displayVendors.length !== vendors.length ? ` · ${displayVendors.length} shown` : ""}`}
               {/* R19 — source new vendor: link to recruitment with the
                   current language pair + service pre-filled so staff can
                   prioritise the applicant pipeline for this exact gap. */}
@@ -602,9 +643,9 @@ export default function VendorFinderModal({
             <div className="flex items-center justify-center py-8 text-gray-400">
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
-          ) : vendors.length === 0 ? (
+          ) : displayVendors.length === 0 ? (
             <div className="py-8 text-center space-y-2">
-              <p className="text-sm text-gray-400">No vendors found. Adjust filters and search again, or:</p>
+              <p className="text-sm text-gray-400">{onlyQualified && vendors.length > 0 ? "No QMS-qualified vendors in these results. Uncheck “Qualified only” to see all matches, or:" : "No vendors found. Adjust filters and search again, or:"}</p>
               <a
                 href={`/admin/recruitment?source=${encodeURIComponent(sourceLanguage || "")}&target=${encodeURIComponent(targetLanguage || "")}&service=${encodeURIComponent(serviceId || "")}`}
                 target="_blank"
@@ -616,7 +657,7 @@ export default function VendorFinderModal({
             </div>
           ) : (
             <div className="space-y-2">
-              {vendors.map((v: any) => (
+              {displayVendors.map((v: any) => (
                 <div key={v.id} className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50">
                   <div className="flex items-start gap-3">
                     <input
@@ -692,13 +733,13 @@ export default function VendorFinderModal({
                     <div className="flex gap-1 shrink-0">
                       <button
                         className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-                        onClick={() => onSelectVendor(v, "assign")}
+                        onClick={() => handleSelectVendor(v, "assign")}
                       >
                         Assign
                       </button>
                       <button
                         className="text-xs px-2.5 py-1 bg-teal-600 text-white rounded hover:bg-teal-700"
-                        onClick={() => onSelectVendor(v, "offer")}
+                        onClick={() => handleSelectVendor(v, "offer")}
                       >
                         Offer
                       </button>
