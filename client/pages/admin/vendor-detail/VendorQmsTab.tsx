@@ -38,6 +38,11 @@ interface RoleQualificationRow {
     target_language: { code: string; name: string } | null;
     direction: string;
   }>;
+  subject_matter_qualifications?: Array<{
+    subject_matter: { id: string; name: string } | null;
+    proficiency: string;
+    notes: string | null;
+  }>;
 }
 
 interface NdaRow {
@@ -195,6 +200,18 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
                         {p.target_language?.name ?? p.target_language?.code}
                       </span>
                     ))}
+                  </div>
+                )}
+                {q.subject_matter_qualifications && q.subject_matter_qualifications.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs text-gray-500 mb-1">Subject-matter competence (ISO §6.1.6 / COA §5.2)</div>
+                    <div className="flex flex-wrap gap-1">
+                      {q.subject_matter_qualifications.map((s, i) => (
+                        <span key={i} className="text-xs px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded" title={s.notes ?? undefined}>
+                          {s.subject_matter?.name}{s.proficiency ? ` · ${s.proficiency}` : ''}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </li>
