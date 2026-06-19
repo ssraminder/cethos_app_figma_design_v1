@@ -71,6 +71,7 @@ function buildEmail(group: string, fullName: string): { subject: string; html: s
 <p style="margin:0 0 14px;">${esc(intro)}</p>
 <ul style="margin:0 0 16px;padding-left:20px;">${li}</ul>
 <p style="margin:0 0 14px;"><strong>Simply reply to this email</strong> with the documents attached and we'll continue your review.</p>
+<p style="margin:0 0 16px;padding:10px 12px;background:#f8fafc;border-left:3px solid #0F9DA0;color:#475569;font-size:13px;border-radius:4px;">Once your Cethos portal account is active, you can add or update your CV and supporting documents anytime under <strong>Profile &rsaquo; Supporting Documents</strong> at vendor.cethos.com &mdash; no need to email them in.</p>
 <p style="margin:0 0 4px;">Thank you,</p>
 <p style="margin:0;">The Cethos Linguist Team</p>
 </div>`;

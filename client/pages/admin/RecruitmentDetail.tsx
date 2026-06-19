@@ -4960,6 +4960,7 @@ export default function RecruitmentDetail() {
       `<p><strong>Professional references</strong> &mdash; handled separately. If we haven't already, we'll send a short form to two of your professional references; they reply directly to us so the verification stays independent. No reference letters needed from you.</p>`,
       `<p><strong>Confidentiality (NDA)</strong> &mdash; we have an in-portal clickwrap signing flow. Once your application is approved you'll be invited to sign electronically; no separate PDF is needed.</p>`,
       `<p>If anything is unclear or you don't have a particular document, just reply and let us know.</p>`,
+      `<p style="margin:14px 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #0F9DA0;color:#475569;font-size:13px;border-radius:4px;">Once your Cethos portal account is active, you can add or update your CV and supporting documents anytime under <strong>Profile &rsaquo; Supporting Documents</strong> at vendor.cethos.com &mdash; no need to email them in.</p>`,
       `<p>Best regards,<br/>Cethos Recruitment Team</p>`,
     ].join("\n");
   };
