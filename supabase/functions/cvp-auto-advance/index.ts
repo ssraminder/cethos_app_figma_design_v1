@@ -81,22 +81,21 @@ serve(async (req: Request) => {
 
   // Candidates: translators parked at prescreen with no choice yet and no live
   // invite token (so we never re-spam).
+  // Re-spam guard lives IN the query (not a post-fetch JS filter) so a backlog
+  // of already-invited-but-not-yet-chosen applicants can't fill the fetch window
+  // and starve newer applicants. Eligible = no invite token OR an expired one.
   const { data: rows, error } = await supabase
     .from("cvp_applications")
-    .select("id, full_name, email, status, instrument_choice_token, instrument_choice_token_expires_at")
+    .select("id, full_name, email, status")
     .eq("role_type", "translator")
     .in("status", ["staff_review", "prescreened"])
     .is("instrument_choice", null)
+    .or(`instrument_choice_token.is.null,instrument_choice_token_expires_at.lt.${nowIso}`)
     .order("created_at", { ascending: true })
-    .limit(limit * 2); // over-fetch; token guard filters some out
+    .limit(limit);
   if (error) return json({ success: false, error: error.message }, 500);
 
-  const candidates = (rows ?? []).filter((r: any) => {
-    const tok = r.instrument_choice_token;
-    const exp = r.instrument_choice_token_expires_at;
-    const liveToken = tok && exp && new Date(exp) > new Date();
-    return !liveToken; // skip anyone with a still-valid invite already out
-  }).slice(0, limit);
+  const candidates = rows ?? [];
 
   const actions: Array<Record<string, unknown>> = [];
   let advanced = 0, rejected = 0, skipped = 0;
