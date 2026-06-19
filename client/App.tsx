@@ -82,6 +82,7 @@ import AdminReports from "./pages/admin/AdminReports";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminSops from "./pages/admin/AdminSops";
 import AdminSopDetail from "./pages/admin/AdminSopDetail";
+import AdminDocuments from "./pages/admin/AdminDocuments";
 import AdminQmsQueue from "./pages/admin/AdminQmsQueue";
 import AdminQmsApprovals from "./pages/admin/AdminQmsApprovals";
 import AdminTrainings from "./pages/admin/AdminTrainings";
@@ -447,6 +448,7 @@ const App = () => (
                     <Route path="iso-quizzes" element={<AdminIsoQuizzes />} />
                     <Route path="sops" element={<AdminSops />} />
                     <Route path="sops/:id" element={<AdminSopDetail />} />
+                    <Route path="documents" element={<AdminDocuments />} />
                     <Route path="qms/queue" element={<AdminQmsQueue />} />
                     <Route path="qms/approvals" element={<AdminQmsApprovals />} />
                     <Route path="qms/training-records" element={<AdminTrainings />} />

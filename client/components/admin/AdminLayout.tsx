@@ -185,6 +185,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Quality",
   },
   {
+    label: "Documents & Manuals",
+    path: "/admin/documents",
+    icon: Files,
+    section: "Quality",
+  },
+  {
     label: "Qualification Queue",
     path: "/admin/qms/queue",
     icon: ShieldCheck,
