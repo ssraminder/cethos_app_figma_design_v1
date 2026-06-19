@@ -87,7 +87,7 @@ serve(async (req: Request) => {
   const { data: rows, error } = await supabase
     .from("cvp_applications")
     .select("id, full_name, email, status")
-    .eq("role_type", "translator")
+    .in("role_type", ["translator", "cognitive_debriefing"])
     .in("status", ["staff_review", "prescreened"])
     .is("instrument_choice", null)
     .or(`instrument_choice_token.is.null,instrument_choice_token_expires_at.lt.${nowIso}`)
@@ -233,8 +233,64 @@ serve(async (req: Request) => {
     actions.push({ id: appId, name: (app as any).full_name, action: "offer_quiz_after_borderline" });
   }
 
+  // ── Phase E: agency applicants don't take a test/quiz. Hard-junk → reject;
+  // legitimate agencies advance to references_requested → the single final
+  // approval gate (credential/reference-assessed, not tested).
+  let agenciesAdvanced = 0;
+  const { data: agencies } = await supabase
+    .from("cvp_applications")
+    .select("id, full_name, email")
+    .eq("role_type", "agency")
+    .in("status", ["staff_review", "prescreened"])
+    .is("instrument_choice", null)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  for (const ag of (agencies ?? []) as any[]) {
+    const junk = isHardJunk(ag.full_name, ag.email);
+    if (junk) {
+      if (!dryRun) {
+        await supabase.from("cvp_applications")
+          .update({ status: "rejected", staff_reviewed_by: SYSTEM_STAFF_ID, staff_reviewed_at: nowIso, staff_review_notes: `[auto] Hard-junk auto-reject: ${junk}.`, updated_at: nowIso })
+          .eq("id", ag.id).in("status", ["staff_review", "prescreened"]);
+      }
+      rejected++;
+      actions.push({ id: ag.id, name: ag.full_name, action: "reject", reason: junk });
+      continue;
+    }
+    if (!dryRun) {
+      const resp = await fetch(`${supabaseUrl}/functions/v1/cvp-request-references`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify({ applicationId: ag.id, internalAuto: true, actingStaffId: SYSTEM_STAFF_ID }),
+      });
+      const out = await resp.json().catch(() => ({}));
+      if (!resp.ok || out?.success === false) {
+        skipped++; actions.push({ id: ag.id, name: ag.full_name, action: "agency_advance_failed", detail: out?.error ?? `http ${resp.status}` }); continue;
+      }
+      await supabase.from("cvp_applications").update({ status: "references_requested", updated_at: nowIso }).eq("id", ag.id).in("status", ["staff_review", "prescreened"]);
+    }
+    agenciesAdvanced++;
+    actions.push({ id: ag.id, name: ag.full_name, action: "agency_to_references" });
+  }
+
+  // ── Phase F: applicants who already chose an instrument but are still flagged
+  // staff_review are mid-assessment (waiting on them), not needing review. Move
+  // to test_in_progress so nothing sits in the human queue. Runs after Phase D,
+  // so genuine borderline apps (already moved to test_in_progress there) are
+  // unaffected; this only catches the "chose, not yet graded" stragglers.
+  let unparked = 0;
+  if (!dryRun) {
+    const { data: midRows } = await supabase
+      .from("cvp_applications")
+      .update({ status: "test_in_progress", updated_at: nowIso })
+      .eq("status", "staff_review")
+      .not("instrument_choice", "is", null)
+      .select("id");
+    unparked = (midRows ?? []).length;
+  }
+
   return json({
     success: true,
-    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, referencesRequested, quizOffered, skipped, actions },
+    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, referencesRequested, quizOffered, agenciesAdvanced, unparked, skipped, actions },
   });
 });
