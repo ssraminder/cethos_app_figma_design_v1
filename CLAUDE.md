@@ -31,6 +31,13 @@ These come from accumulated session experience — full rationale in `memory/pre
 - **Pricing convention:** `subtotal = translation only`, certification always carried separately. Display code: `pre_tax = total − tax_amount`.
 - **PR cadence:** per phase / per fix. Open + merge in the same session unless the user pauses.
 
+### QMS / vendor-qualification conventions (ISO 17100 — audit-critical)
+
+- **Onboarding/qualification is IRREVERSIBLE.** `qms.qualification_audit_log` is append-only (trigger `audit_log_no_mutate` blocks UPDATE/DELETE), so once a vendor has a qualification it can't be cleanly deleted. **Never do trial onboardings on prod** — validate logic on a single record only when you accept it's permanent.
+- **Actor columns FK to `auth.users`, not `staff_users`.** `qms.role_qualifications.created_by/qualified_by`, `competence_evidence.created_by/verified_by`, `language_pair_qualifications.created_by` all reference `auth.users(id)`. `staff_users.id` is NOT an auth id (link via `staff_users.auth_user_id`). Always resolve via `public.qms_resolve_actor(uuid)` before writing — passing a raw `staff_users.id` silently rolls back the whole SECURITY DEFINER function. The `internalAuto` path is where this bites.
+- **Approval → qualification is the single gate.** `cvp-approve-application` calls `qms_bridge_cvp_competence` (fail-loud: result in `data.qmsQualification`) to materialise the test/quiz into a `role_qualification` + `competence_evidence`. A pure internal-test pass has NULL `competence_basis_id` → stays `under_review` (does not auto-qualify, does not show in the `preliminary` approvals queue) until degree/experience docs set a basis + an active NDA exist.
+- **Bulk emails: send via Brevo directly, throttled** — do NOT loop a per-record edge function (hits the per-function `RateLimitError`). Always supply `cvp_outbound_messages.message_id` (NOT NULL, no default) or the audit-log insert fails silently and breaks dedup.
+
 ## Per-change loop (admin + vendor portal changes)
 
 When the user is sending a series of portal changes (admin at `D:\cethos\portal\cethos_app_figma_design_v1`, vendor at `D:\cethos-vendor`), run this loop for **each** change before moving to the next one:
