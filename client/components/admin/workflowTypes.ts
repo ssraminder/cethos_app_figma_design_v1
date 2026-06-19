@@ -117,6 +117,9 @@ export interface StepDelivery {
   delivered_at: string;
   file_paths: string[] | null;
   notes: string | null;
+  vendor_identifier?: string | null;
+  roster_linguist_id?: string | null;
+  roster_handle?: string | null;
   review_status: 'pending_review' | 'approved' | 'revision_requested';
   reviewed_by: string | null;
   reviewed_at: string | null;

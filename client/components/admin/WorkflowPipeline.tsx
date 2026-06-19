@@ -2659,14 +2659,21 @@ function WorkflowPipeline({
                           {step.latest_delivery.delivered_by_name && (
                             <span className="text-blue-500">by {step.latest_delivery.delivered_by_name}</span>
                           )}
-                          {(step.latest_delivery as any).vendor_identifier && (
+                          {step.latest_delivery.roster_handle ? (
+                            <span
+                              className="text-teal-700 font-mono bg-teal-100 px-1.5 py-0.5 rounded text-[10px]"
+                              title="Agency roster linguist (blinded handle) who performed this step"
+                            >
+                              linguist: {step.latest_delivery.roster_handle}
+                            </span>
+                          ) : step.latest_delivery.vendor_identifier ? (
                             <span
                               className="text-blue-700 font-mono bg-blue-100 px-1.5 py-0.5 rounded text-[10px]"
                               title="Vendor-supplied reference (translator name / internal job code)"
                             >
-                              ref: {(step.latest_delivery as any).vendor_identifier}
+                              ref: {step.latest_delivery.vendor_identifier}
                             </span>
-                          )}
+                          ) : null}
                           <span className={`ml-auto inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${REVIEW_STATUS_STYLES[step.latest_delivery.review_status]?.bg || 'bg-gray-100'} ${REVIEW_STATUS_STYLES[step.latest_delivery.review_status]?.text || 'text-gray-600'}`}>
                             {REVIEW_STATUS_STYLES[step.latest_delivery.review_status]?.label || step.latest_delivery.review_status}
                           </span>
@@ -2743,7 +2750,7 @@ function WorkflowPipeline({
                                         </button>
                                       </td>
                                       <td className="px-2 py-1 text-gray-600">{d.delivered_by_name || '—'}</td>
-                                      <td className="px-2 py-1 text-gray-600 font-mono text-[11px]">{(d as any).vendor_identifier || '—'}</td>
+                                      <td className="px-2 py-1 text-gray-600 font-mono text-[11px]">{d.roster_handle || d.vendor_identifier || '—'}</td>
                                       <td className="px-2 py-1 text-gray-500">{new Date(d.delivered_at).toLocaleString()}</td>
                                       <td className="px-2 py-1">
                                         {d.file_paths?.length ? (

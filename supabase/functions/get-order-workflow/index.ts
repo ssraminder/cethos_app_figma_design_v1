@@ -253,12 +253,26 @@ serve(async (req: Request) => {
         .select(`
           id, step_id, version, actor_type,
           delivered_by_id, delivered_by_name, delivered_at,
-          file_paths, notes, vendor_identifier,
+          file_paths, notes, vendor_identifier, roster_linguist_id,
           review_status, reviewed_by, reviewed_at, review_feedback,
           created_at
         `)
         .eq("step_id", s.id)
         .order("version", { ascending: false });
+
+      // Resolve blinded roster handles for agency deliveries (staff see only
+      // the opaque handle — never the linguist's real name).
+      const rosterIds = [...new Set((deliveries ?? []).map((d: any) => d.roster_linguist_id).filter(Boolean))];
+      let rosterHandleMap: Record<string, string> = {};
+      if (rosterIds.length) {
+        const { data: rl } = await supabase
+          .from("vendor_roster_linguists").select("id, handle").in("id", rosterIds);
+        rosterHandleMap = Object.fromEntries((rl ?? []).map((r: any) => [r.id, r.handle]));
+      }
+      const enrichedDeliveries = (deliveries ?? []).map((d: any) => ({
+        ...d,
+        roster_handle: d.roster_linguist_id ? (rosterHandleMap[d.roster_linguist_id] ?? null) : null,
+      }));
 
       // Fetch payable for this step
       const { data: payable } = await supabase
@@ -296,9 +310,9 @@ serve(async (req: Request) => {
         is_optional: s.is_optional,
         requires_file_upload: s.requires_file_upload,
         allowed_actor_types: s.allowed_actor_types,
-        deliveries: deliveries ?? [],
-        delivery_count: deliveries?.length ?? 0,
-        latest_delivery: deliveries?.[0] ?? null,
+        deliveries: enrichedDeliveries,
+        delivery_count: enrichedDeliveries.length,
+        latest_delivery: enrichedDeliveries[0] ?? null,
         vendor_id: s.vendor_id,
         vendor_name: vendorNameMap[s.vendor_id] || null,
         assigned_staff_id: s.assigned_staff_id,
