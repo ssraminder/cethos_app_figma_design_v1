@@ -235,13 +235,12 @@ serve(async (req: Request) => {
 
   // 5. Apply routing to all combinations of this applicant targeting the
   // quiz's target_language. Quiz settles all of them as a group.
-  let comboStatus: string;
-  if (scorePct >= APPROVE_THRESHOLD) comboStatus = "approved";
-  else if (scorePct >= STAFF_REVIEW_THRESHOLD) comboStatus = "assessed"; // staff review
-  else comboStatus = "rejected";
-  // COA-strict: a failed Part-2 translation blocks auto-approval — never
-  // auto-approve a COA candidate who failed a sentence translation.
-  if (anyTranslationFail && comboStatus === "approved") comboStatus = "assessed";
+  // No staff-review band: the quiz is a complete competence gate. At/above the
+  // pass threshold → approved; below → rejected (applicant may reapply). Nothing
+  // parks for human review — the only human step is final approval. The COA
+  // Part-2 translation is graded for the record (anyTranslationFail) but no
+  // longer parks the application; translation quality is reviewed at approval.
+  const comboStatus: string = scorePct >= APPROVE_THRESHOLD ? "approved" : "rejected";
 
   // Cognitive-debriefing: standalone knowledge quiz with NO translation combos.
   // Settle the application directly on the quiz score — pass → test_assessed
