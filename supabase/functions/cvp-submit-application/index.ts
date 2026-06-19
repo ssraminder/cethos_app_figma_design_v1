@@ -444,6 +444,40 @@ serve(async (req: Request) => {
       );
     }
 
+    // Phase 1 of applicant-login (FEATURE-FLAGGED, default OFF). When enabled,
+    // create the applicant's vendor record in 'applicant' status at submit so
+    // they can log into the existing vendor portal (same OTP auth) from day 1 to
+    // check status + sign their NDA. 'applicant' status is excluded from
+    // assignment/VendorFinder (status='active' filter), so this never affects
+    // work allocation. Non-fatal: a failure here must never block the submission.
+    // Flip APPLICANT_LOGIN_ENABLED=true only at the coordinated cutover.
+    if (Deno.env.get("APPLICANT_LOGIN_ENABLED") === "true") {
+      try {
+        const { data: existingV } = await supabase
+          .from("vendors").select("id").ilike("email", emailLc).maybeSingle();
+        if (!existingV) {
+          await supabase.from("vendors").insert({
+            full_name: applicationRow.full_name as string,
+            email: payload.email,
+            additional_emails: [],
+            phone: payload.phone ?? null,
+            country: payload.country ?? null,
+            city: (applicationRow.city as string | null) ?? null,
+            vendor_type: payload.roleType,
+            rate_currency: "CAD",
+            preferred_rate_currency: "CAD",
+            certifications: [],
+            years_experience: null,
+            status: "applicant",
+            availability_status: "available",
+            total_projects: 0,
+          });
+        }
+      } catch (e) {
+        console.error("applicant-vendor creation failed (non-fatal):", e instanceof Error ? e.message : String(e));
+      }
+    }
+
     // Create test combinations for translators.
     // Post domain-unit rework: one combo per (language_pair × domain). Every
     // translator also gets a mandatory General baseline test per pair,
