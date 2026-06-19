@@ -289,8 +289,47 @@ serve(async (req: Request) => {
     unparked = (midRows ?? []).length;
   }
 
+  // ── Phase G: CD & Clinician Review Consultants take NO test/quiz/human review.
+  // Auto-approve each to a PARKED vendor record (vendors.status='applicant' — a
+  // captured pool that does NOT surface in active assignment) and mark the
+  // application approved. No QMS bridge, no welcome email — passive pool for
+  // later outreach.
+  let consultantsParked = 0;
+  const { data: consultants } = await supabase
+    .from("cvp_applications")
+    .select("id, full_name, email, phone, country, city")
+    .eq("role_type", "cd_clinician_consultant")
+    .in("status", ["submitted", "prescreened", "staff_review", "info_requested"])
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  for (const c of (consultants ?? []) as any[]) {
+    if (dryRun) { consultantsParked++; actions.push({ id: c.id, name: c.full_name, action: "consultant_park (dry)" }); continue; }
+    let vendorId: string | null = null;
+    if (c.email) {
+      const { data: ev } = await supabase.from("vendors").select("id").ilike("email", c.email).maybeSingle();
+      vendorId = (ev as any)?.id ?? null;
+    }
+    if (!vendorId) {
+      const { data: nv, error: vErr } = await supabase.from("vendors").insert({
+        full_name: c.full_name, email: c.email, additional_emails: [], phone: c.phone ?? null,
+        country: c.country ?? null, city: c.city ?? null, vendor_type: "cd_clinician_consultant",
+        rate_currency: "CAD", preferred_rate_currency: "CAD", certifications: [], years_experience: null,
+        status: "applicant", availability_status: "available", total_projects: 0,
+      }).select("id").single();
+      if (vErr) { skipped++; actions.push({ id: c.id, name: c.full_name, action: "consultant_park_failed", detail: vErr.message }); continue; }
+      vendorId = (nv as any)?.id ?? null;
+    }
+    await supabase.from("cvp_applications").update({
+      status: "approved", staff_reviewed_by: SYSTEM_STAFF_ID, staff_reviewed_at: nowIso,
+      staff_review_notes: "[auto] CD & Clinician Review Consultant — parked vendor (no assessment; passive pool for later outreach).",
+      updated_at: nowIso,
+    }).eq("id", c.id);
+    consultantsParked++;
+    actions.push({ id: c.id, name: c.full_name, action: "consultant_parked", vendor_id: vendorId });
+  }
+
   return json({
     success: true,
-    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, referencesRequested, quizOffered, agenciesAdvanced, unparked, skipped, actions },
+    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, referencesRequested, quizOffered, agenciesAdvanced, unparked, consultantsParked, skipped, actions },
   });
 });

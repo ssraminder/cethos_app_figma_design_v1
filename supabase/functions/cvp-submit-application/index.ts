@@ -116,9 +116,39 @@ interface AgencyPayload {
   notes?: string;
 }
 
+interface CdClinicianConsultantPayload {
+  roleType: "cd_clinician_consultant";
+  fullName: string;
+  email: string;
+  phone?: string;
+  city?: string;
+  country: string;
+  linkedinUrl?: string;
+  educationLevel: string;
+  consultantYearsExperience: string;
+  consultantServices: string[];
+  canRecruitParticipants?: boolean;
+  canRecruitClinicians?: boolean;
+  clinicianTypesSourced?: string[];
+  consultantTherapyAreas: string[];
+  consultantRegionsCovered: string;
+  consultantWorkingLanguages: string[];
+  consultantIsporFamiliarity: string;
+  consultantFdaFamiliarity: string;
+  consultantEmaFamiliarity: string;
+  consultantGcpTrained?: boolean;
+  consultantAvailability: string;
+  consultantRateExpectation: string;
+  rateCurrency: string;
+  referralSource?: string;
+  notes?: string;
+  cvStoragePath?: string;
+}
+
 type ApplicationPayload =
   | TranslatorPayload
   | CognitiveDebriefingPayload
+  | CdClinicianConsultantPayload
   | AgencyPayload;
 
 function isAgencyPayload(p: ApplicationPayload): p is AgencyPayload {
@@ -173,7 +203,7 @@ serve(async (req: Request) => {
     // a separate (out-of-scope) workstream.
     const validRoles = isAgency
       ? ["agency"]
-      : ["translator", "cognitive_debriefing"];
+      : ["translator", "cognitive_debriefing", "cd_clinician_consultant"];
     if (!payload.roleType || !validRoles.includes(payload.roleType)) {
       return jsonResponse({ success: false, error: "Invalid role type for this applicant type" }, 400);
     }
@@ -340,6 +370,27 @@ serve(async (req: Request) => {
       );
       applicationRow.services_offered = aggregatedServiceCodes;
       applicationRow.rate_card = tp.languagePairs ?? [];
+    } else if (payload.roleType === "cd_clinician_consultant") {
+      const cc = payload as CdClinicianConsultantPayload;
+      applicationRow.education_level = cc.educationLevel;
+      // All consultant-specific detail lives in the jsonb (no role-specific columns).
+      applicationRow.consultant_profile = {
+        yearsExperience: cc.consultantYearsExperience,
+        services: cc.consultantServices ?? [],
+        canRecruitParticipants: cc.canRecruitParticipants ?? false,
+        canRecruitClinicians: cc.canRecruitClinicians ?? false,
+        clinicianTypesSourced: cc.clinicianTypesSourced ?? [],
+        therapyAreas: cc.consultantTherapyAreas ?? [],
+        regionsCovered: cc.consultantRegionsCovered ?? null,
+        workingLanguages: cc.consultantWorkingLanguages ?? [],
+        isporFamiliarity: cc.consultantIsporFamiliarity ?? null,
+        fdaFamiliarity: cc.consultantFdaFamiliarity ?? null,
+        emaFamiliarity: cc.consultantEmaFamiliarity ?? null,
+        gcpTrained: cc.consultantGcpTrained ?? false,
+        availability: cc.consultantAvailability ?? null,
+        rateExpectation: cc.consultantRateExpectation ?? null,
+        rateCurrency: cc.rateCurrency ?? null,
+      };
     } else {
       const cp = payload as CognitiveDebriefingPayload;
       applicationRow.cog_years_experience = parseInt(cp.cogYearsExperience, 10);
@@ -455,8 +506,11 @@ serve(async (req: Request) => {
       console.error("Error sending V1 confirmation email:", emailError);
     }
 
-    // Fire and forget: trigger pre-screening.
-    try {
+    // Fire and forget: trigger pre-screening. CD & Clinician Review Consultants
+    // take no skills test and are auto-approved to a parked vendor by
+    // cvp-auto-advance, so they skip the prescreen pipeline.
+    if (payload.roleType !== "cd_clinician_consultant") {
+      try {
       const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
       const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
       fetch(`${supabaseUrl}/functions/v1/cvp-prescreen-application`, {
@@ -471,6 +525,7 @@ serve(async (req: Request) => {
       });
     } catch (prescreenError) {
       console.error("Error triggering prescreen:", prescreenError);
+    }
     }
 
     return jsonResponse({

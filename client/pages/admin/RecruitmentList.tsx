@@ -971,6 +971,8 @@ export default function RecruitmentList() {
                       >
                         {app.role_type === "translator"
                           ? "Translator"
+                          : app.role_type === "cd_clinician_consultant"
+                          ? "CD & Clinician Consultant"
                           : "CD Interviewer"}
                       </span>
                     </td>
