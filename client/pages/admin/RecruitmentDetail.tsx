@@ -5319,7 +5319,7 @@ export default function RecruitmentDetail() {
         <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-500">
           <span className="font-mono">{app.application_number}</span>
           <span className={`px-2 py-0.5 rounded text-xs font-medium ${isTranslator ? "bg-blue-100 text-blue-700" : "bg-violet-100 text-violet-700"}`}>
-            {isTranslator ? "Translator" : "Cog. Debrief"}
+            {isTranslator ? "Translator" : "CD Interviewer"}
           </span>
           <span>Applied {format(new Date(app.created_at), "MMM d, yyyy")}</span>
           <span>({formatDistanceToNow(new Date(app.created_at), { addSuffix: true })})</span>
