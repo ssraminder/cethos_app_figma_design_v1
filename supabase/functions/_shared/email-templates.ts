@@ -98,14 +98,24 @@ function render(subject: string, args: ShellArgs): RenderedEmail {
 export interface V1Params {
   fullName: string;
   applicationNumber: string;
+  /** When set (applicant-login enabled), adds a "log in & sign your NDA" CTA and
+   *  tells the applicant the NDA is required before the test. Absent = the
+   *  original email, unchanged. */
+  loginUrl?: string;
 }
 export function buildV1ApplicationReceived(p: V1Params): RenderedEmail {
+  const loginBlock = p.loginUrl
+    ? `
+      <p>You can now <strong>log in to your CETHOS account</strong> to track your application and <strong>sign your NDA</strong> — please sign it first, as it's required before we send your assessment.</p>
+      <p><a href="${esc(p.loginUrl)}">Log in to your account →</a></p>
+    `
+    : `<p>Our AI pre-screen runs in the next few minutes. You'll hear from us again with either a test invitation or a status update within 1–2 business days.</p>`;
   return render(`We received your application · ${p.applicationNumber}`, {
     preheader: "Thanks for applying to CETHOS — here's what happens next.",
     heading: `Thanks for applying, ${esc(p.fullName.split(" ")[0])}!`,
     body: `
       <p>We've received your application <strong>${esc(p.applicationNumber)}</strong>.</p>
-      <p>Our AI pre-screen runs in the next few minutes. You'll hear from us again with either a test invitation or a status update within 1–2 business days.</p>
+      ${loginBlock}
     `,
   });
 }

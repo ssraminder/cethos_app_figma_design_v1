@@ -529,6 +529,11 @@ serve(async (req: Request) => {
       const tpl = buildV1ApplicationReceived({
         fullName: recipientName,
         applicationNumber,
+        // Applicant-login cutover: include the log-in + sign-NDA CTA only when
+        // the feature is enabled. Off = original email, unchanged.
+        loginUrl: Deno.env.get("APPLICANT_LOGIN_ENABLED") === "true"
+          ? "https://vendor.cethos.com"
+          : undefined,
       });
       await sendMailgunEmail({
         to: { email: payload.email, name: recipientName },
