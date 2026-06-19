@@ -84,6 +84,7 @@ import AdminSops from "./pages/admin/AdminSops";
 import AdminSopDetail from "./pages/admin/AdminSopDetail";
 import AdminQmsQueue from "./pages/admin/AdminQmsQueue";
 import AdminQmsApprovals from "./pages/admin/AdminQmsApprovals";
+import AdminTrainings from "./pages/admin/AdminTrainings";
 import AdminQmsStaff from "./pages/admin/AdminQmsStaff";
 import AdminSmsTemplates from "./pages/admin/AdminSmsTemplates";
 import Patterns from "./pages/admin/Patterns";
@@ -448,6 +449,7 @@ const App = () => (
                     <Route path="sops/:id" element={<AdminSopDetail />} />
                     <Route path="qms/queue" element={<AdminQmsQueue />} />
                     <Route path="qms/approvals" element={<AdminQmsApprovals />} />
+                    <Route path="qms/training-records" element={<AdminTrainings />} />
                     <Route path="qms/staff" element={<AdminQmsStaff />} />
                     <Route path="employment-applications" element={<EmploymentApplications />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
