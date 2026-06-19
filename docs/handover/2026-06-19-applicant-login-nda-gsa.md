@@ -10,7 +10,7 @@ Today applicant and vendor are two records: the apply form creates a `cvp_applic
 - **SAME vendor portal + SAME vendor auth** (Raminder, 2026-06-19) — do NOT build a new OTP/applicant login. At submit, create `vendor_auth` and send the existing password-setup / login link so the applicant logs into vendor.cethos.com exactly like a vendor. Reuse whatever login the vendor portal already uses.
 - **Workflow exclusion is the only special-casing:** `applicant`-status vendors must NOT appear in admin job-assignment / VendorFinder / active-vendor pools. (Portal itself is the same; just hide them from work allocation. Optionally disable vendor-only *mutations* — create-invoice etc. — for applicant status as a safety guardrail.)
 - **NDA gates the test** — no test/quiz issued until the NDA is signed.
-- **GSA = Master Services Agreement**, clickwrap e-sign at approval (mirror the NDA clickwrap). Doc to be supplied by Raminder.
+- **GSA = Master Services Agreement — ALREADY EXISTS in the vendor portal** (Raminder, 2026-06-19). Do NOT build a new GSA flow; reuse the existing one. It applies once the applicant becomes an `active` vendor at approval. Build task = just verify the existing GSA step triggers/gates correctly on status `applicant`→`active` (don't show GSA to applicants; show it once active).
 - **Cutover:** build Phases 1–3, then enable the NDA-before-test gate in one coordinated change once login + reminders are live.
 
 ## Phase 1 — Applicant identity + login (additive, low-risk)
@@ -25,9 +25,9 @@ Today applicant and vendor are two records: the apply form creates a `cvp_applic
 - **Gate:** `cvp-auto-advance` / `cvp-send-instrument-choice-invitation` must NOT issue the test/quiz until a signed, active NDA exists for the applicant's vendor. Add an NDA-pending holding state + reminder nudges (email + in-portal).
 - ⚠️ Cutover risk: turning this on mid-blast stalls everyone who hasn't signed. Enable only after Phase 1 is live + reminders wired.
 
-## Phase 3 — Approval → GSA
-- At `cvp-approve-application`: flip `vendors.status` `applicant`→`active`, create the QMS qualification (existing bridge), and present the **GSA** for clickwrap e-sign (new `vendor_gsa_signatures` table + clickwrap UI mirroring NDA). Gate full vendor access / first assignment on GSA signed.
-- Need from Raminder: the **GSA document text/PDF**.
+## Phase 3 — Approval → GSA (reuse existing)
+- At `cvp-approve-application`: flip `vendors.status` `applicant`→`active` + create the QMS qualification (existing bridge). The **GSA flow already exists in the vendor portal** — no new build. Just verify it triggers/gates on becoming `active` (and is NOT shown to `applicant`-status). Gate full vendor access / first assignment on GSA signed (per the existing GSA gating).
+- No GSA document or e-sign build needed — already set up.
 
 ## Cross-cutting
 - **Migration:** the ~300+/hr applicants arriving now have NO vendor row. Backfill `applicant`-status vendor rows for existing in-flight `cvp_applications` (non-terminal) at cutover so they can log in too.
