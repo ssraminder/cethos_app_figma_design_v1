@@ -268,6 +268,18 @@ serve(async (req: Request) => {
     .eq("target_language_id", sub.target_language_id)
     .in("status", ["pending", "test_sent", "test_submitted", "assessed"]);
 
+  // Cascade: a passing quiz (the core competence gate) auto-approves every other
+  // pending domain combination on the application — life sciences, medical,
+  // pharmaceutical, legal, etc. — so no declared domain is left parked "Pending".
+  // Same policy as the test path (cvp-assess-test). Confirmed at final approval.
+  if (comboStatus === "approved") {
+    await supabase
+      .from("cvp_test_combinations")
+      .update({ status: "approved", approved_at: now.toISOString(), updated_at: now.toISOString() })
+      .eq("application_id", sub.application_id)
+      .in("status", ["pending", "skip_manual_review"]);
+  }
+
   // 6. Update application-level status. Mirrors cvp-assess-test logic.
   // If all combos across all languages are settled, flip application to
   // staff_review (or rejected if every combo rejected).

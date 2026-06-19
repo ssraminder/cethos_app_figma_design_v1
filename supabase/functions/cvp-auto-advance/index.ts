@@ -190,8 +190,51 @@ serve(async (req: Request) => {
     actions.push({ id: p.id, name: p.full_name, action: "request_references" });
   }
 
+  // ── Phase D: borderline General test parked in staff_review → auto-offer the
+  // quiz as a second instrument (once), instead of leaving it for a human. Reset
+  // the general combos so the quiz dispatch picks them up; the quiz then settles
+  // the application. Guard: skip anyone who already has a quiz (offer once).
+  let quizOffered = 0;
+  const { data: blCombos } = await supabase
+    .from("cvp_test_combinations")
+    .select("application_id")
+    .eq("status", "assessed")
+    .eq("domain", "general");
+  const blAppIds = Array.from(new Set((blCombos ?? []).map((r: any) => r.application_id))).slice(0, limit);
+  for (const appId of blAppIds) {
+    const { data: app } = await supabase
+      .from("cvp_applications").select("id, full_name, status").eq("id", appId).maybeSingle();
+    if (!app || (app as any).status !== "staff_review") continue;
+    const { count: qCount } = await supabase
+      .from("cvp_quiz_submissions").select("id", { count: "exact", head: true }).eq("application_id", appId);
+    if ((qCount ?? 0) > 0) continue; // already offered a quiz — borderline stands
+    if (!dryRun) {
+      await supabase
+        .from("cvp_test_combinations")
+        .update({ status: "pending", updated_at: nowIso })
+        .eq("application_id", appId).eq("domain", "general").eq("status", "assessed");
+      const resp = await fetch(`${supabaseUrl}/functions/v1/cvp-record-instrument-choice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify({ applicationId: appId, choice: "quiz", staffId: SYSTEM_STAFF_ID }),
+      });
+      const out = await resp.json().catch(() => ({}));
+      if (!resp.ok || out?.success === false) {
+        skipped++;
+        actions.push({ id: appId, name: (app as any).full_name, action: "quiz_offer_failed", detail: out?.error ?? `http ${resp.status}` });
+        continue;
+      }
+      await supabase
+        .from("cvp_applications")
+        .update({ status: "test_in_progress", updated_at: nowIso })
+        .eq("id", appId).eq("status", "staff_review");
+    }
+    quizOffered++;
+    actions.push({ id: appId, name: (app as any).full_name, action: "offer_quiz_after_borderline" });
+  }
+
   return json({
     success: true,
-    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, referencesRequested, skipped, actions },
+    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, referencesRequested, quizOffered, skipped, actions },
   });
 });
