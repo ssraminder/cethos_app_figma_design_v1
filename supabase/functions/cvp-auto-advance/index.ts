@@ -78,6 +78,11 @@ serve(async (req: Request) => {
   const supabase = createClient(supabaseUrl, serviceKey);
 
   const nowIso = new Date().toISOString();
+  // NDA-before-test gate, part of the applicant-login cutover. OFF by default —
+  // when APPLICANT_LOGIN_ENABLED=true, an applicant must have signed their NDA
+  // (in the portal) before we issue the test/quiz. Flips on with the rest of
+  // the applicant-login feature at the coordinated cutover.
+  const applicantLoginOn = Deno.env.get("APPLICANT_LOGIN_ENABLED") === "true";
 
   // Candidates: translators parked at prescreen with no choice yet and no live
   // invite token (so we never re-spam).
@@ -121,6 +126,31 @@ serve(async (req: Request) => {
       rejected++;
       actions.push({ id: a.id, name: a.full_name, action: "reject", reason: junkReason });
       continue;
+    }
+
+    // NDA-before-test gate (flagged). Hold the applicant — don't issue the
+    // test/quiz — until their NDA is signed in the portal. Checked by the
+    // applicant's vendor (by email) or directly by application_id.
+    if (applicantLoginOn) {
+      let ndaOk = false;
+      const { data: av } = await supabase.from("vendors").select("id").ilike("email", a.email).maybeSingle();
+      if ((av as { id?: string } | null)?.id) {
+        const { count } = await supabase.from("vendor_nda_signatures")
+          .select("id", { count: "exact", head: true })
+          .eq("vendor_id", (av as { id: string }).id).eq("is_current", true);
+        ndaOk = (count ?? 0) > 0;
+      }
+      if (!ndaOk) {
+        const { count: c2 } = await supabase.from("vendor_nda_signatures")
+          .select("id", { count: "exact", head: true })
+          .eq("application_id", a.id).eq("is_current", true);
+        ndaOk = (c2 ?? 0) > 0;
+      }
+      if (!ndaOk) {
+        skipped++;
+        actions.push({ id: a.id, name: a.full_name, action: "held_nda_pending" });
+        continue;
+      }
     }
 
     // Advance: bump staff_review→prescreened, then send the choice invite.
