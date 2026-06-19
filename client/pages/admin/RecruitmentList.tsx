@@ -971,7 +971,7 @@ export default function RecruitmentList() {
                       >
                         {app.role_type === "translator"
                           ? "Translator"
-                          : "Cog. Debrief"}
+                          : "CD Interviewer"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{app.country}</td>
