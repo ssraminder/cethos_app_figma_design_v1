@@ -106,10 +106,6 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
-  const authed = await requireStaff(req);
-  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
-  const staffId = authed.staff.staffId;
-
   let body: {
     applicationId?: string;
     staffMessage?: string;
@@ -118,6 +114,8 @@ serve(async (req: Request) => {
     dryRun?: boolean;
     editedSubject?: string;
     editedBody?: string;
+    internalAuto?: boolean;
+    actingStaffId?: string;
   };
   try {
     body = await req.json();
@@ -125,6 +123,20 @@ serve(async (req: Request) => {
     return json({ success: false, error: "invalid_json" }, 400);
   }
   if (!body.applicationId) return json({ success: false, error: "applicationId_required" }, 400);
+
+  // Auth: normally a staff JWT. The automated pipeline (cvp-auto-advance) calls
+  // this with internalAuto + the service-role key + an acting staff id so the
+  // references step needs no human. The service-key check prevents spoofing.
+  let staffId: string;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (body.internalAuto === true && body.actingStaffId && authHeader === `Bearer ${serviceKey}`) {
+    staffId = body.actingStaffId;
+  } else {
+    const authed = await requireStaff(req);
+    if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+    staffId = authed.staff.staffId;
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",

@@ -153,8 +153,46 @@ serve(async (req: Request) => {
     actions.push({ id: a.id, name: a.full_name, action: "advance_to_assessment" });
   }
 
+  // ── Phase C: assessment passed (test_assessed) → auto-request references.
+  // Any role. References are collected automatically; the human reads them at
+  // the single final approval gate. Skip anyone who already has a request.
+  let referencesRequested = 0;
+  const { data: passed } = await supabase
+    .from("cvp_applications")
+    .select("id, full_name")
+    .eq("status", "test_assessed")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  for (const p of (passed ?? []) as any[]) {
+    const { count } = await supabase
+      .from("cvp_application_reference_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("application_id", p.id);
+    if ((count ?? 0) > 0) { skipped++; continue; }
+    if (!dryRun) {
+      const resp = await fetch(`${supabaseUrl}/functions/v1/cvp-request-references`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify({ applicationId: p.id, internalAuto: true, actingStaffId: SYSTEM_STAFF_ID }),
+      });
+      const out = await resp.json().catch(() => ({}));
+      if (!resp.ok || out?.success === false) {
+        skipped++;
+        actions.push({ id: p.id, name: p.full_name, action: "references_request_failed", detail: out?.error ?? `http ${resp.status}` });
+        continue;
+      }
+      await supabase
+        .from("cvp_applications")
+        .update({ status: "references_requested", updated_at: nowIso })
+        .eq("id", p.id)
+        .eq("status", "test_assessed");
+    }
+    referencesRequested++;
+    actions.push({ id: p.id, name: p.full_name, action: "request_references" });
+  }
+
   return json({
     success: true,
-    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, skipped, actions },
+    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, referencesRequested, skipped, actions },
   });
 });
