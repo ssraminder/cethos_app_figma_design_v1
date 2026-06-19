@@ -67,6 +67,11 @@ interface ApprovePayload {
    *  `actingStaffId` is the accountable human who enabled auto-approval. */
   internalAuto?: boolean;
   actingStaffId?: string;
+  /** Provisional onboarding: skip the "you're approved" V11 welcome email.
+   *  Used when the applicant is being provisionally onboarded pending
+   *  documentation — they receive the (token-based) document-request email
+   *  instead, and the qualification is held for the QMS human gate. */
+  skipWelcomeEmail?: boolean;
 }
 
 serve(async (req: Request) => {
@@ -851,6 +856,37 @@ serve(async (req: Request) => {
   }
   } // end if (!isAgencyApp) — close the individual-only seeding block
 
+  // ── Wire competence into QMS (single-gate). Materialise the recruitment
+  // test/quiz result into a role_qualification + competence_evidence so an
+  // approved vendor always carries an ISO 17100 §6.1 qualification record.
+  // FAIL-LOUD: any bridge failure is surfaced in the response + logged — never
+  // silently swallowed. (Previously the bridge was never called at all, so
+  // every approval produced an active vendor with no qualification.)
+  let qmsQualification: { ok: boolean; result?: unknown; error?: string } = { ok: false, error: "not_run" };
+  if (!isAgencyApp) {
+    const basisCode = body.skipTesting
+      ? (({
+          degree_translation: "t_a_degree_translation",
+          degree_other_plus_2y: "t_b_degree_other_plus_2y",
+          experience_5y: "t_c_5y_experience",
+        } as Record<string, string>)[body.qualificationBasis ?? ""] ?? null)
+      : null;
+    const { data: bridgeData, error: bridgeErr } = await supabase.rpc("qms_bridge_cvp_competence", {
+      p_vendor_id: vendorId,
+      p_application_id: body.applicationId,
+      p_acting_user_id: staffId,
+      p_basis_code: basisCode,
+    });
+    if (bridgeErr) {
+      console.error("cvp-approve-application: QMS bridge FAILED for vendor", vendorId, "app", body.applicationId, "-", bridgeErr.message);
+      qmsQualification = { ok: false, error: bridgeErr.message };
+    } else {
+      qmsQualification = { ok: true, result: bridgeData };
+    }
+  } else {
+    qmsQualification = { ok: false, error: "agency_no_translator_qualification" };
+  }
+
   const tpl = buildV11ApprovedWelcome({
     fullName: app.full_name,
     applicationNumber: app.application_number,
@@ -861,19 +897,21 @@ serve(async (req: Request) => {
     staffMessage: staffMessageForEmail,
   });
   const subject = (body.editedSubject ?? "").trim() || tpl.subject;
-  await sendMailgunEmail({
-    to: { email: app.email, name: app.full_name },
-    subject,
-    html: tpl.html,
-    text: tpl.text,
-    respectDoNotContactFor: app.email,
-    tags: ["v11-approved-welcome", body.applicationId],
-    trackContext: {
-      applicationId: body.applicationId,
-      templateTag: "v11-approved-welcome",
-      staffUserId: staffId,
-    },
-  });
+  if (body.skipWelcomeEmail !== true) {
+    await sendMailgunEmail({
+      to: { email: app.email, name: app.full_name },
+      subject,
+      html: tpl.html,
+      text: tpl.text,
+      respectDoNotContactFor: app.email,
+      tags: ["v11-approved-welcome", body.applicationId],
+      trackContext: {
+        applicationId: body.applicationId,
+        templateTag: "v11-approved-welcome",
+        staffUserId: staffId,
+      },
+    });
+  }
 
   // Persist combined audit: welcome-message notes + per-domain rationale.
   // The block stays out of the AI-rewrite input above so applicant-facing
@@ -904,6 +942,7 @@ serve(async (req: Request) => {
       vendorId,
       approvedCount: approveIds.length,
       aiProcessed: Boolean(aiOutput),
+      qmsQualification,
     },
   });
 
