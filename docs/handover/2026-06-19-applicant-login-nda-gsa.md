@@ -7,15 +7,17 @@ Today applicant and vendor are two records: the apply form creates a `cvp_applic
 
 ## Decided design
 - **Applicant = a `vendors` row in `status='applicant'`** from submit (the status enum already supports it; the CD-consultant flow already parks vendors there).
-- **Passwordless OTP / magic-link login** for `applicant`-status vendors (reuse the customer-portal OTP infra: `send-customer-login-otp` / `verify-customer-login-otp` patterns; do NOT reuse password_setup — keep it frictionless).
+- **SAME vendor portal + SAME vendor auth** (Raminder, 2026-06-19) — do NOT build a new OTP/applicant login. At submit, create `vendor_auth` and send the existing password-setup / login link so the applicant logs into vendor.cethos.com exactly like a vendor. Reuse whatever login the vendor portal already uses.
+- **Workflow exclusion is the only special-casing:** `applicant`-status vendors must NOT appear in admin job-assignment / VendorFinder / active-vendor pools. (Portal itself is the same; just hide them from work allocation. Optionally disable vendor-only *mutations* — create-invoice etc. — for applicant status as a safety guardrail.)
 - **NDA gates the test** — no test/quiz issued until the NDA is signed.
 - **GSA = Master Services Agreement**, clickwrap e-sign at approval (mirror the NDA clickwrap). Doc to be supplied by Raminder.
-- **Cutover:** build Phases 1–3, then enable the NDA-before-test gate in one coordinated change once the applicant portal + reminders are live.
+- **Cutover:** build Phases 1–3, then enable the NDA-before-test gate in one coordinated change once login + reminders are live.
 
 ## Phase 1 — Applicant identity + login (additive, low-risk)
 - **cvp-submit-application:** after inserting the application, also create a `vendors` row `status='applicant'`, `vendor_type=role_type`, link both ways (e.g. `vendors.cvp_application_id` + `cvp_applications.vendor_id`, or reuse existing linkage). Idempotent: if a vendor already exists for the email, link to it (the dup-email guard already blocks true duplicates, so this is the new-applicant path).
-- **Auth:** OTP/magic-link login accepting `status IN ('applicant','active',...)`. New or extended edge fns: `applicant-send-otp` / `applicant-verify-otp` (or generalize the vendor login). Session → restricted scope.
-- **Vendor portal (D:\cethos-vendor):** an **applicant view** gated by `status='applicant'` — show: application status, NDA, document upload. Hide jobs/payments/rates/assignments until `active`.
+- **Auth (REUSE — no new build):** create `vendor_auth` for the new row (password-setup token / whatever the vendor login already uses) and send the existing setup/login email. Applicant logs into the SAME vendor portal as vendors. Confirm the vendor login flow accepts `status='applicant'` (not just `active`) — adjust the login gate if it hard-filters to active.
+- **Vendor portal (D:\cethos-vendor):** SAME portal. No separate applicant view required. Recommended guardrail: for `status='applicant'`, hide/disable vendor-only mutations (create invoice, accept jobs) since they have none — but otherwise the portal is unchanged. NDA + document upload must be reachable.
+- **Admin workflow exclusion:** ensure VendorFinder / job-assignment / active-vendor queries exclude `status='applicant'` (they largely filter on status/qualification already — verify + enforce). Admin vendor list should default-hide `applicant` status (or clearly badge it).
 - **Dedup/messaging:** the `cvp-check-email` / submit-guard "application exists" branch message changes from "watch your inbox" → "log in to your account to check status & sign your NDA" (since they now CAN log in). Keep the vendor-exists branch as-is.
 
 ## Phase 2 — NDA before the test
