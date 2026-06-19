@@ -35,5 +35,12 @@ Today applicant and vendor are two records: the apply form creates a `cvp_applic
 - **Volume:** every applicant becomes a vendor row — hundreds/day during the blast. Acceptable; ensure admin vendor list can filter out `applicant` status by default.
 - **Repos:** admin `D:\cethos\portal\cethos_app_figma_design_v1` (submit, auth fns, pipeline gate, approval/GSA, migration) + vendor `D:\cethos-vendor` (applicant portal view + login UI). Supabase project `lmzoyezvsjgsxveoakdr`.
 
+## Verified hooks (2026-06-19, read-only investigation)
+- **Auth reuse confirmed:** vendor OTP login `vendor-auth-otp-send` / `vendor-auth-otp-verify` (+ `vendor-auth-session`/`-check`, `vendor-set-password`) looks the vendor up by email/phone and does NOT gate on `status='active'` → an `applicant`-status vendor can log into the existing vendor portal with the existing auth. No new login build. (Re-confirm `vendor-auth-check`/`-session` don't filter to active before relying on it.)
+- **NDA flow exists:** `vendor-sign-nda` + `vendor-get-nda-status` (writes `vendor_nda_signatures`; the `trg_qms_sync_nda` trigger mirrors to `qms.nda_agreements`).
+- **Workflow exclusion already done:** `VendorFinderModal` queries `.eq("status","active")` (lines ~283/315) → applicant-status auto-excluded from assignment. (Spot-check the split-step modal + any get-vendors edge fn use the same filter.)
+- **Remaining build = small:** (1) feature-flagged change to `cvp-submit-application` to create the `applicant`-status vendor + send the existing OTP-login/welcome email; (2) NDA-before-test gate in `cvp-auto-advance`/instrument routing + reminders; (3) approval already flips a vendor to active (verify it reuses the existing applicant-vendor by email rather than creating a duplicate); GSA reused; (4) backfill + cutover.
+- ⚠️ **Cutover caution:** `cvp-submit-application` is the LIVE hot path (~300 submits/hr during the blast). Do the live deploy/flip in a controlled window, not mid-surge.
+
 ## Status
-Design approved 2026-06-19. NOT yet built — recommended as a focused multi-PR build (auth is security-sensitive; verify live each phase). Awaiting GSA document. See [[project-iqvia-audit-2026-06-29]].
+Design approved 2026-06-19; feasibility verified (above). NOT yet built — recommended as a focused multi-PR build (auth is security-sensitive; verify live each phase). Awaiting GSA document. See [[project-iqvia-audit-2026-06-29]].
