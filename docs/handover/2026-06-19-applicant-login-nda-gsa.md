@@ -42,5 +42,23 @@ Today applicant and vendor are two records: the apply form creates a `cvp_applic
 - **Remaining build = small:** (1) feature-flagged change to `cvp-submit-application` to create the `applicant`-status vendor + send the existing OTP-login/welcome email; (2) NDA-before-test gate in `cvp-auto-advance`/instrument routing + reminders; (3) approval already flips a vendor to active (verify it reuses the existing applicant-vendor by email rather than creating a duplicate); GSA reused; (4) backfill + cutover.
 - ⚠️ **Cutover caution:** `cvp-submit-application` is the LIVE hot path (~300 submits/hr during the blast). Do the live deploy/flip in a controlled window, not mid-surge.
 
+## CUTOVER RUNBOOK (run in a controlled window, NOT mid-surge)
+Everything below is built and deployed FLAGGED OFF (`APPLICANT_LOGIN_ENABLED`). To go live:
+1. **Backfill login for in-flight applicants** (creates applicant-status vendor rows so existing applicants can log in too):
+   ```sql
+   INSERT INTO vendors (full_name, email, additional_emails, phone, country, city, vendor_type,
+     rate_currency, preferred_rate_currency, certifications, years_experience, status, availability_status, total_projects)
+   SELECT a.full_name, a.email, '{}', a.phone, a.country, a.city, a.role_type,
+     'CAD','CAD','{}', NULL, 'applicant','available',0
+   FROM cvp_applications a
+   WHERE a.status NOT IN ('approved','rejected','archived','withdrawn')
+     AND a.email IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM vendors v WHERE lower(v.email)=lower(a.email));
+   ```
+2. **Set the flag** `APPLICANT_LOGIN_ENABLED=true` on `cvp-submit-application` + `cvp-auto-advance` (Supabase function secrets) and redeploy those two. From then on: new applicants get an applicant-vendor + the login/NDA email; the test is held until NDA signed.
+3. **Verify:** submit a test application (fresh email) → applicant-vendor created + confirmation email has the login CTA; log in, sign NDA → cvp-auto-advance then issues the test; approve → vendor flips active + GSA applies.
+4. **Reminders (follow-up):** add an NDA-pending nudge so `held_nda_pending` applicants are reminded to sign (otherwise they sit until they do). Reuse `vendor-send-cv-nda-reminder` or a small new cron.
+5. To roll back: set the flag false + redeploy (applicant-vendors already created stay as harmless `applicant` rows, excluded from assignment).
+
 ## Status
-Design approved 2026-06-19; feasibility verified (above). NOT yet built — recommended as a focused multi-PR build (auth is security-sensitive; verify live each phase). Awaiting GSA document. See [[project-iqvia-audit-2026-06-29]].
+Design approved 2026-06-19; feasibility verified. **Phases 1–3 BUILT + deployed FLAGGED OFF** (admin PRs #1018 applicant-vendor-at-submit, #1019 NDA-gate, #1020 approval-flip, + email login CTA). Cutover (above) is the only remaining live step — do it in a controlled window. GSA reused (no build). NOT yet built — recommended as a focused multi-PR build (auth is security-sensitive; verify live each phase). Awaiting GSA document. See [[project-iqvia-audit-2026-06-29]].
