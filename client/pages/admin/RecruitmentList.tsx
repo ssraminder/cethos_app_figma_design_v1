@@ -48,15 +48,15 @@ const TAB_LABELS: Record<string, string> = {
   waitlist: "Waitlist",
 };
 
-// "Tests to Review" — applicants with at least one combination needing staff
-// eyes. Three cases:
+// "Tests to Review" — applicants with at least one combination genuinely
+// needing staff eyes. Two cases:
 //   1. test_submitted — just landed, AI hasn't graded yet
-//   2. assessed — AI graded as borderline (60-74)
-//   3. approved + approved_by IS NULL — AI auto-approved (>=75), no human
-//      has confirmed it yet
-// Rejected combos are intentionally excluded — those are settled by AI.
-const TESTS_REVIEW_OR_FILTER =
-  "status.in.(test_submitted,assessed),and(status.eq.approved,approved_by.is.null)";
+//   2. assessed — AI graded as borderline (needs a decision)
+// AI auto-approved combos (>=75) are NO LONGER listed here: under the automated
+// pipeline the AI assessment is the competence gate, and the single human review
+// happens at final approval — not as a separate per-test confirmation step.
+// Rejected combos are excluded too (settled by AI).
+const TESTS_REVIEW_OR_FILTER = "status.in.(test_submitted,assessed)";
 
 const STATUS_LABELS: Record<string, string> = {
   submitted: "Submitted",
