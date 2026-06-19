@@ -863,7 +863,11 @@ serve(async (req: Request) => {
   // silently swallowed. (Previously the bridge was never called at all, so
   // every approval produced an active vendor with no qualification.)
   let qmsQualification: { ok: boolean; result?: unknown; error?: string } = { ok: false, error: "not_run" };
-  if (!isAgencyApp) {
+  // Only translator + cognitive-debriefing-interviewer roles carry a competence
+  // qualification (test/quiz evidence). Other roles (consultants, etc.) must NOT
+  // be bridged — they'd get a bogus, evidence-less translator qualification.
+  const bridgeableRole = app.role_type === "translator" || app.role_type === "cognitive_debriefing";
+  if (!isAgencyApp && bridgeableRole) {
     const basisCode = body.skipTesting
       ? (({
           degree_translation: "t_a_degree_translation",
@@ -884,7 +888,7 @@ serve(async (req: Request) => {
       qmsQualification = { ok: true, result: bridgeData };
     }
   } else {
-    qmsQualification = { ok: false, error: "agency_no_translator_qualification" };
+    qmsQualification = { ok: false, error: isAgencyApp ? "agency_no_translator_qualification" : "role_not_bridgeable" };
   }
 
   const tpl = buildV11ApprovedWelcome({
