@@ -368,6 +368,12 @@ serve(async (req: Request) => {
 
   if (existingVendor?.id) {
     vendorId = existingVendor.id;
+    // An applicant-status vendor (created at application time when applicant-login
+    // is enabled) becomes a full active vendor on approval. Safe no-op for rows
+    // that are already active.
+    await supabase.from("vendors")
+      .update({ status: "active", availability_status: "available" })
+      .eq("id", vendorId);
     // If we already had a vendor row (e.g. the same agency re-applied or
     // staff manually created a stub), make sure agency mirror fields and
     // the roster gate are brought up to date.
