@@ -64,7 +64,10 @@ serve(async (req) => {
     // Audit log — cvp_outbound_messages tracks every email we send to
     // applicants. template_tag stores the kind so we can filter later.
     if (ok) {
-      await sb.from("cvp_outbound_messages").insert({
+      // message_id is NOT NULL with no default — must be supplied, else this
+      // audit insert fails silently and breaks downstream dedup.
+      const { error: logErr } = await sb.from("cvp_outbound_messages").insert({
+        message_id: `docreq:${application_id}:${Date.now()}`,
         application_id,
         recipient_email: app.email,
         subject: subject.trim(),
@@ -72,6 +75,7 @@ serve(async (req) => {
         template_tag: `document_request:${(missing_doc_types ?? []).join(",")}`.slice(0, 255),
         sent_at: new Date().toISOString(),
       });
+      if (logErr) console.error("cvp-request-documents: outbound log insert failed:", logErr.message);
     }
 
     if (!ok) return json({ error: "Brevo send failed" }, 502);
