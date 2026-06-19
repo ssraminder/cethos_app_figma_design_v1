@@ -17,6 +17,7 @@ import VendorDocumentsTab from "./vendor-detail/VendorDocumentsTab";
 import VendorInvoicesTab from "./vendor-detail/VendorInvoicesTab";
 import VendorPaymentsTab from "./vendor-detail/VendorPaymentsTab";
 import VendorQmsTab from "./vendor-detail/VendorQmsTab";
+import VendorRosterTab from "./vendor-detail/VendorRosterTab";
 
 const TAB_KEYS = [
   "profile",
@@ -30,6 +31,7 @@ const TAB_KEYS = [
   "auth",
   "nda",
   "qms",
+  "roster",
   "jobs",
 ] as const;
 
@@ -47,6 +49,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   auth: "Auth / Invitation",
   nda: "Agreements",
   qms: "QMS",
+  roster: "Roster",
   jobs: "Jobs",
 };
 
@@ -189,7 +192,9 @@ export default function AdminVendorDetail() {
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="w-full justify-start bg-white border border-gray-200 rounded-lg p-1 mb-6 flex-wrap h-auto gap-1">
-          {TAB_KEYS.map((key) => (
+          {TAB_KEYS.filter((key) =>
+            key !== "roster" || (vendorData.vendor.vendor_type ?? "").toLowerCase() === "agency",
+          ).map((key) => (
             <TabsTrigger
               key={key}
               value={key}
@@ -274,6 +279,15 @@ export default function AdminVendorDetail() {
             onRefresh={refreshVendorData}
           />
         </TabsContent>
+
+        {(vendorData.vendor.vendor_type ?? "").toLowerCase() === "agency" && (
+          <TabsContent value="roster">
+            <VendorRosterTab
+              vendorData={vendorData}
+              onRefresh={refreshVendorData}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="jobs">
           <VendorJobsTab
