@@ -203,6 +203,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Quality",
   },
   {
+    label: "Linguist Trainings",
+    path: "/admin/qms/training-records",
+    icon: BookOpen,
+    section: "Quality",
+  },
+  {
     label: "Review Jobs",
     path: "/admin/tr/jobs",
     icon: Languages,
