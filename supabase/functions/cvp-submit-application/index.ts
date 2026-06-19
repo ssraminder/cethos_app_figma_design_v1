@@ -262,26 +262,28 @@ serve(async (req: Request) => {
       }
     }
 
-    // Reapplication cooldown
-    const { data: existingApps } = await supabase
-      .from("cvp_applications")
-      .select("can_reapply_after, status")
-      .eq("email", payload.email)
-      .not("can_reapply_after", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    if (existingApps && existingApps.length > 0) {
-      const cooldownDate = new Date(existingApps[0].can_reapply_after as string);
-      if (cooldownDate > new Date()) {
-        return jsonResponse(
-          {
-            success: false,
-            error: `Thank you for your interest. You may reapply after ${cooldownDate.toLocaleDateString("en-CA")}.`,
-          },
-          400
-        );
-      }
+    // Duplicate-email guard (existence-based, not a cooldown). If this email
+    // already belongs to a Cethos vendor or a prior application, block re-entry
+    // and point them to their existing account / status instead.
+    const emailLc = payload.email.trim().toLowerCase();
+    const { data: existingVendor } = await supabase
+      .from("vendors").select("id").ilike("email", emailLc).maybeSingle();
+    if (existingVendor) {
+      return jsonResponse({
+        success: false,
+        code: "vendor_exists",
+        error: "You already have a Cethos vendor account with this email. Please log in at https://vendor.cethos.com to manage your profile and check your status — there's no need to apply again.",
+      }, 409);
+    }
+    const { data: existingApp } = await supabase
+      .from("cvp_applications").select("id, application_number")
+      .ilike("email", emailLc).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (existingApp) {
+      return jsonResponse({
+        success: false,
+        code: "application_exists",
+        error: `We already have an application on file for this email (${(existingApp as { application_number: string }).application_number}). Please watch your inbox for updates from our recruitment team — you don't need to submit again. If you applied with the wrong details or need help, just reply to your application confirmation email.`,
+      }, 409);
     }
 
     const applicationNumber = await generateApplicationNumber(supabase);
