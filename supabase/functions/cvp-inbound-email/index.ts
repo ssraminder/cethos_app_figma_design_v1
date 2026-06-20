@@ -379,6 +379,25 @@ serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
+  // ---- QA capture: a staff member answering a front-desk escalation. Their
+  // reply carries [#ESC-token] in the subject and comes from an internal
+  // address. Relay the answer to the applicant + capture the Q->A into the KB,
+  // then stop (skip the normal inbound flow). ----
+  const escTokenMatch = fields.subject.match(/\[#ESC-([A-Za-z0-9]+)\]/i);
+  if (escTokenMatch && INTERNAL_SENDER.test(fields.fromEmail)) {
+    const handled = await handleStaffEscalationReply({
+      supabase,
+      fields,
+      token: escTokenMatch[1].toUpperCase(),
+    });
+    if (handled) {
+      return jsonResponse({
+        success: true,
+        data: { action: "qa_relayed", token: escTokenMatch[1].toUpperCase() },
+      });
+    }
+  }
+
   // ---- Thread detection: does In-Reply-To match a known outbound? ----
   let matchedOutboundId: string | null = null;
   let matchedOutboundApplicationId: string | null = null;
@@ -1226,23 +1245,42 @@ async function runFrontDesk(args: {
     return { handled: true, action: "frontdesk_replied", sentReplyAt: new Date().toISOString(), intent, reason: "replied" };
   }
 
-  // Everything else -> escalate to a human + send the sender a holding ack.
+  // Everything else -> escalate to a human, who answers by replying. We route
+  // their reply back through vm@ (Reply-To) so we can relay it to the applicant
+  // AND capture the question->answer into the KB (Phase 2a). A [#ESC-token] in
+  // the subject correlates the staff reply back to this escalation.
   const summary = (c?.escalation_summary || "").trim() || "Inbound email needs a human reply.";
-  const origBody = (args.fields.strippedText || args.fields.bodyPlain || "").slice(0, 4000);
+  const origBody = (args.fields.strippedText || args.fields.bodyPlain || "").slice(0, 6000);
+  const origSubject = args.fields.subject || "";
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
+
+  await args.supabase.from("cvp_frontdesk_escalations").insert({
+    token,
+    original_message_id: args.fields.messageId || null,
+    original_from_email: args.fields.fromEmail,
+    original_from_name: args.fields.fromName || null,
+    original_subject: origSubject,
+    original_body: origBody,
+    matched_application_id: args.matchedApplicationId,
+    intent,
+    escalation_email: cfg.escalationEmail,
+    status: "open",
+  });
+
   const escalationHtml = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2937;line-height:1.5;">
 <p style="margin:0 0 10px;"><strong>AI front-desk escalation</strong> — intent: ${escapeHtml(intent)}</p>
 <p style="margin:0 0 10px;">${escapeHtml(summary)}</p>
-<p style="margin:0 0 10px;color:#475569;">From: ${escapeHtml(args.fields.fromName)} &lt;${escapeHtml(args.fields.fromEmail)}&gt;<br>Subject: ${escapeHtml(args.fields.subject)}</p>
-<p style="margin:0 0 6px;color:#475569;">Reply directly to this email to respond to the sender.</p>
+<p style="margin:0 0 10px;color:#475569;">From: ${escapeHtml(args.fields.fromName)} &lt;${escapeHtml(args.fields.fromEmail)}&gt;<br>Subject: ${escapeHtml(origSubject)}</p>
+<p style="margin:0 0 10px;padding:8px 10px;background:#ecfeff;border:1px solid #a5f3fc;border-radius:6px;">↩️ <strong>Just reply to this email with your answer.</strong> We'll send it to ${escapeHtml(args.fields.fromName || "the sender")} from vm@cethos.com and remember it, so the assistant can answer similar questions next time. (Keep <code>[#ESC-${token}]</code> in the subject.)</p>
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;">
 <blockquote style="margin:0;padding-left:12px;border-left:3px solid #e5e7eb;color:#374151;white-space:pre-wrap;">${escapeHtml(origBody)}</blockquote>
 </div>`;
   const fwd = await sendReply({
     to: { email: cfg.escalationEmail },
-    subject: `[Vendor inbox — needs a human] ${args.fields.subject || "(no subject)"}`,
+    subject: `[Vendor inbox — needs a human] [#ESC-${token}] ${origSubject || "(no subject)"}`,
     html: escalationHtml,
     tags: ["frontdesk-escalation", intent.slice(0, 30)],
-    replyTo: args.fields.fromEmail, // staff "reply" goes straight to the sender
+    replyTo: REPLY_TO_INBOX, // staff reply routes back through vm@ for relay + KB capture
   });
 
   // Holding acknowledgement to the sender (best-effort; escalation already routed).
@@ -1269,4 +1307,108 @@ async function runFrontDesk(args: {
     intent,
     reason: fwd.sent ? "escalated" : "escalate_forward_failed",
   };
+}
+
+// ---------- QA capture: relay a staff answer + build the knowledge base ----------
+//
+// When a staff member replies to an escalation, their reply (subject carries
+// [#ESC-token], sender is internal) routes back here via vm@. We relay the
+// answer to the original applicant (AI-polished) AND capture the question->answer
+// as a DRAFT KB entry — human approval gates any future reuse (Phase 2b).
+
+const INTERNAL_SENDER = /@(cethos\.com|vendors\.cethos\.com|cethoscorp\.com)$/i;
+
+const RELAY_POLISH_SYSTEM_PROMPT = `You are relaying a CETHOS staff member's reply to an applicant/vendor. Lightly clean up the staff message before it is sent: fix grammar and typos, ensure a warm, professional tone, and remove any internal-only asides not meant for the recipient. Do NOT add new facts, promises, commitments, or change the meaning. Keep it concise. No salutation and no signoff (the email template adds them). Output only the cleaned message text.`;
+
+function buildRelayHtml(toName: string, answer: string): string {
+  const fn = escapeHtml((toName || "").trim().split(/\s+/)[0] || "there");
+  const safe = escapeHtml(answer).replace(/\n\n+/g, "</p><p style=\"margin:0 0 14px;\">");
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1f2937;line-height:1.55;max-width:560px;">
+<p style="margin:0 0 14px;">Hi ${fn},</p>
+<p style="margin:0 0 14px;">${safe}</p>
+<p style="margin:0 0 4px;">Thank you,</p>
+<p style="margin:0;">The Cethos Vendor Management Team</p>
+</div>`;
+}
+
+async function handleStaffEscalationReply(args: {
+  supabase: SupabaseClient;
+  fields: InboundFields;
+  token: string;
+}): Promise<boolean> {
+  const { data: escRow } = await args.supabase
+    .from("cvp_frontdesk_escalations")
+    .select("*")
+    .eq("token", args.token)
+    .maybeSingle();
+  if (!escRow) return false; // unknown token → let the normal flow handle it
+  const esc = escRow as {
+    id: string; original_message_id: string | null; original_from_email: string;
+    original_from_name: string | null; original_subject: string | null;
+    original_body: string | null; matched_application_id: string | null;
+  };
+
+  const staffAnswerRaw = (args.fields.strippedText || args.fields.bodyPlain || "").trim();
+  if (!staffAnswerRaw) return false; // nothing to relay
+
+  // Light polish before sending to the applicant (per config choice).
+  const polished = await claudeRewrite({
+    systemPrompt: RELAY_POLISH_SYSTEM_PROMPT,
+    userMessage: staffAnswerRaw.slice(0, 6000),
+    maxTokens: 700,
+  });
+  const answerForApplicant = polished.ok && polished.text ? polished.text : staffAnswerRaw;
+
+  const subj = esc.original_subject
+    ? (/^re:/i.test(esc.original_subject.trim()) ? esc.original_subject : `Re: ${esc.original_subject}`)
+    : "Re: your message";
+  const sent = await sendReply({
+    to: { email: esc.original_from_email, name: esc.original_from_name || undefined },
+    subject: subj,
+    html: buildRelayHtml(esc.original_from_name || "", answerForApplicant),
+    inReplyTo: esc.original_message_id || undefined,
+    tags: ["frontdesk-qa-relay"],
+  });
+
+  // Capture the Q->A as a DRAFT KB entry (human approval gates any future reuse).
+  // Store the staff's ACTUAL answer (human-authored), not the polished copy.
+  try {
+    await args.supabase.from("cvp_kb_entries").insert({
+      question_text: `${esc.original_subject ?? ""}\n\n${esc.original_body ?? ""}`.trim().slice(0, 8000) || "(no question text)",
+      answer_text: staffAnswerRaw.slice(0, 8000),
+      source_escalation_id: esc.id,
+      source_application_id: esc.matched_application_id,
+      authored_by_email: args.fields.fromEmail,
+      status: "draft",
+    });
+  } catch (err) {
+    console.error("KB capture insert failed:", err);
+  }
+
+  await args.supabase.from("cvp_frontdesk_escalations")
+    .update({ status: "answered", answered_by_email: args.fields.fromEmail, answered_at: new Date().toISOString() })
+    .eq("id", esc.id);
+
+  // Audit row for the staff reply itself.
+  await args.supabase.from("cvp_inbound_emails").insert({
+    from_email: args.fields.fromEmail,
+    from_name: args.fields.fromName,
+    to_email: args.fields.toEmail,
+    subject: args.fields.subject,
+    body_plain: args.fields.bodyPlain,
+    body_html: args.fields.bodyHtml,
+    stripped_text: args.fields.strippedText,
+    message_id: args.fields.messageId,
+    in_reply_to: args.fields.inReplyTo,
+    references_header: args.fields.referencesHeader,
+    matched_application_id: esc.matched_application_id,
+    classified_intent: "staff_qa_reply",
+    action_taken: sent.sent ? "qa_relayed" : "qa_capture_failed",
+    auto_reply_sent_at: sent.sent ? new Date().toISOString() : null,
+    ai_classification: { escalation_token: args.token, kb_captured: true, relay_via: sent.via },
+    raw_payload: args.fields.raw,
+  });
+
+  console.log(`cvp-inbound-email: staff QA reply token=${args.token} relayed=${sent.sent} to=${esc.original_from_email}`);
+  return true;
 }
