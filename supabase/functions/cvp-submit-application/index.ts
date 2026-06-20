@@ -165,17 +165,18 @@ function jsonResponse(body: Record<string, unknown>, status = 200): Response {
 async function generateApplicationNumber(
   supabase: ReturnType<typeof createClient>
 ): Promise<string> {
-  const year = new Date().getFullYear().toString().slice(-2);
-  const { count, error } = await supabase
-    .from("cvp_applications")
-    .select("*", { count: "exact", head: true });
-
-  if (error) {
-    console.error("Error counting applications:", error);
+  // Atomic, collision-proof via a Postgres sequence (RPC). The old count(*)+1
+  // approach collided once deletions/dummy rows made count < the real max
+  // number, breaking ALL submissions. nextval() can never collide.
+  const { data, error } = await supabase.rpc("cvp_next_application_number");
+  if (!error && typeof data === "string" && data) {
+    return data;
   }
-
-  const nextNumber = ((count ?? 0) + 1).toString().padStart(4, "0");
-  return `APP-${year}-${nextNumber}`;
+  console.error("cvp_next_application_number RPC failed, using fallback:", error);
+  // Emergency fallback: a high, unique-by-time number so a transient RPC error
+  // never blocks a submission (stays out of the normal 0001-8999 range).
+  const year = new Date().getFullYear().toString().slice(-2);
+  return `APP-${year}-9${(Date.now() % 100000).toString().padStart(5, "0")}`;
 }
 
 serve(async (req: Request) => {
