@@ -70,8 +70,9 @@ function buildEmail(group: string, fullName: string): { subject: string; html: s
 <p style="margin:0 0 14px;">Hi ${fn},</p>
 <p style="margin:0 0 14px;">${esc(intro)}</p>
 <ul style="margin:0 0 16px;padding-left:20px;">${li}</ul>
-<p style="margin:0 0 14px;"><strong>Simply reply to this email</strong> with the documents attached and we'll continue your review.</p>
-<p style="margin:0 0 16px;padding:10px 12px;background:#f8fafc;border-left:3px solid #0F9DA0;color:#475569;font-size:13px;border-radius:4px;">Once your Cethos portal account is active, you can add or update your CV and supporting documents anytime under <strong>Profile &rsaquo; Supporting Documents</strong> at vendor.cethos.com &mdash; no need to email them in.</p>
+<p style="margin:0 0 14px;">The quickest way to send these is through your applicant portal — <strong>log in and upload them under Profile &rsaquo; Supporting Documents</strong>. Sign in with this email address and you'll receive a one-time code by email or SMS.</p>
+<p style="margin:0 0 16px;"><a href="https://vendor.cethos.com" style="display:inline-block;background:#0F9DA0;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600;">Log in to upload your documents</a></p>
+<p style="margin:0 0 16px;color:#475569;font-size:13px;">Prefer email? You can also reply to this message with the documents attached and we'll continue your review.</p>
 <p style="margin:0 0 4px;">Thank you,</p>
 <p style="margin:0;">The Cethos Linguist Team</p>
 </div>`;

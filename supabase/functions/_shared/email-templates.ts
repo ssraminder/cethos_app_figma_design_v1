@@ -457,14 +457,17 @@ export interface V17Params {
 }
 export function buildV17RequestMoreInfo(p: V17Params): RenderedEmail {
   return render(`We need a bit more info · ${p.applicationNumber}`, {
-    preheader: `Reply by ${p.infoDeadlineDate}.`,
+    preheader: `Upload or reply by ${p.infoDeadlineDate}.`,
     heading: "A quick follow-up",
     body: `
       <p>Hi ${esc(p.fullName)},</p>
-      <p>Before we can move application <strong>${esc(p.applicationNumber)}</strong> forward, we need some additional information:</p>
+      <p>Before we can move application <strong>${esc(p.applicationNumber)}</strong> forward, we need a bit more from you:</p>
       <blockquote style="border-left:3px solid ${BRAND.teal};padding-left:12px;color:${BRAND.muted};">${esc(p.requestDetails)}</blockquote>
-      <p>Please reply to this email by <strong>${esc(p.infoDeadlineDate)}</strong>.</p>
+      <p>The easiest way to send documents is through your applicant portal — <strong>log in and upload them under Profile &rsaquo; Supporting Documents</strong>. Sign in with this email address and you'll receive a one-time code by email or SMS.</p>
+      <p style="color:${BRAND.muted};font-size:13px;">If it's just a quick clarification rather than a document, you can simply reply to this email instead.</p>
+      <p>Please complete this by <strong>${esc(p.infoDeadlineDate)}</strong>.</p>
     `,
+    cta: { label: "Log in to upload", url: "https://vendor.cethos.com" },
   });
 }
 

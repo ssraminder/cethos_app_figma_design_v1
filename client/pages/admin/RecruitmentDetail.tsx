@@ -4953,14 +4953,15 @@ export default function RecruitmentDetail() {
     return [
       `<p>Hi ${name},</p>`,
       `<p>Thanks for your application. Before we can finalize your onboarding to the Cethos vendor network, we need to assemble your ISO 17100 competence file. The standard requires every translator to qualify via <strong>one of three routes</strong> (translation degree, other-field degree + 2y experience, or 5y experience alone) plus documentation of language proficiency and confidentiality.</p>`,
-      `<p><strong>Please send the following documents</strong> &mdash; you can reply directly to this email with PDFs attached:</p>`,
+      `<p><strong>Please provide the following documents:</strong></p>`,
       `<ul>`,
       itemsHtml,
       `</ul>`,
+      `<p style="margin:14px 0;padding:12px 14px;background:#f0fdfa;border-left:3px solid #0F9DA0;color:#134e4a;border-radius:4px;">The easiest way to send these is through your applicant portal &mdash; <strong>log in and upload them under Profile &rsaquo; Supporting Documents</strong>. Sign in at <a href="https://vendor.cethos.com" style="color:#0F9DA0;font-weight:600;">vendor.cethos.com</a> with this email address and you'll receive a one-time code by email or SMS.</p>`,
+      `<p style="color:#475569;font-size:13px;">Prefer email? You can also reply directly to this message with the PDFs attached.</p>`,
       `<p><strong>Professional references</strong> &mdash; handled separately. If we haven't already, we'll send a short form to two of your professional references; they reply directly to us so the verification stays independent. No reference letters needed from you.</p>`,
-      `<p><strong>Confidentiality (NDA)</strong> &mdash; we have an in-portal clickwrap signing flow. Once your application is approved you'll be invited to sign electronically; no separate PDF is needed.</p>`,
+      `<p><strong>Confidentiality (NDA)</strong> &mdash; handled in your portal: when you log in you'll be prompted to sign electronically (clickwrap), so we can begin your assessment. No separate PDF is needed.</p>`,
       `<p>If anything is unclear or you don't have a particular document, just reply and let us know.</p>`,
-      `<p style="margin:14px 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #0F9DA0;color:#475569;font-size:13px;border-radius:4px;">Once your Cethos portal account is active, you can add or update your CV and supporting documents anytime under <strong>Profile &rsaquo; Supporting Documents</strong> at vendor.cethos.com &mdash; no need to email them in.</p>`,
       `<p>Best regards,<br/>Cethos Recruitment Team</p>`,
     ].join("\n");
   };
