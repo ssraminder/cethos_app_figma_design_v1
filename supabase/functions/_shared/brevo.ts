@@ -78,6 +78,12 @@ interface SendRawEmailOptions {
   subject: string;
   htmlContent: string;
   sender?: { email: string; name: string };
+  /** Where replies should go (Reply-To). */
+  replyTo?: { email: string; name?: string };
+  /** Custom SMTP headers, e.g. { "In-Reply-To": "<id>", "References": "<id> <id>" }. */
+  headers?: Record<string, string>;
+  /** Brevo tags for log filtering. */
+  tags?: string[];
 }
 
 /**
@@ -111,6 +117,9 @@ export async function sendBrevoRawEmail(
         to: options.to,
         subject: options.subject,
         htmlContent: options.htmlContent,
+        ...(options.replyTo ? { replyTo: options.replyTo } : {}),
+        ...(options.headers ? { headers: options.headers } : {}),
+        ...(options.tags?.length ? { tags: options.tags.slice(0, 5) } : {}),
       }),
     });
 

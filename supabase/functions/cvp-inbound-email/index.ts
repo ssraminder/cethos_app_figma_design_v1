@@ -18,11 +18,69 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunOperationalEmail } from "../_shared/mailgun.ts";
+import { sendBrevoRawEmail } from "../_shared/brevo.ts";
 import {
   ACK_REPLY_SYSTEM_PROMPT,
   claudeRewrite,
   logDecision,
 } from "../_shared/decision-ai.ts";
+
+// Outbound identity for inbox auto-replies. We send FROM vm@cethos.com via
+// Brevo (better inbox placement than the Mailgun vendors.cethos.com domain, and
+// the front-facing vendor-management brand). Replies route back to the live
+// webhook inbox until vm@cethos.com inbound is wired to this function; flip
+// REPLY_TO_INBOX to vm@cethos.com once that Exchange routing is in place.
+const REPLY_FROM = { email: "vm@cethos.com", name: "Cethos Vendor Management" };
+const REPLY_TO_INBOX = "recruiting@vendors.cethos.com";
+
+/**
+ * Send an inbox auto-reply. Primary transport is Brevo from vm@cethos.com;
+ * falls back to Mailgun if Brevo fails (e.g. sender not yet verified) so a reply
+ * is never silently dropped. Carries Reply-To + threading headers.
+ */
+async function sendReply(opts: {
+  to: { email: string; name?: string };
+  subject: string;
+  html: string;
+  replyTo?: string; // defaults to the live webhook inbox
+  inReplyTo?: string;
+  references?: string[];
+  tags?: string[];
+}): Promise<{ sent: boolean; via: "brevo" | "mailgun" | "none" }> {
+  const replyToEmail = opts.replyTo ?? REPLY_TO_INBOX;
+  const headers: Record<string, string> = {};
+  if (opts.inReplyTo) headers["In-Reply-To"] = `<${opts.inReplyTo.replace(/^<|>$/g, "")}>`;
+  if (opts.references?.length) {
+    headers["References"] = opts.references.map((r) => `<${r.replace(/^<|>$/g, "")}>`).join(" ");
+  }
+  let brevoOk = false;
+  try {
+    brevoOk = await sendBrevoRawEmail({
+      to: [{ email: opts.to.email, name: opts.to.name ?? opts.to.email }],
+      subject: opts.subject,
+      htmlContent: opts.html,
+      sender: REPLY_FROM,
+      replyTo: { email: replyToEmail },
+      headers: Object.keys(headers).length ? headers : undefined,
+      tags: opts.tags,
+    });
+  } catch (err) {
+    console.error("Brevo reply send threw:", err);
+  }
+  if (brevoOk) return { sent: true, via: "brevo" };
+
+  console.warn("Brevo reply failed — falling back to Mailgun");
+  const mg = await sendMailgunOperationalEmail({
+    to: { email: opts.to.email, name: opts.to.name },
+    subject: opts.subject,
+    html: opts.html,
+    replyTo: replyToEmail,
+    inReplyTo: opts.inReplyTo,
+    references: opts.references,
+    tags: opts.tags?.slice(0, 3),
+  });
+  return { sent: mg.sent, via: mg.sent ? "mailgun" : "none" };
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -445,7 +503,7 @@ serve(async (req: Request) => {
     const refIds = (fields.referencesHeader.match(/<([^>]+)>/g) ?? [])
       .map((s) => s.replace(/^<|>$/g, ""));
     if (fields.messageId) refIds.push(fields.messageId.replace(/^<|>$/g, ""));
-    const sendResult = await sendMailgunOperationalEmail({
+    const sendResult = await sendReply({
       to: { email: fields.fromEmail, name: fields.fromName || undefined },
       subject: replySubject,
       html: replyHtml,
@@ -488,7 +546,7 @@ serve(async (req: Request) => {
     } else {
       // Front desk off (or no-op) → legacy generic reply.
       const classification = await classifyAndDraft(fields, regexHit, supportEmail);
-      const sendResult = await sendMailgunOperationalEmail({
+      const sendResult = await sendReply({
         to: { email: fields.fromEmail, name: fields.fromName || undefined },
         subject: classification.replySubject,
         html: classification.replyHtml,
@@ -507,7 +565,7 @@ serve(async (req: Request) => {
       fields,
       classificationLanguage,
     );
-    const sendResult = await sendMailgunOperationalEmail({
+    const sendResult = await sendReply({
       to: { email: fields.fromEmail, name: fields.fromName || undefined },
       subject: replySubject,
       html: replyHtml,
@@ -926,7 +984,7 @@ async function runAutoTriage(args: {
 </div>`;
     const refIds = (args.fields.referencesHeader.match(/<([^>]+)>/g) ?? []).map((s) => s.replace(/^<|>$/g, ""));
     if (args.fields.messageId) refIds.push(args.fields.messageId.replace(/^<|>$/g, ""));
-    const sendResult = await sendMailgunOperationalEmail({
+    const sendResult = await sendReply({
       to: { email: a.email, name: a.full_name || undefined },
       subject: replySubject,
       html: replyHtml,
@@ -1153,7 +1211,7 @@ async function runFrontDesk(args: {
         ? "Thanks for getting in touch. To continue your application, please log in to your applicant portal."
         : "Thanks for your interest in working with Cethos. To be considered, please complete our short application form.");
     const { replySubject, replyHtml } = buildFrontDeskReply(args.fields, prose, isApplicant);
-    const sent = await sendMailgunOperationalEmail({
+    const sent = await sendReply({
       to: { email: args.fields.fromEmail, name: args.fields.fromName || undefined },
       subject: replySubject,
       html: replyHtml,
@@ -1175,7 +1233,7 @@ async function runFrontDesk(args: {
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;">
 <blockquote style="margin:0;padding-left:12px;border-left:3px solid #e5e7eb;color:#374151;white-space:pre-wrap;">${escapeHtml(origBody)}</blockquote>
 </div>`;
-  const fwd = await sendMailgunOperationalEmail({
+  const fwd = await sendReply({
     to: { email: cfg.escalationEmail },
     subject: `[Vendor inbox — needs a human] ${args.fields.subject || "(no subject)"}`,
     html: escalationHtml,
@@ -1190,7 +1248,7 @@ async function runFrontDesk(args: {
 <p style="margin:0 0 4px;">Thank you,</p>
 <p style="margin:0;">The Cethos Vendor Management Team</p>
 </div>`;
-  const ack = await sendMailgunOperationalEmail({
+  const ack = await sendReply({
     to: { email: args.fields.fromEmail, name: args.fields.fromName || undefined },
     subject: args.fields.subject
       ? (/^re:/i.test(args.fields.subject.trim()) ? args.fields.subject : `Re: ${args.fields.subject}`)
