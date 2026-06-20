@@ -17,7 +17,10 @@ import { format, formatDistanceToNow } from "date-fns";
 // ---------- Constants ----------
 
 const TAB_STATUSES: Record<string, string[]> = {
-  attention: ["staff_review", "info_requested", "references_received"],
+  // "Needs Attention" = genuine staff-action items only. info_requested is
+  // waiting-on-applicant (they're auto-emailed for the missing info via
+  // cvp-request-info), so it lives under "In Progress" — not a staff queue.
+  attention: ["staff_review", "references_received"],
   // "In Progress" = waiting on applicant or system. Post-submission states
   // (test_submitted, test_assessed) live under "Tests to Review" — the
   // staff-action queue — and are intentionally excluded here to avoid the
@@ -29,6 +32,7 @@ const TAB_STATUSES: Record<string, string[]> = {
     "submitted",
     "prescreening",
     "prescreened",
+    "info_requested",
     "test_pending",
     "test_sent",
     "test_in_progress",

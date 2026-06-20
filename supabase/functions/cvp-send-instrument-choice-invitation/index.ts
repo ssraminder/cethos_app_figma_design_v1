@@ -108,6 +108,37 @@ serve(async (req: Request) => {
     );
   }
 
+  // NDA-before-test gate (applicant-login cutover, env APPLICANT_LOGIN_ENABLED).
+  // This is the authoritative chokepoint — both the prescreen path and
+  // cvp-auto-advance reach the assessment through here, so gating here closes
+  // the bypass. Do NOT issue the assessment invitation until the applicant's
+  // NDA is signed in the portal; once signed, the next auto-advance run re-issues
+  // it. Soft 200 so callers treat it as a non-fatal hold, not an error.
+  if (Deno.env.get("APPLICANT_LOGIN_ENABLED") === "true") {
+    const emailLc = (app.email ?? "").toLowerCase();
+    let ndaOk = false;
+    const { data: v } = await supabase.from("vendors").select("id").ilike("email", emailLc).maybeSingle();
+    if ((v as { id?: string } | null)?.id) {
+      const { count } = await supabase.from("vendor_nda_signatures")
+        .select("id", { count: "exact", head: true })
+        .eq("vendor_id", (v as { id: string }).id).eq("is_current", true);
+      ndaOk = (count ?? 0) > 0;
+    }
+    if (!ndaOk) {
+      const { count: c2 } = await supabase.from("vendor_nda_signatures")
+        .select("id", { count: "exact", head: true })
+        .eq("application_id", applicationId).eq("is_current", true);
+      ndaOk = (c2 ?? 0) > 0;
+    }
+    if (!ndaOk) {
+      return jsonResponse({
+        success: false,
+        error: "nda_required",
+        message: "Assessment invitation held until the applicant signs their NDA.",
+      }, 200);
+    }
+  }
+
   // Generate fresh token (UUID) + 10-day expiry. Overwrites any existing
   // token on the row — re-sending the invitation invalidates the old link.
   const now = new Date();
