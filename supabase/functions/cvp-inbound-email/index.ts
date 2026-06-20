@@ -27,11 +27,11 @@ import {
 
 // Outbound identity for inbox auto-replies. We send FROM vm@cethos.com via
 // Brevo (better inbox placement than the Mailgun vendors.cethos.com domain, and
-// the front-facing vendor-management brand). Replies route back to the live
-// webhook inbox until vm@cethos.com inbound is wired to this function; flip
-// REPLY_TO_INBOX to vm@cethos.com once that Exchange routing is in place.
+// the front-facing vendor-management brand). Reply-To is also vm@cethos.com so
+// the whole conversation lives on one address; its inbound is forwarded
+// (Exchange) to recruiting@vendors.cethos.com, which feeds this webhook.
 const REPLY_FROM = { email: "vm@cethos.com", name: "Cethos Vendor Management" };
-const REPLY_TO_INBOX = "recruiting@vendors.cethos.com";
+const REPLY_TO_INBOX = "vm@cethos.com";
 
 /**
  * Send an inbox auto-reply. Primary transport is Brevo from vm@cethos.com;
