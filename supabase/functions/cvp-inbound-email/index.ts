@@ -16,7 +16,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunOperationalEmail } from "../_shared/mailgun.ts";
 
 const corsHeaders = {
@@ -85,6 +85,13 @@ async function verifyMailgunSignature(
   return diff === 0;
 }
 
+interface AttachmentMeta {
+  field: string; // e.g. "attachment-1"
+  name: string;
+  type: string; // content-type
+  size: number; // bytes
+}
+
 interface InboundFields {
   fromEmail: string;
   fromName: string;
@@ -96,6 +103,7 @@ interface InboundFields {
   messageId: string;
   inReplyTo: string;
   referencesHeader: string;
+  attachments: AttachmentMeta[];
   raw: Record<string, string>;
 }
 
@@ -107,8 +115,19 @@ async function parseForm(req: Request): Promise<{
 }> {
   const form = await req.formData();
   const raw: Record<string, string> = {};
+  const attachments: AttachmentMeta[] = [];
   for (const [k, v] of form.entries()) {
-    if (typeof v === "string") raw[k] = v;
+    if (typeof v === "string") {
+      raw[k] = v;
+    } else if (v instanceof File && /^attachment-\d+$/.test(k)) {
+      // Mailgun posts each parsed attachment as a File under attachment-N.
+      attachments.push({
+        field: k,
+        name: v.name || "",
+        type: v.type || "",
+        size: typeof v.size === "number" ? v.size : 0,
+      });
+    }
   }
 
   const parseAddress = (s: string): { email: string; name: string } => {
@@ -132,6 +151,7 @@ async function parseForm(req: Request): Promise<{
     messageId: raw["Message-Id"] ?? raw["message-id"] ?? "",
     inReplyTo: raw["In-Reply-To"] ?? raw["in-reply-to"] ?? "",
     referencesHeader: raw["References"] ?? raw["references"] ?? "",
+    attachments,
     raw,
   };
 
@@ -377,21 +397,54 @@ serve(async (req: Request) => {
     classificationLanguage = classification.language;
   }
 
+  // Document-by-email detection. If the sender attached credential documents
+  // (not just a signature logo) and isn't unsubscribing, redirect them to the
+  // portal upload route instead of letting the files sit unfiled in the inbox.
+  const docAtts = documentAttachments(fields.attachments);
+  let isDocSubmission = false;
+  if (!isUnsubscribe && docAtts.length > 0) {
+    isDocSubmission = await docRedirectEnabled(supabase);
+  }
+
   let actionTaken:
     | "do_not_contact_set"
     | "auto_reply_sent"
     | "auto_reply_failed"
     | "noop"
-    | "threaded_received" = "noop";
+    | "threaded_received"
+    | "upload_redirect_sent" = "noop";
   let autoReplySentAt: string | null = null;
 
-  // Auto-reply policy:
+  // Auto-reply policy (precedence):
+  //   - Document attachments (not unsubscribe): redirect to portal upload. Fires
+  //     for BOTH threaded and non-threaded — this is the case where applicants
+  //     email diplomas/certs in reply to a doc-request and previously got silence.
   //   - Threaded reply + unsubscribe: send removal confirmation (applicant expects
   //     acknowledgement).
   //   - Threaded reply + NOT unsubscribe: silent; staff handles via admin.
   //   - Non-threaded: existing behaviour — send the "not monitored" auto-reply
   //     (or unsubscribe confirmation).
-  if (isThreadedReply && !isUnsubscribe) {
+  if (isDocSubmission) {
+    const { replySubject, replyHtml } = buildPortalUploadRedirect(fields);
+    // Thread the redirect into the applicant's existing conversation.
+    const refIds = (fields.referencesHeader.match(/<([^>]+)>/g) ?? [])
+      .map((s) => s.replace(/^<|>$/g, ""));
+    if (fields.messageId) refIds.push(fields.messageId.replace(/^<|>$/g, ""));
+    const sendResult = await sendMailgunOperationalEmail({
+      to: { email: fields.fromEmail, name: fields.fromName || undefined },
+      subject: replySubject,
+      html: replyHtml,
+      tags: ["inbound-autoreply", "doc-upload-redirect"],
+      inReplyTo: fields.messageId || undefined,
+      references: refIds.length ? refIds : undefined,
+    });
+    if (sendResult.sent) {
+      autoReplySentAt = new Date().toISOString();
+      actionTaken = "upload_redirect_sent";
+    } else {
+      actionTaken = "auto_reply_failed";
+    }
+  } else if (isThreadedReply && !isUnsubscribe) {
     actionTaken = "threaded_received";
   } else {
     const { replySubject, replyHtml } = isThreadedReply
@@ -438,7 +491,9 @@ serve(async (req: Request) => {
   }
 
   // Log to cvp_inbound_emails
-  const intent = isThreadedReply && !isUnsubscribe
+  const intent = isDocSubmission
+    ? "document_submission"
+    : isThreadedReply && !isUnsubscribe
     ? "reply_to_outbound"
     : matchedApplicationId
     ? isUnsubscribe
@@ -466,6 +521,11 @@ serve(async (req: Request) => {
       regex_flagged_unsubscribe: regexHit,
       is_threaded: isThreadedReply,
       outbound_tag: matchedOutboundTag,
+      attachment_count: fields.attachments.length,
+      document_attachment_count: docAtts.length,
+      document_attachments: docAtts
+        .slice(0, 20)
+        .map((a) => ({ name: a.name, type: a.type, size: a.size })),
     },
     ai_reply_analysis: replyAnalysis,
     action_taken: actionTaken,
@@ -583,4 +643,98 @@ function buildUnsubscribeConfirmationReply(
     replySubject: `Re: ${fields.subject || "Your request"}`,
     replyHtml: `<p>Thank you — you've been removed from our recruitment list. You will not receive further emails from CETHOS recruitment. If this was a mistake, reply to this email and we'll restore you.</p>`,
   };
+}
+
+// ---------- Document-by-email detection + portal-upload redirect ----------
+//
+// Applicants who reply to a doc-request email with their diplomas/certs ATTACHED
+// should be redirected to upload via the portal (the ISO-preferred, traceable
+// channel — Profile > Supporting Documents). Email attachments bypass
+// chain-of-custody/retention/access-control and land unfiled in a shared inbox.
+//
+// Inline-logo vs. real-document discrimination: phone/desktop mail clients
+// (Apple Mail, Yahoo) assign a Content-ID to genuine photo/PDF attachments, so
+// Mailgun's content-id-map is NOT a reliable inline filter (real 6–11 attachment
+// submissions show every file in the map). We discriminate on type/size instead:
+// any PDF/office doc counts regardless of size; images count only above a small
+// byte threshold, which skips kilobyte-scale signature logos.
+
+const IMAGE_MIN_BYTES = 12_000; // images below this are treated as signature logos
+const OFFICE_DOC_NAME = /\.(pdf|docx?|rtf|odt|pages|zip)$/i;
+const IMAGE_DOC_NAME = /\.(jpe?g|png|heic|heif|tiff?|gif|webp|bmp)$/i;
+
+function isDocumentAttachment(a: AttachmentMeta): boolean {
+  const type = (a.type || "").toLowerCase();
+  const name = (a.name || "").toLowerCase();
+
+  // Office / PDF documents count regardless of size.
+  const isOfficeDoc =
+    type === "application/pdf" ||
+    type.startsWith("application/msword") ||
+    type.startsWith("application/vnd.openxmlformats-officedocument") ||
+    type.startsWith("application/vnd.ms-") ||
+    type.startsWith("application/rtf") ||
+    type === "text/rtf" ||
+    type === "application/zip" ||
+    OFFICE_DOC_NAME.test(name);
+  if (isOfficeDoc) return true;
+
+  // Images (scans/photos of credentials) count only above the logo threshold.
+  const looksImage = type.startsWith("image/") || IMAGE_DOC_NAME.test(name);
+  if (looksImage) return a.size >= IMAGE_MIN_BYTES;
+
+  return false;
+}
+
+function documentAttachments(atts: AttachmentMeta[]): AttachmentMeta[] {
+  return (atts ?? []).filter(isDocumentAttachment);
+}
+
+// Kill-switch. Defaults ON when the config row is absent — the whole point of
+// this feature is to redirect, so we fail open. Set
+// cvp_system_config.inbound_doc_redirect = {"enabled": false} to disable.
+async function docRedirectEnabled(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("cvp_system_config")
+      .select("value")
+      .eq("key", "inbound_doc_redirect")
+      .maybeSingle();
+    if (!data) return true;
+    const v = (data as { value: unknown }).value;
+    if (v && typeof v === "object" && "enabled" in (v as Record<string, unknown>)) {
+      return Boolean((v as { enabled?: unknown }).enabled);
+    }
+    return true;
+  } catch (err) {
+    console.error("docRedirectEnabled check failed — defaulting ON:", err);
+    return true;
+  }
+}
+
+function escapeHtml(s: string): string {
+  return (s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildPortalUploadRedirect(
+  fields: InboundFields,
+): { replySubject: string; replyHtml: string } {
+  const fn = escapeHtml((fields.fromName || "").trim().split(/\s+/)[0] || "there");
+  const replySubject = fields.subject
+    ? (/^re:/i.test(fields.subject.trim()) ? fields.subject : `Re: ${fields.subject}`)
+    : "Please upload your documents in your Cethos portal";
+  const replyHtml = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1f2937;line-height:1.55;max-width:560px;">
+<p style="margin:0 0 14px;">Hi ${fn},</p>
+<p style="margin:0 0 14px;">Thanks for sending your documents. For security and so they're linked directly to your application, please <strong>upload them in your applicant portal</strong> rather than by email — emailed attachments can't be reliably matched to your file.</p>
+<p style="margin:0 0 14px;">Log in and go to <strong>Profile &rsaquo; Supporting Documents</strong>:</p>
+<p style="margin:0 0 16px;"><a href="https://vendor.cethos.com" style="display:inline-block;background:#0F9DA0;color:#ffffff;text-decoration:none;padding:11px 20px;border-radius:6px;font-weight:600;">Log in to upload your documents</a></p>
+<p style="margin:0 0 14px;">Sign in with this email address and you'll receive a one-time code by email or SMS. Uploading keeps your documents secure and linked to your application, so we can review them faster.</p>
+<p style="margin:0 0 14px;color:#475569;font-size:13px;">Haven't started an application yet? Apply at <a href="https://cethos.com/apply">cethos.com/apply</a>. If you just have a quick question, you can reply to this email.</p>
+<p style="margin:0 0 4px;">Thank you,</p>
+<p style="margin:0;">The Cethos Recruitment Team</p>
+</div>`;
+  return { replySubject, replyHtml };
 }
