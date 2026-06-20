@@ -849,10 +849,21 @@ async function runAutoTriage(args: {
   const staffAttention = Boolean(args.analysis.staff_attention_needed);
   const sentiment = String(args.analysis.sentiment ?? "neutral").toLowerCase();
 
-  // Safety gates — escalate to a human instead of auto-acting.
-  if (staffAttention) return noop("staff_attention_needed");
+  // Safety gates.
+  //
+  // Tone gate (all actions): a confused/frustrated/negative reply goes to a human.
+  // Hard exclusion: approve/reject are never auto-executed (irreversible
+  // onboarding + untrusted-email/prompt-injection risk).
+  //
+  // staff_attention_needed policy (acknowledge-only relaxation): the Opus
+  // analysis sets this flag true on nearly every reply (observed 8/8 at launch),
+  // so using it as a blanket gate makes auto-triage inert. We therefore let the
+  // harmless holding action — `acknowledge` (a "we received your message, we'll
+  // follow up" reply that makes no decision, sends no request, advances nothing)
+  // — fire regardless of the flag. The two consequential actions
+  // (`request_more_info`, `send_test`) STAY gated on staff_attention_needed, so
+  // they only auto-fire when the model did NOT flag a human-attention need.
   if (TRIAGE_BLOCKING_SENTIMENTS.has(sentiment)) return noop(`sentiment_${sentiment}`);
-  // Hard exclusions: terminal decisions are never auto-executed.
   if (rec === "approve" || rec === "reject") return noop(`decision_requires_human:${rec}`);
 
   // Load the application for status guards + addressing.
@@ -904,7 +915,7 @@ async function runAutoTriage(args: {
       supabase: args.supabase,
       applicationId: args.applicationId,
       action: "auto_acknowledged",
-      staffNotes: `Auto-acknowledged inbound reply (sentiment=${sentiment}).`,
+      staffNotes: `Auto-acknowledged inbound reply (sentiment=${sentiment}, staff_attention_flag=${staffAttention}).`,
       aiInputPrompt: "ACK_REPLY_SYSTEM_PROMPT",
       aiOutput: ackText,
       aiError: ai.ok ? null : ai.error,
@@ -916,6 +927,8 @@ async function runAutoTriage(args: {
   }
 
   if (rec === "request_more_info") {
+    // Consequential action: stays gated on the human-attention flag.
+    if (staffAttention) return noop("staff_attention_needed:request_more_info");
     const oq = Array.isArray(args.analysis.open_questions) ? (args.analysis.open_questions as string[]) : [];
     const summary = String(args.analysis.summary ?? "").slice(0, 300);
     const systemNotes = oq.length
@@ -937,6 +950,8 @@ async function runAutoTriage(args: {
   }
 
   if (rec === "send_test") {
+    // Consequential action: stays gated on the human-attention flag.
+    if (staffAttention) return noop("staff_attention_needed:send_test");
     if (!PRE_TEST_STATUSES.has(a.status)) return noop(`send_test_status_guard:${a.status}`);
     const ok = await callEdgeFunction("cvp-send-instrument-choice-invitation", {
       applicationId: args.applicationId,
@@ -946,7 +961,7 @@ async function runAutoTriage(args: {
       supabase: args.supabase,
       applicationId: args.applicationId,
       action: "auto_triaged",
-      staffNotes: `Auto-triaged inbound reply -> sent instrument-choice invitation (send_test).`,
+      staffNotes: `Auto-triaged inbound reply -> sent instrument-choice invitation (send_test; sentiment=${sentiment}, staff_attention_flag=${staffAttention}).`,
       aiInputPrompt: null,
       aiOutput: null,
       aiError: null,
