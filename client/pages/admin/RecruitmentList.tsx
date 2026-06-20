@@ -246,13 +246,17 @@ export default function RecruitmentList() {
   const srcLangFilter = searchParams.get("src_lang") || "";
   const tgtLangFilter = searchParams.get("tgt_lang") || "";
   const countryFilter = searchParams.get("country") || "";
+  const roleFilter = searchParams.get("role") || "";
+  const scoreFilter = searchParams.get("score") || ""; // "", "85", "70_84", "lt70"
 
   const hasAnyFilter =
     statusFilter.length > 0 ||
     tierFilter.length > 0 ||
     Boolean(srcLangFilter) ||
     Boolean(tgtLangFilter) ||
-    Boolean(countryFilter);
+    Boolean(countryFilter) ||
+    Boolean(roleFilter) ||
+    Boolean(scoreFilter);
 
   const [searchInput, setSearchInput] = useState(search);
 
@@ -516,12 +520,22 @@ export default function RecruitmentList() {
         );
       }
 
-      // Tier + country filters always apply on top.
+      // Tier + country + role + AI-score filters always apply on top.
       if (tierFilter.length > 0) {
         query = query.in("assigned_tier", tierFilter);
       }
       if (countryFilter) {
         query = query.eq("country", countryFilter);
+      }
+      if (roleFilter) {
+        query = query.eq("role_type", roleFilter);
+      }
+      if (scoreFilter === "85") {
+        query = query.gte("ai_prescreening_score", 85);
+      } else if (scoreFilter === "70_84") {
+        query = query.gte("ai_prescreening_score", 70).lte("ai_prescreening_score", 84);
+      } else if (scoreFilter === "lt70") {
+        query = query.lt("ai_prescreening_score", 70);
       }
 
       query = query.order(sortField, { ascending: sortAsc });
@@ -581,6 +595,8 @@ export default function RecruitmentList() {
     srcLangFilter,
     tgtLangFilter,
     countryFilter,
+    roleFilter,
+    scoreFilter,
   ]);
 
   useEffect(() => {
@@ -649,7 +665,7 @@ export default function RecruitmentList() {
   const clearAllFilters = () => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      ["status", "tier", "src_lang", "tgt_lang", "country", "page"].forEach((k) => next.delete(k));
+      ["status", "tier", "src_lang", "tgt_lang", "country", "role", "score", "page"].forEach((k) => next.delete(k));
       return next;
     });
   };
@@ -808,6 +824,32 @@ export default function RecruitmentList() {
           {availableCountries.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
+        </select>
+
+        {/* Role — single-select. */}
+        <select
+          value={roleFilter}
+          onChange={(e) => setFilterParam("role", e.target.value)}
+          className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 hover:border-gray-400"
+        >
+          <option value="">Role: any</option>
+          <option value="translator">Translator / Reviewer</option>
+          <option value="cognitive_debriefing">CD Interviewer</option>
+          <option value="cd_clinician_consultant">CD &amp; Clinician Consultant</option>
+          <option value="clinician_reviewer">Clinician Reviewer</option>
+          <option value="agency">Agency</option>
+        </select>
+
+        {/* AI prescreen score — single-select bucket. */}
+        <select
+          value={scoreFilter}
+          onChange={(e) => setFilterParam("score", e.target.value)}
+          className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 hover:border-gray-400"
+        >
+          <option value="">AI score: any</option>
+          <option value="85">85+ (strong)</option>
+          <option value="70_84">70–84 (pass)</option>
+          <option value="lt70">Below 70</option>
         </select>
 
         {/* Tier — multi-select. */}
