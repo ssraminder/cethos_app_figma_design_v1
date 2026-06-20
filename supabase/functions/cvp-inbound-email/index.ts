@@ -204,7 +204,11 @@ async function parseForm(req: Request): Promise<{
   const toParts = parseAddress(raw["recipient"] ?? raw["To"] ?? raw["to"] ?? "");
 
   const fields: InboundFields = {
-    fromEmail: (raw["sender"] ?? fromParts.email).toLowerCase(),
+    // Prefer the From: header over the envelope sender. Forwarded/redirected
+    // mail (e.g. vm@cethos.com → recruiting@vendors.cethos.com) SRS-rewrites the
+    // envelope sender to a bounce address (…@cethoscorp.com) but preserves the
+    // real sender in From: — so replies must target From, not the envelope.
+    fromEmail: (fromParts.email || raw["sender"] || "").toLowerCase(),
     fromName: fromParts.name,
     toEmail: (toParts.email || raw["recipient"] || "").toLowerCase(),
     subject: raw["subject"] ?? raw["Subject"] ?? "",
