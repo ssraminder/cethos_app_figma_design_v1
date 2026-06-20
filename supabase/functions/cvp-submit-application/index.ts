@@ -293,6 +293,23 @@ serve(async (req: Request) => {
       req.headers.get("cf-connecting-ip") ?? "";
     const userAgent = req.headers.get("user-agent") ?? "";
 
+    // jsonb columns must receive an array/object/null — never a stray "" or a
+    // non-array string, which Postgres rejects with "invalid input syntax for
+    // type json" (caused live submission failures: `?? []` does NOT catch ""
+    // since "" isn't nullish). Coerce defensively.
+    const asJsonbArray = (v: unknown): unknown[] => {
+      if (Array.isArray(v)) return v;
+      if (typeof v === "string" && v.trim()) {
+        try {
+          const parsed = JSON.parse(v);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          /* not JSON — fall through to [] */
+        }
+      }
+      return [];
+    };
+
     const applicationRow: Record<string, unknown> = {
       application_number: applicationNumber,
       role_type: payload.roleType,
@@ -322,7 +339,9 @@ serve(async (req: Request) => {
       applicationRow.agency_primary_contact_role = ap.agencyPrimaryContactRole;
       applicationRow.agency_linguist_count = parseInt(ap.agencyLinguistCount, 10);
       applicationRow.agency_years_operating = parseInt(ap.agencyYearsOperating, 10);
-      applicationRow.agency_language_pairs = ap.languagePairs ?? null;
+      applicationRow.agency_language_pairs = Array.isArray(ap.languagePairs)
+        ? ap.languagePairs
+        : null;
       // Per-service extras stored in the existing columns where they line up.
       if (ap.servicesOffered.includes("translation")) {
         applicationRow.domains_offered = ap.domainsOffered ?? [];
@@ -358,7 +377,7 @@ serve(async (req: Request) => {
       const tp = payload as TranslatorPayload;
       applicationRow.years_experience = parseInt(tp.yearsExperience, 10);
       applicationRow.education_level = tp.educationLevel;
-      applicationRow.certifications = tp.certifications ?? [];
+      applicationRow.certifications = asJsonbArray(tp.certifications);
       applicationRow.cat_tools = tp.catTools ?? [];
       applicationRow.domains_offered = tp.domainsOffered ?? [];
       applicationRow.rate_currency = tp.rateCurrency ?? null;
@@ -372,7 +391,7 @@ serve(async (req: Request) => {
         )
       );
       applicationRow.services_offered = aggregatedServiceCodes;
-      applicationRow.rate_card = tp.languagePairs ?? [];
+      applicationRow.rate_card = asJsonbArray(tp.languagePairs);
     } else if (payload.roleType === "cd_clinician_consultant") {
       const cc = payload as CdClinicianConsultantPayload;
       applicationRow.education_level = cc.educationLevel;
@@ -438,7 +457,13 @@ serve(async (req: Request) => {
       .single();
 
     if (insertError) {
-      console.error("Error inserting application:", insertError);
+      console.error(
+        "Error inserting application:",
+        insertError.message,
+        "| details:", insertError.details,
+        "| hint:", insertError.hint,
+        "| code:", insertError.code,
+      );
       return jsonResponse(
         { success: false, error: "Failed to submit application. Please try again." },
         500
