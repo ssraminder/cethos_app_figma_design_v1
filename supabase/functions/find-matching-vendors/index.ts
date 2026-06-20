@@ -72,6 +72,13 @@ serve(async (req) => {
       if (target_language) target_language = target_language.toUpperCase();
     }
 
+    // Agencies are provisioned WITHOUT account-level vendor_language_pairs / vendor_rates —
+    // their capability lives on the blinded roster. They must be exempt from the language-pair
+    // and rate gating below, otherwise they never surface in the assignment modal.
+    const { data: agencyRows } = await sb
+      .from("vendors").select("id").eq("vendor_type", "agency").eq("status", "active");
+    const agencyIdSet = new Set<string>((agencyRows || []).map((r: any) => r.id));
+
     let vendorIds: Set<string> | null = null;
 
     if (source_language || target_language) {
@@ -93,6 +100,14 @@ serve(async (req) => {
       }
       const { data: lpMatches } = await lpQuery;
       vendorIds = new Set((lpMatches || []).map(r => r.vendor_id));
+
+      // v38: always surface active AGENCIES in language-filtered searches. Agencies carry no
+      // account-level vendor_language_pairs (their capability lives per roster linguist and is
+      // enforced at DELIVERY by the roster picker), so pair-gating hides them entirely. Showing
+      // them lets a PM assign the agency; the agency then selects an eligible roster linguist
+      // for the actual pair when delivering.
+      for (const id of agencyIdSet) vendorIds.add(id);
+
       if (vendorIds.size === 0) return jsonResp({ success: true, vendors: [], total_matches: 0, filters_applied: { source_language, target_language } });
     }
 
@@ -115,7 +130,11 @@ serve(async (req) => {
       // If no rates exist yet (service not yet set up in vendor_rates), fall through and
       // show all language-matched vendors so the PM can still assign and set terms manually.
       if (rateVendorIds.size > 0 || max_rate) {
-        vendorIds = vendorIds ? new Set([...vendorIds].filter(id => rateVendorIds.has(id))) : rateVendorIds;
+        // Agencies are exempt from the rate gate — they have no account rates; the payable is
+        // set at assignment time. Keep them in the candidate set regardless.
+        vendorIds = vendorIds
+          ? new Set([...vendorIds].filter(id => rateVendorIds.has(id) || agencyIdSet.has(id)))
+          : new Set([...rateVendorIds, ...agencyIdSet]);
         if (vendorIds.size === 0) return jsonResp({ success: true, vendors: [], total_matches: 0, filters_applied: { source_language, target_language, service_id, max_rate } });
       }
     }
