@@ -4659,6 +4659,22 @@ interface IsoEvidence {
   ref_positive_count: number;
 }
 
+// Domains where a general translation test is NOT sufficient — domain-specific
+// evidence (degree in the field, certification, or documented experience) is required.
+const HIGH_RISK_DOMAINS = new Set(["medical", "life_sciences", "pharmaceutical", "legal", "financial", "insurance"]);
+
+const DOMAIN_DISPLAY: Record<string, string> = {
+  legal: "Legal", medical: "Medical", life_sciences: "Life Sciences",
+  pharmaceutical: "Pharmaceutical", financial: "Financial", insurance: "Insurance",
+  technical: "Technical", it_software: "IT & Software", energy: "Energy",
+  general: "General", academic_scientific: "Academic / Scientific",
+  business_corporate: "Business / Corporate", marketing_advertising: "Marketing",
+  immigration: "Immigration", certified_official: "Certified / Official",
+  literary_publishing: "Literary", tourism_hospitality: "Tourism",
+  government_public: "Government", gaming_entertainment: "Gaming",
+  media_journalism: "Media", automotive_engineering: "Automotive",
+};
+
 // Deterministic, candidate-specific "how to approve this person" checklist for
 // the reviewer — reasons over the same evidence the panel shows. Ordered steps
 // with done / check / todo status, ending in a bottom-line recommendation.
@@ -4666,38 +4682,106 @@ function IsoReviewerGuide({ ev }: { ev: IsoEvidence }) {
   type Step = { state: "done" | "check" | "todo"; text: string };
   const steps: Step[] = [];
 
-  // 1. Competence
-  if (ev.approved_combos > 0) steps.push({ state: "done", text: `Competence: translation test passed (${ev.approved_combos} combo${ev.approved_combos > 1 ? "s" : ""}). See Test Combinations below.` });
-  else if (ev.quiz_score != null) steps.push({ state: "done", text: `Competence: quiz passed (${ev.quiz_score}%). See Quiz Results below.` });
-  else steps.push({ state: "todo", text: "Competence: no test/quiz on file — do not approve until competence is demonstrated." });
+  const items = ev.screened_items ?? [];
+  const degreeItems = items.filter((it) => it.type === "degree_translation" || it.type === "degree_other");
+  const certItems = items.filter((it) => it.type === "domain_specific_certification");
+  const expItems = items.filter((it) => it.type === "documented_translation_experience");
+  const hasDegreeTranslation = items.some((it) => it.type === "degree_translation");
 
-  // 2. §3.1.4 qualification basis
-  if (ev.has_degree_doc) {
-    steps.push({ state: "check", text: "§3.1.4 basis: a degree/diploma is on file (above) — open it. If it's in translation → route (a); another field + ≥2 yrs → route (b). Verify the field before recording." });
-  } else if ((ev.ref_documented_years ?? 0) >= 5) {
-    steps.push({ state: "done", text: `§3.1.4 basis: route (c) — references confirm ~${ev.ref_documented_years} yrs professional experience (since ${ev.ref_min_confirmed_year}), meeting the 5-year route. No degree needed; record basis = §3.1.4(c).` });
-  } else if ((ev.years_experience ?? 0) >= 5) {
-    steps.push({ state: "check", text: `§3.1.4 basis: ${ev.years_experience} yrs is self-declared but not yet documented. Get a reference/letter confirming 5+ yrs (route c) or a degree (route a/b) before recording.` });
+  // Declared domain list from the view's tested_domains string
+  const declaredList = (ev.tested_domains ?? "")
+    .split(",").map((d) => d.trim()).filter(Boolean);
+  const highRiskDeclared = declaredList.filter((d) => HIGH_RISK_DOMAINS.has(d));
+  const safeDeclared = declaredList.filter((d) => !HIGH_RISK_DOMAINS.has(d));
+
+  // For high-risk domains: a domain-specific certification whose title contains
+  // the domain keyword counts as evidence. This is a heuristic — reviewer confirms.
+  const highRiskWithEvidence = highRiskDeclared.filter((d) =>
+    certItems.some((it) => it.title.toLowerCase().includes(d.replace("_", " "))) ||
+    expItems.some((it) => it.title.toLowerCase().includes(d.replace("_", " ")))
+  );
+  const highRiskNoEvidence = highRiskDeclared.filter((d) => !highRiskWithEvidence.includes(d));
+
+  // 1. Competence
+  if (ev.approved_combos > 0) {
+    steps.push({ state: "done", text: `Competence: translation test passed (${ev.approved_combos} combo${ev.approved_combos > 1 ? "s" : ""}). See Test Combinations below.` });
+  } else if (ev.quiz_score != null) {
+    steps.push({ state: "done", text: `Competence: quiz passed (${ev.quiz_score}%). See Quiz Results below.` });
   } else {
-    steps.push({ state: "todo", text: "§3.1.4 basis: not established yet — needs a degree (route a/b) or documented 5+ yrs experience (route c)." });
+    steps.push({ state: "todo", text: "Competence: no test/quiz on file — do not approve until competence is demonstrated." });
+  }
+
+  // 2. §3.1.4 qualification basis — name the actual documents
+  if (degreeItems.length > 0) {
+    const docList = degreeItems.map((it) => {
+      const conf = it.confidence != null ? ` · AI ${it.confidence}%` : "";
+      const ver = it.verified ? " · verified" : " · unverified";
+      return `"${it.title}"${conf}${ver}`;
+    }).join("; ");
+    if (hasDegreeTranslation) {
+      steps.push({ state: "check", text: `§3.1.4 basis: translation degree on file — ${docList}. Open it and confirm the field is translation/interpreting → record basis = route (a).` });
+    } else {
+      const expNote = expItems.length > 0
+        ? ` Experience docs also on file: ${expItems.map((it) => `"${it.title}"`).join(", ")}.`
+        : " No experience docs on file — check CV for ≥2 yrs.";
+      steps.push({ state: "check", text: `§3.1.4 basis: non-translation degree on file — ${docList}.${expNote} Confirm field + ≥2 yrs → record basis = route (b).` });
+    }
+  } else if ((ev.ref_documented_years ?? 0) >= 5) {
+    steps.push({ state: "done", text: `§3.1.4 basis: route (c) — references confirm ~${ev.ref_documented_years} yrs professional experience (since ${ev.ref_min_confirmed_year}). Record basis = §3.1.4(c). No degree needed.` });
+  } else if (expItems.length > 0) {
+    const expList = expItems.map((it) => `"${it.title}"`).join(", ");
+    steps.push({ state: "check", text: `§3.1.4 basis: experience docs on file (${expList}) but no degree and references don't yet confirm 5 yrs. Verify the years from docs + reference before recording basis = route (c).` });
+  } else if ((ev.years_experience ?? 0) >= 5) {
+    steps.push({ state: "check", text: `§3.1.4 basis: ${ev.years_experience} yrs self-declared only — no degree or experience docs on file. Needs a reference/letter confirming 5+ yrs (route c) or a degree (route a/b).` });
+  } else {
+    steps.push({ state: "todo", text: "§3.1.4 basis: not established — no degree, no experience docs, no reference confirmation. Needs route (a), (b), or (c) evidence before approving." });
   }
 
   // 3. References
-  if (ev.refs_received > 0) steps.push({ state: "check", text: `References: ${ev.refs_received} received (${ev.ref_positive_count} positive). Read the verbatim responses below — confirm they corroborate the experience and competence.` });
-  else steps.push({ state: "todo", text: "References: none received yet — request/await at least one good reference." });
+  if (ev.refs_received > 0) {
+    steps.push({ state: "check", text: `References: ${ev.refs_received} received (${ev.ref_positive_count} positive${ev.ref_documented_years ? `, documenting ~${ev.ref_documented_years} yrs experience` : ""}). Read the verbatim responses below — confirm they corroborate the claimed experience and language pairs.` });
+  } else {
+    steps.push({ state: "todo", text: "References: none received yet — request/await at least one good reference before approving." });
+  }
 
-  // 4. Domains (§6.1.6)
-  steps.push({ state: "check", text: `Domains (§6.1.6): approve only evidenced domains${ev.tested_domains ? ` — tested: ${ev.tested_domains}` : ""}. ${ev.declared_domains} declared — don't approve unevidenced ones (medical/pharma/legal/certified need proof).` });
+  // 4. Domains (§6.1.6) — explicit approve/hold split
+  if (declaredList.length === 0) {
+    steps.push({ state: "todo", text: "Domains (§6.1.6): no declared domains found — cannot approve without at least one domain." });
+  } else if (highRiskDeclared.length === 0) {
+    const domainStr = safeDeclared.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
+    steps.push({ state: "done", text: `Domains (§6.1.6): ${ev.declared_domains} declared, none are high-risk. Covered by General test pass. Safe to approve all: ${domainStr}.` });
+  } else {
+    const safeStr = safeDeclared.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ") || "none";
+    const evidencedHighRiskStr = highRiskWithEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
+    const unevidencedStr = highRiskNoEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
+    let text = `Domains (§6.1.6): ${ev.declared_domains} declared.`;
+    if (highRiskNoEvidence.length > 0) {
+      text += ` NO specific evidence for: ${unevidencedStr} — remove these before approving (general test alone is not sufficient for these domains).`;
+    }
+    if (highRiskWithEvidence.length > 0) {
+      text += ` Evidenced high-risk: ${evidencedHighRiskStr} — confirm the certification covers this domain.`;
+    }
+    text += ` Safe to approve: ${safeStr}.`;
+    steps.push({ state: highRiskNoEvidence.length > 0 ? "check" : "done", text });
+  }
 
   // 5. NDA
   steps.push({ state: "check", text: "NDA: confirm a signed NDA is (or will be) on file before the vendor goes active." });
 
+  // Bottom line
   const competenceOk = ev.approved_combos > 0 || ev.quiz_score != null;
   const basisOk = ev.has_degree_doc || (ev.ref_documented_years ?? 0) >= 5;
   let bottom: { tone: string; text: string };
-  if (ev.flag_no_cv) bottom = { tone: "text-red-700", text: "→ HOLD: no CV on file — can't verify identity or basis. Request the CV first." };
-  else if (competenceOk && basisOk && ev.refs_received > 0) bottom = { tone: "text-green-700", text: `→ Looks approvable${(ev.ref_documented_years ?? 0) >= 5 && !ev.has_degree_doc ? " via route (c)" : ""}. Record the §3.1.4 basis and approve only the evidenced domains.` };
-  else bottom = { tone: "text-amber-700", text: "→ Not yet — resolve the steps marked ⚠ / ◻ above (usually: document the §3.1.4 basis or collect a reference)." };
+  if (ev.flag_no_cv) {
+    bottom = { tone: "text-red-700", text: "→ HOLD: no CV on file — can't verify identity or basis. Request the CV first." };
+  } else if (competenceOk && basisOk && ev.refs_received > 0 && highRiskNoEvidence.length > 0) {
+    const removeStr = highRiskNoEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
+    bottom = { tone: "text-amber-700", text: `→ Approvable with edits: remove ${removeStr} from the domain list (no specific evidence), record the §3.1.4 basis, then approve.` };
+  } else if (competenceOk && basisOk && ev.refs_received > 0) {
+    bottom = { tone: "text-green-700", text: `→ Approvable. Record the §3.1.4 basis${(ev.ref_documented_years ?? 0) >= 5 && !ev.has_degree_doc ? " = route (c)" : ""} and approve.` };
+  } else {
+    bottom = { tone: "text-amber-700", text: "→ Not yet — resolve the steps marked ⚠ / ◻ above." };
+  }
 
   const ICON: Record<Step["state"], string> = { done: "✓", check: "⚠", todo: "◻" };
   const COLOR: Record<Step["state"], string> = { done: "text-green-600", check: "text-amber-600", todo: "text-gray-400" };
