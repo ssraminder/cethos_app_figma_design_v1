@@ -71,6 +71,8 @@ const COMBO_STATUS_LABELS: Record<string, string> = {
   pending: "Pending", no_test_available: "No Test Available", test_assigned: "Test Assigned",
   test_sent: "Test Sent", test_submitted: "Test Submitted", assessed: "Assessed",
   approved: "Approved", rejected: "Rejected", skipped: "Skipped",
+  skip_manual_review: "Skip Manual Review",
+  approved_excluded: "Approved — Excluded",
 };
 
 const COMBO_STATUS_COLORS: Record<string, string> = {
@@ -79,6 +81,8 @@ const COMBO_STATUS_COLORS: Record<string, string> = {
   test_submitted: "bg-indigo-100 text-indigo-700", assessed: "bg-purple-100 text-purple-700",
   approved: "bg-green-100 text-green-700", rejected: "bg-red-100 text-red-700",
   skipped: "bg-gray-100 text-gray-500",
+  skip_manual_review: "bg-green-50 text-green-600",
+  approved_excluded: "bg-orange-100 text-orange-700",
 };
 
 // ---------- Types ----------
