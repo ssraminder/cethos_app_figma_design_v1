@@ -1011,3 +1011,11 @@ Context: user wanted recruitment fully automated to the final human approval, al
 - **Operated by Fayza** (vendor manager) — needs her account elevated from `reviewer` to an approve-capable role (separate enablement step) + an approval guide.
 - **Bigger lever still open:** 212 candidates passed assessment but are stuck awaiting references (only ~38% of requested refs return); coverage gap — only 115/728 ever asked for refs, 230 asked for nothing. Systematic ISO-evidence request sweep (2 refs + degree + experience/work-history proof) is the next step to grow the ready pool beyond 31.
 - See user-memory [[project-iqvia-audit-2026-06-29]].
+
+## Durable evidence sweep — auto-request references for assessment-passed (2026-06-21)
+
+- **Root cause:** `cvp-auto-advance` Phase C only auto-requests references for `status='test_assessed'`. ~140 applicants passed competence while parked in staff_review/prescreened/etc., were never asked for references, and so never reach the Ready-for-Approval queue (assessment + ≥1 reference). References are the binding constraint.
+- **Fix (durable):** new Phase **C2** — sweeps EVERY assessment-passed applicant with no reference request (view `cvp_pipeline_needs_reference_request`: assessed via approved/skip combo OR submitted quiz, no ref request, no ref received, non-dummy), **clinical-first**, throttled by `limit` (25/run → drains 140 over ~6 cron cycles, no rate-limit blast). Reuses the proven `cvp-request-references` internalAuto path. Sets status→references_requested (never clobbers terminal).
+- **Gated** behind `cvp_system_config.auto_evidence_sweep` (default **OFF**, fail-closed) for safe rollout — mirrors auto_doc_request. Deployed `--no-verify-jwt`. Dry-run verified: 25 selected, all clinical-first, 0 sent. **Toggle OFF pending user go to send to 140 real applicants.** Kill-switch: set enabled=false.
+- **Docs side:** largely already chased via existing auto_doc_request (315 v17-request-more-info sent) — kept this change references-only (the queue's binding constraint); enriching the doc-request content to name degree + work-history/invoice proof explicitly is a fast-follow.
+- Migration `20260621_cvp_auto_evidence_sweep.sql`. See user-memory [[project-iqvia-audit-2026-06-29]].
