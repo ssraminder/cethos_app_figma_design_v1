@@ -499,6 +499,9 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
           evidenceTypes={evidenceTypes}
           languages={languages}
           hasActiveNda={hasActiveNda}
+          existingEvidence={unlinkedEvidence}
+          vendorVendorType={vendorData.vendor.vendor_type}
+          vendorYearsExperience={vendorData.vendor.years_experience}
           submitting={submitting}
           setSubmitting={setSubmitting}
           onClose={() => setShowForm(false)}
@@ -515,7 +518,8 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
 
 function QmsRecordForm({
   vendorId, staffId, competenceBases, evidenceTypes, languages,
-  hasActiveNda, submitting, setSubmitting, onClose, onSaved,
+  hasActiveNda, existingEvidence, vendorVendorType, vendorYearsExperience,
+  submitting, setSubmitting, onClose, onSaved,
 }: {
   vendorId: string;
   staffId: string | null;
@@ -523,12 +527,19 @@ function QmsRecordForm({
   evidenceTypes: EvidenceTypeOpt[];
   languages: LanguageOpt[];
   hasActiveNda: boolean;
+  existingEvidence: EvidenceRow[];
+  vendorVendorType: string | null;
+  vendorYearsExperience: number | null;
   submitting: boolean;
   setSubmitting: (b: boolean) => void;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [roleCode, setRoleCode] = useState("translator");
+  const ROLE_MAP: Record<string, string> = {
+    translator: "translator", reviser: "reviser", reviewer: "reviewer",
+    post_editor: "post_editor", interpreter: "interpreter", cognitive_debriefing: "translator",
+  };
+  const [roleCode, setRoleCode] = useState(() => ROLE_MAP[vendorVendorType ?? ""] ?? "translator");
   const [basisCode, setBasisCode] = useState("");
   const [evidenceTypeCode, setEvidenceTypeCode] = useState("");
   const [evidenceTitle, setEvidenceTitle] = useState("");
@@ -540,6 +551,52 @@ function QmsRecordForm({
   const [pairs, setPairs] = useState<{ source: string; target: string; direction: string }[]>([
     { source: "", target: "", direction: "source_to_target" },
   ]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [aiSuggested, setAiSuggested] = useState(false);
+
+  // AI pre-fill: run once when language lookups are ready
+  useEffect(() => {
+    if (languages.length === 0) return;
+    const suggest = async () => {
+      setSuggestLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("qms-suggest-qualification", {
+          body: {
+            vendor_id: vendorId,
+            evidence: existingEvidence,
+            vendor_type: vendorVendorType,
+            years_experience: vendorYearsExperience,
+          },
+        });
+        if (error || !data?.success) return;
+        const s = (data.suggestions ?? {}) as Record<string, string>;
+        if (s.basisCode) setBasisCode(s.basisCode);
+        if (s.evidenceTypeCode) setEvidenceTypeCode(s.evidenceTypeCode);
+        if (s.evidenceTitle) setEvidenceTitle(s.evidenceTitle);
+        if (s.evidenceOrg) setEvidenceOrg(s.evidenceOrg);
+        if (s.evidenceIssued) setEvidenceIssued(s.evidenceIssued);
+        if (s.verificationNotes) setEvidenceNotes(s.verificationNotes);
+        const lp = (data.languagePairs ?? []) as { source_language: string; target_language: string }[];
+        if (lp.length > 0) {
+          const resolved = lp
+            .map((p) => ({
+              source: languages.find((l) => l.code.toUpperCase() === p.source_language.toUpperCase())?.id ?? "",
+              target: languages.find((l) => l.code.toUpperCase() === p.target_language.toUpperCase())?.id ?? "",
+              direction: "source_to_target" as string,
+            }))
+            .filter((p) => p.source && p.target);
+          if (resolved.length > 0) setPairs(resolved);
+        }
+        setAiSuggested(true);
+      } catch (e) {
+        console.error("AI pre-fill failed", e);
+      } finally {
+        setSuggestLoading(false);
+      }
+    };
+    suggest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [languages]);
 
   const filteredBases = competenceBases.filter((b) => b.role_type_code === roleCode);
 
@@ -598,6 +655,18 @@ function QmsRecordForm({
         </div>
 
         <div className="p-4 space-y-4">
+          {(suggestLoading || aiSuggested) && (
+            <div className={`flex items-center gap-2 px-3 py-2 rounded text-xs border ${
+              suggestLoading
+                ? "bg-blue-50 text-blue-700 border-blue-200"
+                : "bg-teal-50 text-teal-700 border-teal-200"
+            }`}>
+              {suggestLoading
+                ? <><Loader2 className="w-3 h-3 animate-spin shrink-0" /> AI is analyzing evidence and pre-filling the form…</>
+                : <><ShieldCheck className="w-3 h-3 shrink-0" /> AI suggested from screened evidence — review all fields before submitting.</>
+              }
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               Role
