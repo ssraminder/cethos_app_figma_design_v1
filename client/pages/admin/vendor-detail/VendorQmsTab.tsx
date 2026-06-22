@@ -91,9 +91,22 @@ function EvidenceItem({ e, onVerify, onView }: { e: EvidenceRow; onVerify: () =>
           </button>
         )}
       </div>
-      {e.verification_notes && (
-        <div className="text-gray-500 mt-0.5 pl-5 whitespace-pre-wrap">{e.verification_notes}</div>
-      )}
+      {e.verification_notes && (() => {
+        const priorIdx = e.verification_notes!.indexOf("\n(prior:");
+        const staffNote = priorIdx >= 0 ? e.verification_notes!.slice(0, priorIdx) : e.verification_notes!;
+        const priorCtx  = priorIdx >= 0 ? e.verification_notes!.slice(priorIdx + 1) : null;
+        return (
+          <>
+            {staffNote && <div className="text-gray-700 text-xs mt-0.5 pl-5 font-medium">{staffNote}</div>}
+            {priorCtx && (
+              <details className="pl-5 mt-0.5">
+                <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-500 select-none">AI pre-screen notes</summary>
+                <div className="text-gray-400 text-xs mt-1 whitespace-pre-wrap">{priorCtx}</div>
+              </details>
+            )}
+          </>
+        );
+      })()}
     </li>
   );
 }
