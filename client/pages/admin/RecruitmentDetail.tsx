@@ -4652,7 +4652,7 @@ interface IsoEvidence {
   has_degree_doc: boolean;
   screened_count: number;
   screened_any_verified: boolean;
-  screened_items: { title: string; type: string | null; verified: boolean; confidence: string | null }[] | null;
+  screened_items: { title: string; type: string | null; verified: boolean; confidence: string | null; storage_path?: string | null }[] | null;
   applicant_vendor_id: string | null;
   ref_min_confirmed_year: number | null;
   ref_documented_years: number | null;
@@ -4678,7 +4678,7 @@ const DOMAIN_DISPLAY: Record<string, string> = {
 // Deterministic, candidate-specific "how to approve this person" checklist for
 // the reviewer — reasons over the same evidence the panel shows. Ordered steps
 // with done / check / todo status, ending in a bottom-line recommendation.
-function IsoReviewerGuide({ ev }: { ev: IsoEvidence }) {
+function IsoReviewerGuide({ ev, ndaSignedAt }: { ev: IsoEvidence; ndaSignedAt: string | null }) {
   type Step = { state: "done" | "check" | "todo"; text: string };
   const steps: Step[] = [];
 
@@ -4739,7 +4739,12 @@ function IsoReviewerGuide({ ev }: { ev: IsoEvidence }) {
 
   // 3. References
   if (ev.refs_received > 0) {
-    steps.push({ state: "check", text: `References: ${ev.refs_received} received (${ev.ref_positive_count} positive${ev.ref_documented_years ? `, documenting ~${ev.ref_documented_years} yrs experience` : ""}). Read the verbatim responses below — confirm they corroborate the claimed experience and language pairs.` });
+    const allPositive = ev.ref_positive_count > 0 && ev.ref_positive_count === ev.refs_received;
+    const refState: Step["state"] = allPositive ? "done" : "check";
+    const positiveNote = ev.ref_positive_count < ev.refs_received
+      ? ` (${ev.refs_received - ev.ref_positive_count} non-positive — read those carefully)`
+      : "";
+    steps.push({ state: refState, text: `References: ${ev.refs_received} received, ${ev.ref_positive_count} positive${positiveNote}${ev.ref_documented_years ? `, documenting ~${ev.ref_documented_years} yrs experience` : ""}. Read the verbatim responses below — confirm they corroborate the claimed experience and language pairs.` });
   } else {
     steps.push({ state: "todo", text: "References: none received yet — request/await at least one good reference before approving." });
   }
@@ -4749,7 +4754,7 @@ function IsoReviewerGuide({ ev }: { ev: IsoEvidence }) {
     steps.push({ state: "todo", text: "Domains (§6.1.6): no declared domains found — cannot approve without at least one domain." });
   } else if (highRiskDeclared.length === 0) {
     const domainStr = safeDeclared.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
-    steps.push({ state: "done", text: `Domains (§6.1.6): ${ev.declared_domains} declared, none are high-risk. Covered by General test pass. Safe to approve all: ${domainStr}.` });
+    steps.push({ state: "done", text: `Domains (§6.1.6): ${ev.declared_domains} declared, none are high-risk. General test pass confirms professional linguistic competence across all non-specialist domains. Safe to approve all: ${domainStr}.` });
   } else {
     const safeStr = safeDeclared.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ") || "none";
     const evidencedHighRiskStr = highRiskWithEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
@@ -4761,12 +4766,18 @@ function IsoReviewerGuide({ ev }: { ev: IsoEvidence }) {
     if (highRiskWithEvidence.length > 0) {
       text += ` Evidenced high-risk: ${evidencedHighRiskStr} — confirm the certification covers this domain.`;
     }
-    text += ` Safe to approve: ${safeStr}.`;
+    if (safeStr !== "none") {
+      text += ` Safe to approve (general test pass covers these): ${safeStr}.`;
+    }
     steps.push({ state: highRiskNoEvidence.length > 0 ? "check" : "done", text });
   }
 
   // 5. NDA
-  steps.push({ state: "check", text: "NDA: confirm a signed NDA is (or will be) on file before the vendor goes active." });
+  if (ndaSignedAt) {
+    steps.push({ state: "done", text: `NDA: signed on ${format(new Date(ndaSignedAt), "d MMM yyyy")} — on file.` });
+  } else {
+    steps.push({ state: "check", text: "NDA: not yet signed. Presented as in-portal clickwrap when the vendor logs in after approval — no action needed now, but confirm before marking active." });
+  }
 
   // Bottom line
   const competenceOk = ev.approved_combos > 0 || ev.quiz_score != null;
@@ -4813,10 +4824,32 @@ const EV_TYPE_LABEL: Record<string, string> = {
   language_proficiency_test: "Language proficiency",
 };
 
+function DocOpenButton({ storagePath }: { storagePath?: string | null }) {
+  const [opening, setOpening] = useState(false);
+  if (!storagePath) return null;
+  const handleOpen = async () => {
+    setOpening(true);
+    const { data } = await supabase.storage.from("vendor-certifications").createSignedUrl(storagePath, 3600);
+    setOpening(false);
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+  };
+  return (
+    <button
+      onClick={handleOpen}
+      disabled={opening}
+      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 disabled:opacity-50"
+      title="Open document in new tab"
+    >
+      {opening ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <ExternalLink className="w-2.5 h-2.5" />}
+      Open
+    </button>
+  );
+}
+
 // ISO 17100 evidence summary shown at the top of the profile for review/approval.
 // Pure/deterministic (driven by cvp_application_iso_evidence) — the flags are
 // review PROMPTS, not gates. Reviewer still records the §3.1.4 basis on approval.
-function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
+function IsoEvidencePanel({ ev, ndaSignedAt }: { ev: IsoEvidence | null; ndaSignedAt: string | null }) {
   if (!ev) return null;
   const theme =
     ev.iso_badge === "ready"
@@ -4891,6 +4924,7 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
                   {it.type && <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 whitespace-nowrap">{EV_TYPE_LABEL[it.type] ?? it.type}</span>}
                   {conf != null && <span className={`px-1.5 py-0.5 rounded whitespace-nowrap ${confCls}`}>AI {conf}%</span>}
                   <span className={`px-1.5 py-0.5 rounded whitespace-nowrap ${it.verified ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{it.verified ? "Verified" : "Screened"}</span>
+                  <DocOpenButton storagePath={it.storage_path} />
                 </li>
               );
             })}
@@ -4931,7 +4965,7 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
         )}{" "}
         Flags are review prompts, not gates.
       </p>
-      <IsoReviewerGuide ev={ev} />
+      <IsoReviewerGuide ev={ev} ndaSignedAt={ndaSignedAt} />
     </div>
   );
 }
@@ -4942,6 +4976,7 @@ export default function RecruitmentDetail() {
 
   const [app, setApp] = useState<Application | null>(null);
   const [isoEvidence, setIsoEvidence] = useState<IsoEvidence | null>(null);
+  const [ndaSignedAt, setNdaSignedAt] = useState<string | null>(null);
   const [combinations, setCombinations] = useState<TestCombination[]>([]);
   const [submissions, setSubmissions] = useState<TestSubmission[]>([]);
   const [quizSubmissions, setQuizSubmissions] = useState<QuizSubmission[]>([]);
@@ -5008,6 +5043,21 @@ export default function RecruitmentDetail() {
         .eq("application_id", id)
         .maybeSingle();
       setIsoEvidence((isoEv as IsoEvidence) ?? null);
+
+      // NDA signing status
+      const vendorId = (isoEv as IsoEvidence | null)?.applicant_vendor_id;
+      const ndaFilter = vendorId
+        ? `application_id.eq.${id},vendor_id.eq.${vendorId}`
+        : `application_id.eq.${id}`;
+      const { data: ndaRow } = await supabase
+        .from("vendor_nda_signatures")
+        .select("signed_at")
+        .or(ndaFilter)
+        .eq("is_current", true)
+        .order("signed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setNdaSignedAt((ndaRow as { signed_at: string } | null)?.signed_at ?? null);
 
       setStaffNotes(application.staff_review_notes || "");
       setTierValue(application.assigned_tier || "");
@@ -5766,7 +5816,7 @@ export default function RecruitmentDetail() {
       </div>
 
       {/* ISO 17100 evidence — top of profile, for review/approval */}
-      <IsoEvidencePanel ev={isoEvidence} />
+      <IsoEvidencePanel ev={isoEvidence} ndaSignedAt={ndaSignedAt} />
 
       {/* Three-column grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
