@@ -18,6 +18,14 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-20 — Branded customer-invoice PDF template (generate-invoice-pdf v2.0.0)
+- **Decision:** The standard customer-invoice PDF is the **branded Cethos Design-System template** in `supabase/functions/generate-invoice-pdf/index.ts` (**v2.0.0**, stamped in the file header). Built with **pdf-lib**: Cethos logo PNG + **Plus Jakarta Sans** font + navy **#0C2340** / teal **#0891B2** palette, INVOICE wordmark + teal underline, navy line-items table (zebra rows), teal **Balance Due** bar. Mirrors the certified-quote template (`generate-quote-pdf`).
+- **Behaviour:** renders line items from **`customer_invoice_lines`** (description = `Order | Service | Source > Target | PO`, enforced by trigger `trg_enrich_invoice_line_description`, migrations `20260620_enrich_invoice_line_description_with_language.sql` + `..._ascii_separator.sql`); tax row **always shown** (even 0%); **due date derived from the client's payment_terms** (invoice date + Net N); payment instructions **suppressed when the branch detail fields are empty**; company site shown as **www.cethos.com**. Embedding a TTF also fixes the old WinAnsi punctuation garbling.
+- **Rationale:** the prior v1 raw-PDF-operator layout built line items only from `quote_files` (which back-entered/PO-grouped invoices lack) → fell back to a single "Translation Services" line with the wrong service, and garbled `·`/`—`. The branded pdf-lib build fixes correctness + branding together.
+- **Alternatives considered:** reconstruct the source-less `generate-customer-invoice` PDF step (rejected for now — risky, and it's the canonical generator) ; HTML→PDF (rejected — pdf-lib matches the existing quote template stack).
+- **Status:** active.
+- **⚠️ Affects / open gotcha:** the **canonical `generate-customer-invoice`** edge function (source-less zombie) still produces the OLD plain PDF and is what the portal's **"Regenerate PDF"** button + invoice creation call — so a UI regenerate REVERTS an invoice to the old design. To make v2 truly canonical, **repoint those paths to `generate-invoice-pdf`** (or reconstruct the canonical generator). Until then, regenerate via `generate-invoice-pdf` directly. Deploy with `--no-verify-jwt`.
+
 ### 2026-06-20 — Front-desk QA capture: self-building knowledge base from HITL answers (Phase 2a)
 - **Idea (user):** when a human answers a front-desk escalation, capture the question→answer automatically so the KB builds itself from real, human-vetted answers (instead of authoring a FAQ).
 - **The capture problem:** escalations previously set Reply-To = the applicant, so staff replies went straight to them and we never saw the answer. Fix: escalations now carry a **`[#ESC-<token>]`** in the subject and **Reply-To = vm@cethos.com**, so a staff reply routes back through the webhook (nearly invisible to staff — they still just hit Reply).
