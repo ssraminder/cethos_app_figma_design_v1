@@ -34,6 +34,11 @@ const FALLBACK_OPS_EMAIL =
 // Pass thresholds — docs/qms/02-test-or-quiz-routing.md §2
 const APPROVE_THRESHOLD = 80;
 const STAFF_REVIEW_THRESHOLD = 70;
+// COA Linguistic Validation uses a higher MCQ bar (90%). At/above it the COA
+// combos auto-approve; below it they route to staff_review (assessed) so a human
+// corroborates the score with references + §3.1.4 — they are NOT auto-rejected.
+// The Part-2 translation AI verdict is advisory only and never auto-rejects.
+const COA_APPROVE_THRESHOLD = 90;
 
 interface SubmissionRow {
   id: string;
@@ -43,6 +48,7 @@ interface SubmissionRow {
   token_expires_at: string;
   status: string;
   is_cog_debrief: boolean;
+  is_coa: boolean;
 }
 
 interface ResponseItem {
@@ -95,7 +101,7 @@ serve(async (req: Request) => {
   // 1. Load submission
   const { data: subData, error: subErr } = await supabase
     .from("cvp_quiz_submissions")
-    .select("id, application_id, target_language_id, token, token_expires_at, status, is_cog_debrief")
+    .select("id, application_id, target_language_id, token, token_expires_at, status, is_cog_debrief, is_coa")
     .eq("token", token)
     .maybeSingle();
   if (subErr || !subData) {
@@ -235,12 +241,19 @@ serve(async (req: Request) => {
 
   // 5. Apply routing to all combinations of this applicant targeting the
   // quiz's target_language. Quiz settles all of them as a group.
-  // No staff-review band: the quiz is a complete competence gate. At/above the
-  // pass threshold → approved; below → rejected (applicant may reapply). Nothing
-  // parks for human review — the only human step is final approval. The COA
-  // Part-2 translation is graded for the record (anyTranslationFail) but no
-  // longer parks the application; translation quality is reviewed at approval.
-  const comboStatus: string = scorePct >= APPROVE_THRESHOLD ? "approved" : "rejected";
+  //
+  // Non-COA: at/above APPROVE_THRESHOLD → approved; below → rejected (applicant
+  // may reapply). The only human step is final approval.
+  //
+  // COA Linguistic Validation: higher 90% MCQ bar. At/above → approved; BELOW →
+  // assessed (routes the application to staff_review) so a human corroborates the
+  // overall score with references + §3.1.4 rather than auto-rejecting. The Part-2
+  // translation AI verdict (anyTranslationFail) is advisory only and never parks
+  // or rejects — it is corroborated by the reviewer at final approval.
+  const approveBar = sub.is_coa ? COA_APPROVE_THRESHOLD : APPROVE_THRESHOLD;
+  const comboStatus: string = scorePct >= approveBar
+    ? "approved"
+    : (sub.is_coa ? "assessed" : "rejected");
 
   // Cognitive-debriefing: standalone knowledge quiz with NO translation combos.
   // Settle the application directly on the quiz score — pass → test_assessed
