@@ -1027,3 +1027,11 @@ Context: user wanted recruitment fully automated to the final human approval, al
 - **UI:** ISO evidence panel at the **top of the RecruitmentDetail profile** (primary, where approval happens) + a compact **ISO badge on the Ready-for-Approval list rows** (triage). Flags are review PROMPTS, not gates. Migration `20260621_cvp_application_iso_evidence_view.sql`.
 - Of the 31 ready: 8 ready / 22 check / 1 hold (Mahdi ALAVI APP-26-0020 = no CV). Static checklist also delivered: `docs/audits/2026-06-iqvia/ready-queue-iso-review-checklist.md`.
 - See user-memory [[project-iqvia-audit-2026-06-29]].
+
+## Applicant docs are uploaded but ORPHANED — surfaced in ISO panel (2026-06-21)
+
+- **Finding:** applicants CAN upload supporting docs (degree/diploma) via the tokenized `/iso-evidence` link — **196 of 734 in-pipeline have**, incl. 7 of the 31 ready (Ashraf: MA+BA Translation Studies; Juliano: Postgrad Translation diploma + certs). **0 applicants have a password** → the email token link is the ONLY upload path (no self-serve login).
+- **Bug:** uploads land in the auto-created applicant-status vendor's `vendors.certifications` (jsonb, verified=false) + `vendor-certifications` bucket — **not linked to the recruitment app, not shown in the reviewer's ISO panel, not in QMS** (`qms-evidence`=0). So the panel said "CV/résumé only" for people with real diplomas on file. ISO evidence largely EXISTS but was invisible.
+- **Fix (#1):** extended view `cvp_application_iso_evidence` to join the matched applicant-vendor (by email) → `uploaded_docs_count` / `uploaded_doc_names` (filenames) / `has_degree_doc`. Panel now lists uploaded documents + accurate "Documents on file"; `has_degree_doc` clears the thin-experience prompt (Juliano check→ready). Migration `20260621_cvp_application_iso_evidence_uploaded_docs.sql`.
+- **Next:** (2) targeted doc-request sweep for the ~538 with NO uploads (not the 196 who already sent). (3) optional: AI-screen uploaded docs into qms.competence_evidence so the §3.1.4 basis is recorded with verified evidence.
+- See user-memory [[project-iqvia-audit-2026-06-29]].
