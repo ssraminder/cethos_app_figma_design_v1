@@ -45,6 +45,11 @@ const TAB_STATUSES: Record<string, string[]> = {
 };
 
 const TAB_LABELS: Record<string, string> = {
+  // "Ready for Approval" = the single human-review queue: assessment passed +
+  // at least one reference received (per the "request 2, approve on 1 good
+  // reference" policy). Backed by the cvp_ready_for_approval view, not a flat
+  // status filter — readiness spans applications + test combos + references.
+  ready: "Ready for Approval",
   attention: "Needs Attention",
   tests: "Tests to Review",
   in_progress: "In Progress",
@@ -219,6 +224,7 @@ export default function RecruitmentList() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({
+    ready: 0,
     attention: 0,
     tests: 0,
     in_progress: 0,
@@ -337,11 +343,30 @@ export default function RecruitmentList() {
       testsAppIds = new Set();
     }
 
-    const counts: Record<string, number> = { tests: testsAppIds.size };
+    // Ready-for-Approval winners "win" their queue and are subtracted from
+    // In Progress too (a ready applicant's status is references_requested /
+    // references_in_progress / test_in_progress, all of which live under In
+    // Progress) so they never appear on both tabs.
+    let readyAppIds = new Set<string>();
+    try {
+      const { data } = await supabase
+        .from("cvp_ready_for_approval")
+        .select("application_id");
+      readyAppIds = new Set(
+        (data ?? []).map((r) => (r as { application_id: string }).application_id)
+      );
+    } catch {
+      readyAppIds = new Set();
+    }
+
+    const counts: Record<string, number> = {
+      tests: testsAppIds.size,
+      ready: readyAppIds.size,
+    };
     await Promise.all(
       Object.entries(TAB_STATUSES).map(async ([tab, statuses]) => {
-        if (tab === "in_progress" && testsAppIds.size > 0) {
-          // Status-filter then subtract Tests-to-Review winners locally.
+        if (tab === "in_progress" && (testsAppIds.size > 0 || readyAppIds.size > 0)) {
+          // Status-filter then subtract Tests-to-Review + Ready winners locally.
           const { data, error } = await supabase
             .from("cvp_applications")
             .select("id")
@@ -350,9 +375,10 @@ export default function RecruitmentList() {
             counts[tab] = 0;
             return;
           }
-          counts[tab] = (data ?? []).filter(
-            (r) => !testsAppIds.has((r as { id: string }).id)
-          ).length;
+          counts[tab] = (data ?? []).filter((r) => {
+            const id = (r as { id: string }).id;
+            return !testsAppIds.has(id) && !readyAppIds.has(id);
+          }).length;
           return;
         }
         const { count, error } = await supabase
@@ -399,6 +425,23 @@ export default function RecruitmentList() {
           setLoading(false);
           return;
         }
+      } else if (activeTab === "ready" && !isSearching) {
+        // Ready-for-Approval ids come from the readiness view (assessed + a
+        // reference received), then flow through the same .in("id", ...) path.
+        const { data: readyRows, error: readyErr } = await supabase
+          .from("cvp_ready_for_approval")
+          .select("application_id");
+        if (readyErr) throw readyErr;
+        appIds = Array.from(
+          new Set((readyRows ?? []).map((r) => (r as { application_id: string }).application_id))
+        );
+        if (appIds.length === 0) {
+          setApplications([]);
+          setCombosByApp({});
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
       }
 
       // In Progress excludes anyone already on Tests to Review, so a single
@@ -406,16 +449,22 @@ export default function RecruitmentList() {
       // with one cascade-auto-approved combo would otherwise hit both queues).
       let excludeIds: string[] = [];
       if (activeTab === "in_progress" && !isSearching) {
-        const { data: comboRows } = await supabase
-          .from("cvp_test_combinations")
-          .select("application_id")
-          .or(TESTS_REVIEW_OR_FILTER);
+        const [{ data: comboRows }, { data: readyRows }] = await Promise.all([
+          supabase
+            .from("cvp_test_combinations")
+            .select("application_id")
+            .or(TESTS_REVIEW_OR_FILTER),
+          supabase.from("cvp_ready_for_approval").select("application_id"),
+        ]);
         excludeIds = Array.from(
-          new Set(
-            (comboRows ?? []).map(
+          new Set([
+            ...(comboRows ?? []).map(
               (r) => (r as { application_id: string }).application_id
-            )
-          )
+            ),
+            ...(readyRows ?? []).map(
+              (r) => (r as { application_id: string }).application_id
+            ),
+          ])
         );
       }
 
