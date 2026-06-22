@@ -329,23 +329,21 @@ export interface V11Params {
   fullName: string;
   applicationNumber: string;
   vendorPortalUrl: string;
-  passwordSetupLink: string;
-  passwordSetupExpiryHours: number;
   approvedCombinationsList: string; // pre-rendered <ul>…</ul>
   staffMessage?: string | null;     // optional AI-rephrased staff note
 }
 export function buildV11ApprovedWelcome(p: V11Params): RenderedEmail {
   return render(`Welcome to CETHOS · ${p.applicationNumber}`, {
-    preheader: "Your application is approved. Set up your password to get started.",
+    preheader: "Your application is approved. Sign in to your vendor portal to get started.",
     heading: `Welcome to CETHOS, ${esc(p.fullName.split(" ")[0])}!`,
     body: `
       <p>Great news — your application <strong>${esc(p.applicationNumber)}</strong> is approved.</p>
       <p><strong>Approved for:</strong></p>
       ${p.approvedCombinationsList}
       ${staffMessageBlock(p.staffMessage)}
-      <p>Set your password to activate your vendor portal access. The link expires in <strong>${p.passwordSetupExpiryHours} hours</strong>.</p>
+      <p>Sign in with your email address — we'll send you a one-time passcode to access your vendor portal.</p>
     `,
-    cta: { label: "Set up your password", url: p.passwordSetupLink },
+    cta: { label: "Sign in to your portal", url: p.vendorPortalUrl },
     footer: `Your vendor portal: <a href="${esc(p.vendorPortalUrl)}" style="color:${BRAND.teal};">${esc(p.vendorPortalUrl)}</a>. Questions? <a href="mailto:${esc(supportEmail())}" style="color:${BRAND.teal};">${esc(supportEmail())}</a>.`,
   });
 }
