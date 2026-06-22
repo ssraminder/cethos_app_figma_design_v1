@@ -4940,31 +4940,35 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
     steps.push({ state: "todo", text: "Competence: no test/quiz on file — do not approve until competence is demonstrated." });
   }
 
-  // 1b. COA quiz gate — required when coa_linguistic_validation domain is declared
+  // 1b. COA quiz — competence bar is 90% MCQ. At/above the bar = competence
+  // demonstrated (proceed). The Part-2 translation AI verdict is ADVISORY:
+  // corroborate the overall score with the COA Quiz Results, references + §3.1.4
+  // at final approval — it is NOT an auto-block. Below the bar = corroborate.
+  const COA_BAR = 90;
   const hasCOADomain = declaredList.includes("coa_linguistic_validation");
   if (hasCOADomain || coaQuiz) {
     if (!coaQuiz || coaQuiz.status !== "submitted") {
       steps.push({
         state: "todo",
-        text: `COA quiz: not yet submitted${coaQuiz ? ` (status: ${coaQuiz.status})` : " — send via Assessment Path panel below"}. Required before approving COA Linguistic Validation domain.`,
+        text: `COA quiz: not yet submitted${coaQuiz ? ` (status: ${coaQuiz.status})` : " — send via Assessment Path panel below"}. Required before approving COA Linguistic Validation.`,
       });
     } else {
-      const score = coaQuiz.score_pct !== null ? `${Number(coaQuiz.score_pct).toFixed(0)}%` : "?%";
+      const scoreNum = coaQuiz.score_pct !== null && coaQuiz.score_pct !== undefined ? Number(coaQuiz.score_pct) : null;
+      const score = scoreNum !== null ? `${scoreNum.toFixed(0)}%` : "?%";
       const rec = coaQuiz.assessment_recommendation ?? null;
-      if (!rec || /not recommended|fail/i.test(rec)) {
+      const flagged = !!rec && /not recommended|fail|needs human review|flagged/i.test(rec);
+      const advisory = flagged
+        ? ` AI flagged Part-2 translation(s) ("${rec}") — advisory; corroborate with the COA Quiz Results, references + §3.1.4 before final approval.`
+        : "";
+      if (scoreNum !== null && scoreNum >= COA_BAR) {
         steps.push({
-          state: "check",
-          text: `COA quiz: ${score} MCQ — AI: "${rec ?? "no recommendation"}". Part-2 translation failure(s) detected. Do NOT approve COA domain without reviewing the translations in the COA Quiz Results section.`,
-        });
-      } else if (/needs human review|flagged/i.test(rec)) {
-        steps.push({
-          state: "check",
-          text: `COA quiz: ${score} MCQ — AI: "${rec}". Part-2 translations flagged. Review the COA Quiz Results section before approving COA domain.`,
+          state: "done",
+          text: `COA quiz: ${score} — at/above the ${COA_BAR}% bar, competence demonstrated.${advisory}`,
         });
       } else {
         steps.push({
-          state: "done",
-          text: `COA quiz: ${score} — AI: ${rec}. COA Linguistic Validation competence confirmed.`,
+          state: "check",
+          text: `COA quiz: ${score} — below the ${COA_BAR}% bar. Corroborate the score with the COA Quiz Results, references + §3.1.4 before approving COA Linguistic Validation.${advisory}`,
         });
       }
     }
@@ -6084,15 +6088,20 @@ export default function RecruitmentDetail() {
         if (coaQuizzes.length === 0) return null;
         return (
           <div className="mb-6 rounded-lg border-2 border-indigo-300 bg-indigo-50 p-4">
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-1">
               <span className="text-sm font-bold text-indigo-900 uppercase tracking-wide">COA Linguistic Validation — Quiz Results</span>
             </div>
+            <p className="text-[11px] text-indigo-700 mb-3">
+              Competence bar: <strong>90% MCQ</strong>. The AI recommendation reflects Part-2 translation quality and is <strong>advisory</strong> — corroborate the overall score with references + §3.1.4 at final approval.
+            </p>
             <div className="space-y-3">
               {coaQuizzes.map(q => {
                 const scorePct = q.score_pct !== null ? Number(q.score_pct) : null;
                 const rec = q.assessment_recommendation ?? null;
+                const meetsBar = scorePct !== null && scorePct >= 90;
                 const scoreColor = scorePct === null ? "bg-gray-100 text-gray-600"
-                  : scorePct >= 80 ? "bg-green-100 text-green-700"
+                  : scorePct >= 90 ? "bg-green-100 text-green-700"
+                  : scorePct >= 70 ? "bg-amber-100 text-amber-700"
                   : "bg-red-100 text-red-700";
                 const recColor = !rec ? "bg-gray-100 text-gray-600"
                   : /not recommended|fail/i.test(rec) ? "bg-red-100 text-red-700"
@@ -6111,9 +6120,14 @@ export default function RecruitmentDetail() {
                             <span className="ml-1 font-normal opacity-75"> ({q.correct_count}/{q.total_count} correct)</span>
                           )}
                         </span>
+                        {scorePct !== null && (
+                          <span className={`text-[10px] font-semibold px-2 py-1 rounded ${meetsBar ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                            {meetsBar ? "≥ 90% bar" : "below 90% bar"}
+                          </span>
+                        )}
                         {rec && (
                           <span className={`text-xs font-semibold px-2.5 py-1 rounded ${recColor}`}>
-                            AI: {rec}
+                            AI (advisory): {rec}
                           </span>
                         )}
                         <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 capitalize">{q.status}</span>
