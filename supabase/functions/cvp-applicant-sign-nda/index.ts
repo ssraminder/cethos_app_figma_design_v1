@@ -93,10 +93,8 @@ serve(async (req: Request) => {
 
   const now = new Date();
   const nowIso = now.toISOString();
-  const ip =
-    req.headers.get("cf-connecting-ip") ??
-    (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
-    null;
+  const xff = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+  const ip = req.headers.get("cf-connecting-ip") ?? (xff || null);
   const userAgent = req.headers.get("user-agent") ?? null;
 
   // 4. Supersede any prior current NDA for this applicant (by application + vendor)
