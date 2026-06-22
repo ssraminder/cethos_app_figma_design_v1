@@ -336,6 +336,22 @@ interface QuizSubmission {
   competence_breakdown: Record<string, QuizCompetenceBucket> | null;
   submitted_at: string | null;
   created_at: string;
+  assessment_summary: string | null;
+  assessment_recommendation: string | null;
+  assessment_at: string | null;
+  is_coa?: boolean | null;
+}
+
+interface CoaTranslationResponse {
+  id: string;
+  application_id: string;
+  target_language_name: string | null;
+  applicant_translation: string | null;
+  mqm_score: number | null;
+  verdict: string | null;
+  conceptual_equivalence: string | null;
+  ai_rationale: string | null;
+  needs_human_review: boolean | null;
 }
 
 interface QuizQuestionOption {
@@ -4369,12 +4385,21 @@ function QuizSubmissionPanel({
   submission,
   questions,
   languageLabel,
+  coaResponses = [],
 }: {
   submission: QuizSubmission;
   questions: Record<string, QuizQuestion>;
   languageLabel: string;
+  coaResponses?: CoaTranslationResponse[];
 }) {
   const [open, setOpen] = useState(false);
+  const recColor = !submission.assessment_recommendation
+    ? "bg-gray-100 text-gray-600"
+    : /not recommended|fail/i.test(submission.assessment_recommendation)
+      ? "bg-red-100 text-red-700"
+      : /needs human review|flagged/i.test(submission.assessment_recommendation)
+        ? "bg-amber-100 text-amber-700"
+        : "bg-green-100 text-green-700";
 
   const responses = submission.responses ?? [];
   const responseByQuestionId = new Map(
@@ -4453,6 +4478,18 @@ function QuizSubmissionPanel({
         </div>
       </div>
 
+      {submission.assessment_summary && (
+        <div className="mt-2 p-2 rounded bg-white border border-gray-200">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">Assessment</span>
+            {submission.assessment_recommendation && (
+              <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${recColor}`}>{submission.assessment_recommendation}</span>
+            )}
+          </div>
+          <p className="text-xs text-gray-800">{submission.assessment_summary}</p>
+        </div>
+      )}
+
       {breakdownEntries.length > 0 && (
         <div className="mt-2 grid grid-cols-2 sm:grid-cols-5 gap-2">
           {competenceOrder
@@ -4473,6 +4510,31 @@ function QuizSubmissionPanel({
                 </div>
               );
             })}
+        </div>
+      )}
+
+      {submission.is_coa && coaResponses.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mb-1">
+            Part-2 translations (verbatim) — {coaResponses.length}
+          </div>
+          <div className="space-y-2">
+            {coaResponses.map((cr) => {
+              const vColor = cr.verdict === "pass" ? "bg-green-100 text-green-700" : cr.verdict === "fail" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700";
+              return (
+                <div key={cr.id} className="rounded border border-gray-200 p-2 bg-white">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${vColor}`}>{cr.verdict ?? (cr.needs_human_review ? "needs review" : "—")}</span>
+                    {cr.mqm_score != null && <span className="text-[10px] text-gray-500">MQM {cr.mqm_score}</span>}
+                    {cr.conceptual_equivalence && <span className="text-[10px] text-gray-500">conceptual: {cr.conceptual_equivalence}</span>}
+                    {cr.target_language_name && <span className="text-[10px] text-gray-500">{cr.target_language_name}</span>}
+                  </div>
+                  {cr.applicant_translation && <p className="text-xs text-gray-900 whitespace-pre-wrap">{cr.applicant_translation}</p>}
+                  {cr.ai_rationale && <p className="mt-1 text-[11px] text-gray-500 italic">{cr.ai_rationale}</p>}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -4799,6 +4861,7 @@ export default function RecruitmentDetail() {
   const [combinations, setCombinations] = useState<TestCombination[]>([]);
   const [submissions, setSubmissions] = useState<TestSubmission[]>([]);
   const [quizSubmissions, setQuizSubmissions] = useState<QuizSubmission[]>([]);
+  const [coaResponses, setCoaResponses] = useState<CoaTranslationResponse[]>([]);
   const [quizQuestions, setQuizQuestions] = useState<Record<string, QuizQuestion>>({});
   const [testLibrary, setTestLibrary] = useState<Record<string, TestLibraryRow>>({});
   const [errorFeedback, setErrorFeedback] = useState<Record<string, ErrorFeedbackRow[]>>({});
@@ -4893,6 +4956,14 @@ export default function RecruitmentDetail() {
         .order("created_at", { ascending: true });
       const quizList = (quizSubs as QuizSubmission[]) || [];
       setQuizSubmissions(quizList);
+
+      // COA Part-2 translation responses (verbatim translations + MQM verdicts).
+      const { data: coaResp } = await supabase
+        .from("cvp_coa_translation_responses")
+        .select("id, application_id, target_language_name, applicant_translation, mqm_score, verdict, conceptual_equivalence, ai_rationale, needs_human_review")
+        .eq("application_id", id)
+        .order("created_at", { ascending: true });
+      setCoaResponses((coaResp as CoaTranslationResponse[]) || []);
 
       // Pull the iso_competence_quizzes rows referenced by every response so
       // we can show question text + options + correct answer alongside the
@@ -6334,6 +6405,7 @@ export default function RecruitmentDetail() {
                             submission={quizSub}
                             questions={quizQuestions}
                             languageLabel={languages[combo.target_language_id] || "?"}
+                            coaResponses={coaResponses}
                           />
                         );
                       })()}
@@ -6366,6 +6438,7 @@ export default function RecruitmentDetail() {
                       submission={q}
                       questions={quizQuestions}
                       languageLabel={languages[q.target_language_id] || "?"}
+                      coaResponses={coaResponses}
                     />
                   ))}
                 </div>
