@@ -18,6 +18,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { hasCurrentNda, getActiveNdaTemplate, ndaGateEnabled } from "../_shared/nda-gate.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -129,9 +130,30 @@ serve(async (req: Request) => {
   // the cognitive-debriefing knowledge quiz — it is language-agnostic).
   const { data: appData } = await supabase
     .from("cvp_applications")
-    .select("full_name, application_number")
+    .select("full_name, application_number, email")
     .eq("id", sub.application_id)
     .maybeSingle();
+
+  // 2a. NDA-before-access gate. The applicant may be invited without an NDA, but
+  // no quiz content is revealed until the confidentiality agreement is accepted
+  // (clickwrap via cvp-applicant-sign-nda). Soft 200 so the page renders the NDA
+  // step rather than treating it as an error.
+  if (ndaGateEnabled()) {
+    const appEmail = ((appData as Record<string, unknown> | null)?.email as string) ?? null;
+    const ndaOk = await hasCurrentNda(supabase, sub.application_id, appEmail);
+    if (!ndaOk) {
+      const tmpl = await getActiveNdaTemplate(supabase);
+      return jsonResponse({
+        success: true,
+        data: {
+          nda_required: true,
+          applicantName: ((appData as Record<string, unknown> | null)?.full_name as string) ?? "",
+          applicantEmail: appEmail,
+          nda: tmpl,
+        },
+      });
+    }
+  }
   let langData: Record<string, unknown> | null = null;
   if (sub.target_language_id) {
     const { data } = await supabase
