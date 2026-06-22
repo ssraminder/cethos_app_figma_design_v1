@@ -36,6 +36,7 @@ import BrevoEmailLogsModal from "./BrevoEmailLogsModal";
 import ManagePayableModal from "./ManagePayableModal";
 import { SplitStepModal } from "./SplitStepModal";
 import { Split as SplitIcon } from "lucide-react";
+import VendorPOPanel, { type VendorPOSummary } from "./VendorPOPanel";
 import { ConfirmDialog, useConfirmDialog } from "./ConfirmDialog";
 import { type VendorFinancials, type MarginData, type FinancialStep } from "./OrderFinancialSummary";
 import {
@@ -917,6 +918,26 @@ function WorkflowPipeline({
   const [switchingActorStepId, setSwitchingActorStepId] = useState<string | null>(null);
 
   const { session: currentStaff } = useAdminAuthContext();
+
+  // ── Vendor Purchase Orders for this order — fetched once and keyed by step.
+  // The per-step card shows PO number, Open/Invoiced status, download, resend.
+  const [posByStep, setPosByStep] = useState<Record<string, VendorPOSummary>>({});
+  const loadPOs = async () => {
+    if (!orderId) return;
+    try {
+      const { data } = await supabase.functions.invoke("manage-vendor-po", { body: { action: "list", order_id: orderId } });
+      if (data?.success && Array.isArray(data.pos)) {
+        const m: Record<string, VendorPOSummary> = {};
+        for (const p of data.pos) if (p.workflow_step_id) m[p.workflow_step_id] = p;
+        setPosByStep(m);
+      }
+    } catch { /* non-fatal — panel simply shows "No PO sent yet" */ }
+  };
+  const poSig = useMemo(
+    () => steps.filter((s) => s.vendor_id).map((s) => `${s.id}:${s.status}`).join(","),
+    [steps],
+  );
+  useEffect(() => { loadPOs(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [orderId, poSig]);
 
   const handleStaffDeliver = async (
     stepId: string,
@@ -2009,6 +2030,11 @@ function WorkflowPipeline({
                       </span>
                     )}
                   </div>
+                )}
+
+                {/* Vendor Purchase Order — once the vendor has accepted */}
+                {step.vendor_id && ["accepted", "in_progress", "delivered", "revision_requested", "approved"].includes(step.status) && (
+                  <VendorPOPanel po={posByStep[step.id]} step={step} onChanged={loadPOs} />
                 )}
 
                 {/* Edit Deadline Popover */}

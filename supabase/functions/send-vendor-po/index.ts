@@ -20,6 +20,8 @@ serve(async (req) => {
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const body = await req.json();
+    const source = body.source === "manual" ? "manual" : "auto";
+    const triggeredBy = body.triggered_by ?? null;
 
     // ── Locate the PO ──
     let q = sb.from("vendor_purchase_orders").select("*");
@@ -78,12 +80,15 @@ serve(async (req) => {
     };
     const res = await fetch("https://api.brevo.com/v3/smtp/email", { method: "POST", headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const sentTo = to.map((t) => t.email).join(", ");
+    const logRow = (status: "sent" | "failed", error: string | null) => sb.from("vendor_po_email_log").insert({ po_id: po.id, po_number: po.po_number, sent_to: sentTo, subject: payload.subject, status, error, source, triggered_by: triggeredBy });
     if (!res.ok) {
       const errText = await res.text();
       await sb.from("vendor_purchase_orders").update({ status: "error", error: errText, updated_at: new Date().toISOString() }).eq("id", po.id);
+      await logRow("failed", errText);
       throw new Error(`Brevo send failed: ${errText}`);
     }
     await sb.from("vendor_purchase_orders").update({ status: "sent", sent_at: new Date().toISOString(), emailed_to: sentTo, error: null, updated_at: new Date().toISOString() }).eq("id", po.id);
+    await logRow("sent", null);
 
     return json({ success: true, po_number: po.po_number, sent_to: sentTo });
   } catch (e) {
