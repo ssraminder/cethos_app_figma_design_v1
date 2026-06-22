@@ -1043,3 +1043,10 @@ Context: user wanted recruitment fully automated to the final human approval, al
 - **Fix (#1):** extended view `cvp_application_iso_evidence` to join the matched applicant-vendor (by email) → `uploaded_docs_count` / `uploaded_doc_names` (filenames) / `has_degree_doc`. Panel now lists uploaded documents + accurate "Documents on file"; `has_degree_doc` clears the thin-experience prompt (Juliano check→ready). Migration `20260621_cvp_application_iso_evidence_uploaded_docs.sql`.
 - **Next:** (2) targeted doc-request sweep for the ~538 with NO uploads (not the 196 who already sent). (3) optional: AI-screen uploaded docs into qms.competence_evidence so the §3.1.4 basis is recorded with verified evidence.
 - See user-memory [[project-iqvia-audit-2026-06-29]].
+
+## Vendor PO auto-send on acceptance (2026-06-22)
+
+- **Decision:** when a vendor accepts an assignment/offer (step → `accepted`), Cethos auto-issues a branded **Purchase Order** PDF + emails it to the vendor — for **ALL vendors**, **one PO per accepted step**, numbered **VPO-YYYY-NNNNN**. Rationale: agencies expect a PO, ISO 17100 §5 / IQVIA documented-agreement evidence, mirrors the customer invoice, reuses the branded PDF infra.
+- **Build:** DB trigger on `order_workflow_steps` (status→accepted, kill-switch gated) → `vendor_po_queue` → cron (2 min) → `process-vendor-po-queue` → `generate-vendor-po` (pdf-lib "PURCHASE ORDER" variant of the v2.0.0 invoice template, bucket `vendor-pos`) + `send-vendor-po` (Brevo). Numbering via `next_vendor_po_number()` over a SEQUENCE (atomic). Migration `20260620_vendor_purchase_orders_foundation.sql`. Vendor repo unchanged (its accept already flips status).
+- **Kill-switch:** `cvp_system_config.vendor_po_autosend` (jsonb bool), **default OFF**. Built + verified e2e (test step / ss.raminder), then left OFF.
+- **Next:** swap `generate-vendor-po` layout for the user's Claude-design PO template, then flip the switch ON. Optional admin "PO sent / Resend" UI on the step card.
