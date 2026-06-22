@@ -57,6 +57,31 @@ translators one-by-one.
    `ai_score`, no `ai_assessment_result` — they render with no evidence of what test/score
    justified them. Separate PR.
 
+## COA test pool (2026-06-22)
+COA previously had NO entry in cvp_test_library (quiz-only) — a COA-domain translator
+who picked the "test" route at the chooser got nothing. Seeded **12 COA tests** (4
+instrument types × 3 difficulties): PRO questionnaire, cognitive-debriefing interview
+guide, ClinRO rating scale, ObsRO caregiver diary. EN→**wildcard** target,
+domain='coa_linguistic_validation', service_type='domain_test', reference-free AI
+grading, COA-tuned rubric (accuracy/conceptual 0.35, fluency/readability 0.20,
+locale 0.15, terminology 0.15, style 0.10, design 0.05). Marked **[AI-DRAFT]** for
+staff review in the admin test library. cvp-send-tests delivers them to every target
+via wildcard-fallback rotation (verified by selection sim). Migration:
+`20260622_seed_coa_linguistic_validation_tests.sql` (idempotent by title). EN lang id
+fde091d2-db5f-4e41-a490-7e15efc419e1.
+
+## QUIZ-route coverage gap (audit finding, NOT yet fixed)
+The quiz route (standard AND is_coa translator quizzes) needs target-scoped competence
+questions (linguistic_textual + cultural + domain, ≥8 each) in iso_competence_quizzes.
+Only **fr, es (Spain), it, pt-BR, de** have coverage. Everything else = 0, notably
+**es-419 Spanish-LatAm (126 applicants)**, es-AR (33), ru (28), hi (23), es-US (15),
+uk (13), es-MX (13), pt (10), fa (10), fr-CA (8)… Root cause: regional variants are
+separate language IDs with empty banks (es covered, es-419/AR/MX/US not; fr not fr-CA;
+pt-BR not pt). Life-sciences TEST covers all via wildcard; COA has no test route until
+the pool above. Proposed fix (not done): map regional variants→base for quiz assembly
+in cvp-get-quiz + checkQuizCoverage, or seed es-419 bank. CD-interviewer quizzes are
+language-agnostic (unaffected).
+
 ## ⚠️ PENDING verification
 - Chrome MCP was DOWN all session (4 attempts) — the live UI verification on
   portal.cethos.com (per-change loop step 5) was NOT done. Backend is verified; frontend
