@@ -25,6 +25,9 @@ import {
   RefreshCw,
   Sparkles,
   FileSearch,
+  Bell,
+  Copy,
+  Check,
   X as XIcon,
 } from "lucide-react";
 import { format, formatDistanceToNow, differenceInHours, addMonths } from "date-fns";
@@ -261,6 +264,9 @@ interface TestSubmission {
   first_viewed_at: string | null;
   view_count: number;
   created_at: string;
+  reminder_1_sent_at: string | null;
+  reminder_2_sent_at: string | null;
+  reminder_3_sent_at: string | null;
 }
 
 interface TestLibraryRow {
@@ -344,6 +350,9 @@ interface QuizSubmission {
   assessment_recommendation: string | null;
   assessment_at: string | null;
   is_coa?: boolean | null;
+  reminder_1_sent_at?: string | null;
+  reminder_2_sent_at?: string | null;
+  reminder_3_sent_at?: string | null;
 }
 
 interface CoaTranslationResponse {
@@ -2854,6 +2863,110 @@ function StaffReplyModal({
   );
 }
 
+// Small copy-to-clipboard button — used for the shareable referee form links.
+function CopyButton({ text, label = "Copy link" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handle = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.error("Couldn't copy — select and copy manually.");
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handle}
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200"
+      title={text}
+    >
+      {copied ? <Check className="w-2.5 h-2.5 text-emerald-600" /> : <Copy className="w-2.5 h-2.5" />}
+      {copied ? "Copied!" : label}
+    </button>
+  );
+}
+
+// Per-submission log + manual "Send reminder" for an open test/quiz. Re-emails
+// the EXISTING link to the applicant (cvp-send-instrument-reminder) — no new
+// token/job. Reminder button only shows while the link is still live.
+function InstrumentReminderControls({
+  kind,
+  submissionId,
+  status,
+  createdAt,
+  tokenExpiresAt,
+  submittedAt,
+  firstViewedAt,
+  viewCount,
+  reminders,
+  callEdgeFunction,
+  onAfterAction,
+}: {
+  kind: "test" | "quiz";
+  submissionId: string;
+  status: string;
+  createdAt: string | null;
+  tokenExpiresAt: string | null;
+  submittedAt: string | null;
+  firstViewedAt?: string | null;
+  viewCount?: number | null;
+  reminders: (string | null | undefined)[];
+  callEdgeFunction: (fn: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  onAfterAction: () => void | Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const now = Date.now();
+  const expMs = tokenExpiresAt ? new Date(tokenExpiresAt).getTime() : NaN;
+  const expired = Number.isFinite(expMs) && expMs <= now;
+  const openStatuses = kind === "quiz" ? ["sent", "viewed"] : ["sent", "viewed", "draft_saved"];
+  const canRemind = openStatuses.includes(status) && !expired;
+  const sentReminders = reminders.filter(Boolean) as string[];
+
+  const handleRemind = async () => {
+    setBusy(true);
+    try {
+      await callEdgeFunction("cvp-send-instrument-reminder", { submissionId, kind });
+      toast.success("Reminder sent to the applicant.");
+      await onAfterAction();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Reminder failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-100 flex items-start justify-between gap-2">
+      <div className="text-xs text-gray-500 space-y-0.5">
+        <div>Token status: <span className="font-medium text-gray-700">{status}</span></div>
+        {createdAt && <div>Issued {format(new Date(createdAt), "MMM d, yyyy h:mm a")}</div>}
+        {firstViewedAt
+          ? <div>First viewed {format(new Date(firstViewedAt), "MMM d, yyyy h:mm a")}{typeof viewCount === "number" ? ` · ${viewCount} view${viewCount === 1 ? "" : "s"}` : ""}</div>
+          : (typeof viewCount === "number" && viewCount > 0 ? <div>{viewCount} view{viewCount === 1 ? "" : "s"}</div> : null)}
+        <div>{expired ? "Expired" : (Number.isFinite(expMs) ? `Expires in ${Math.max(0, Math.floor((expMs - now) / 3600000))}h` : "—")}</div>
+        {sentReminders.length > 0
+          ? <div>Reminders sent: {sentReminders.map((d) => format(new Date(d), "MMM d")).join(" · ")} <span className="text-gray-400">({sentReminders.length}/3)</span></div>
+          : <div>No reminders sent yet</div>}
+        {submittedAt && <div className="text-emerald-600">Submitted {format(new Date(submittedAt), "MMM d, yyyy h:mm a")}</div>}
+      </div>
+      {canRemind && (
+        <button
+          type="button"
+          onClick={handleRemind}
+          disabled={busy}
+          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50 rounded disabled:opacity-40 whitespace-nowrap"
+          title="Re-send the existing link to the applicant (no new link is generated)."
+        >
+          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bell className="w-3 h-3" />}
+          Send reminder
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ---------- References section (Phase E) ----------
 
 interface ReferenceRequestRow {
@@ -2873,6 +2986,8 @@ interface ReferenceRow {
   reference_email: string;
   reference_company: string | null;
   reference_relationship: string | null;
+  feedback_token: string | null;
+  feedback_token_expires_at: string | null;
   status: "requested" | "received" | "declined" | "expired" | "invalid";
   feedback_text: string | null;
   feedback_rating: number | null;
@@ -2939,6 +3054,8 @@ function ReferencesSection({
   const [reassessing, setReassessing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [lastVendorReminderAt, setLastVendorReminderAt] = useState<string | null>(null);
+  const [remindingApplicant, setRemindingApplicant] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -2953,7 +3070,7 @@ function ReferencesSection({
             .order("created_at", { ascending: false }),
           supabase
             .from("cvp_application_references")
-            .select("id, request_id, reference_name, reference_email, reference_company, reference_relationship, status, feedback_text, feedback_rating, feedback_received_at, declined_at, decline_reason, ai_analysis, ai_analysis_error, created_at, competence_responses, applicant_stated_start_year, reference_confirmed_start_year, year_verification, applicant_stated_domains, reference_confirmed_domains, domain_verification")
+            .select("id, request_id, reference_name, reference_email, reference_company, reference_relationship, feedback_token, feedback_token_expires_at, status, feedback_text, feedback_rating, feedback_received_at, declined_at, decline_reason, ai_analysis, ai_analysis_error, created_at, competence_responses, applicant_stated_start_year, reference_confirmed_start_year, year_verification, applicant_stated_domains, reference_confirmed_domains, domain_verification")
             .eq("application_id", applicationId)
             .order("created_at", { ascending: false }),
           supabase
@@ -2972,6 +3089,15 @@ function ReferencesSection({
         setRequests((reqs ?? []) as ReferenceRequestRow[]);
         setRefs((rs ?? []) as ReferenceRow[]);
         setReassessment((reass as ReassessmentRow | null) ?? null);
+        // Last vendor-chase reminder for this applicant (marker: refrem-chase:<appId>:<ts>)
+        const { data: lastRem } = await supabase
+          .from("cvp_outbound_messages")
+          .select("sent_at")
+          .like("message_id", `refrem-chase:${applicationId}:%`)
+          .order("sent_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!cancelled) setLastVendorReminderAt((lastRem as { sent_at: string } | null)?.sent_at ?? null);
         const combosArr = (comboRows ?? []) as Pick<TestCombination, "id" | "domain" | "source_language_id" | "target_language_id">[];
         setCombos(combosArr);
         // Resolve language names for the pretty labels in the reassessment
@@ -3001,6 +3127,39 @@ function ReferencesSection({
   }, [applicationId, reloadKey]);
 
   const refresh = () => setReloadKey((n) => n + 1);
+
+  const reviewBaseUrl =
+    (import.meta.env.VITE_RECRUITMENT_APP_URL as string | undefined) ??
+    "https://join.cethos.com";
+  const refLink = (token: string | null) =>
+    token ? `${reviewBaseUrl.replace(/\/$/, "")}/reference-feedback/${token}` : null;
+  const pendingRefs = refs.filter((r) => r.status === "requested");
+
+  // Manual vendor-only reminder: emails the APPLICANT (not the referees) with
+  // each pending referee's form link + the date it was sent, so they can chase
+  // their own referees. Calls the shared reminder fn scoped to this application.
+  const handleRemindApplicant = async () => {
+    setRemindingApplicant(true);
+    try {
+      const res = await callEdgeFunction("cvp-reference-reminders", {
+        application_id: applicationId,
+        confirm: true,
+        force: true,
+        only_type: "chase",
+      });
+      const sent = Number((res as { sent?: number })?.sent ?? 0);
+      if (sent > 0) {
+        toast.success("Reminder sent to the applicant with their referees' links.");
+      } else {
+        toast.info("No reminder sent — applicant may have no email on file or no pending referees.");
+      }
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Reminder failed");
+    } finally {
+      setRemindingApplicant(false);
+    }
+  };
 
   const handleReassess = async () => {
     setReassessing(true);
@@ -3035,12 +3194,31 @@ function ReferencesSection({
   return (
     <Section title={`References (${refs.length})`}>
       <div className="mt-2 flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <p className="text-xs text-gray-600">
-          {requests.length === 0
-            ? "No reference requests sent yet."
-            : `${requests.length} request${requests.length === 1 ? "" : "s"} sent · ${refs.length} reference${refs.length === 1 ? "" : "s"} captured`}
-        </p>
-        <div className="flex items-center gap-2">
+        <div>
+          <p className="text-xs text-gray-600">
+            {requests.length === 0
+              ? "No reference requests sent yet."
+              : `${requests.length} request${requests.length === 1 ? "" : "s"} sent · ${refs.length} reference${refs.length === 1 ? "" : "s"} captured`}
+          </p>
+          {lastVendorReminderAt && (
+            <p className="text-[11px] text-amber-700 mt-0.5">
+              Applicant last reminded {format(new Date(lastVendorReminderAt), "MMM d, yyyy h:mm a")}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {pendingRefs.length > 0 && (
+            <button
+              type="button"
+              onClick={handleRemindApplicant}
+              disabled={remindingApplicant}
+              title="Email the APPLICANT (not the referees) a reminder with each pending referee's form link and the date it was sent, so they can chase their own referees."
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-medium rounded-md"
+            >
+              {remindingApplicant ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+              Remind applicant
+            </button>
+          )}
           {allRefsDone && (
             <button
               type="button"
@@ -3218,6 +3396,35 @@ function ReferencesSection({
                   {r.status}
                 </span>
               </div>
+
+              {r.status === "requested" && (
+                <div className="mt-2 text-[11px] text-gray-600 space-y-1">
+                  <div>
+                    Form sent {format(new Date(r.created_at), "MMM d, yyyy")}
+                    {r.feedback_token_expires_at && (
+                      <>
+                        {" · "}
+                        {new Date(r.feedback_token_expires_at).getTime() > Date.now()
+                          ? `link valid until ${format(new Date(r.feedback_token_expires_at), "MMM d, yyyy")}`
+                          : "link expired"}
+                      </>
+                    )}
+                  </div>
+                  {refLink(r.feedback_token) && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <a
+                        href={refLink(r.feedback_token)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-teal-600 hover:underline break-all"
+                      >
+                        {refLink(r.feedback_token)}
+                      </a>
+                      <CopyButton text={refLink(r.feedback_token)!} />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {r.status === "received" && (
                 <div className="mt-2 text-xs">
@@ -4390,11 +4597,15 @@ function QuizSubmissionPanel({
   questions,
   languageLabel,
   coaResponses = [],
+  callEdgeFunction,
+  onAfterAction,
 }: {
   submission: QuizSubmission;
   questions: Record<string, QuizQuestion>;
   languageLabel: string;
   coaResponses?: CoaTranslationResponse[];
+  callEdgeFunction?: (fn: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  onAfterAction?: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const recColor = !submission.assessment_recommendation
@@ -4627,6 +4838,20 @@ function QuizSubmissionPanel({
             </ol>
           )}
         </div>
+      )}
+
+      {callEdgeFunction && onAfterAction && (
+        <InstrumentReminderControls
+          kind="quiz"
+          submissionId={submission.id}
+          status={submission.status}
+          createdAt={submission.created_at}
+          tokenExpiresAt={submission.token_expires_at ?? null}
+          submittedAt={submission.submitted_at}
+          reminders={[submission.reminder_1_sent_at, submission.reminder_2_sent_at, submission.reminder_3_sent_at]}
+          callEdgeFunction={callEdgeFunction}
+          onAfterAction={onAfterAction}
+        />
       )}
     </div>
   );
@@ -6617,15 +6842,19 @@ export default function RecruitmentDetail() {
                         )}
                       </div>
                       {sub && (
-                        <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 space-y-0.5">
-                          <div>Token status: <span className="font-medium text-gray-700">{sub.status}</span></div>
-                          <div>Expires: {differenceInHours(new Date(sub.token_expires_at), new Date()) > 0
-                            ? `${differenceInHours(new Date(sub.token_expires_at), new Date())}h remaining`
-                            : "Expired"
-                          }</div>
-                          <div>Views: {sub.view_count}</div>
-                          {sub.submitted_at && <div>Submitted: {format(new Date(sub.submitted_at), "MMM d, yyyy h:mm a")}</div>}
-                        </div>
+                        <InstrumentReminderControls
+                          kind="test"
+                          submissionId={sub.id}
+                          status={sub.status}
+                          createdAt={sub.created_at}
+                          tokenExpiresAt={sub.token_expires_at}
+                          submittedAt={sub.submitted_at}
+                          firstViewedAt={sub.first_viewed_at}
+                          viewCount={sub.view_count}
+                          reminders={[sub.reminder_1_sent_at, sub.reminder_2_sent_at, sub.reminder_3_sent_at]}
+                          callEdgeFunction={callEdgeFunction}
+                          onAfterAction={fetchData}
+                        />
                       )}
                       {combo.ai_assessment_result && (
                         <TestAssessmentPanel
@@ -6659,6 +6888,8 @@ export default function RecruitmentDetail() {
                             questions={quizQuestions}
                             languageLabel={languages[combo.target_language_id] || "?"}
                             coaResponses={coaResponses}
+                            callEdgeFunction={callEdgeFunction}
+                            onAfterAction={fetchData}
                           />
                         );
                       })()}
@@ -6692,6 +6923,8 @@ export default function RecruitmentDetail() {
                       questions={quizQuestions}
                       languageLabel={languages[q.target_language_id] || "?"}
                       coaResponses={coaResponses}
+                      callEdgeFunction={callEdgeFunction}
+                      onAfterAction={fetchData}
                     />
                   ))}
                 </div>
