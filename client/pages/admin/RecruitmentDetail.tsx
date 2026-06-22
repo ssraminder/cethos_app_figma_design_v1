@@ -4566,7 +4566,7 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
   const competence = ev.approved_combos > 0
     ? `Test passed (${ev.approved_combos} combo${ev.approved_combos > 1 ? "s" : ""})`
     : ev.quiz_score != null ? `Quiz ${ev.quiz_score}%` : "—";
-  const basis = `${ev.education_level ? ev.education_level + " degree" : "no degree on file"}${ev.years_experience != null ? ` · ${ev.years_experience}y exp` : ""}`;
+  const basis = `${ev.education_level ? ev.education_level + " (self-declared)" : "no degree declared"}${ev.years_experience != null ? ` · ${ev.years_experience}y exp (self-declared)` : ""}`;
 
   return (
     <div className={`mb-6 rounded-lg border p-4 ${theme.box}`}>
@@ -4579,8 +4579,8 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <Item label="Competence" value={competence} ok={ev.approved_combos > 0 || ev.quiz_score != null} />
-        <Item label="§3.1.4 basis (verify in CV)" value={basis} />
-        <Item label="CV on file" value={ev.has_cv ? "Yes" : "No"} ok={ev.has_cv} />
+        <Item label="§3.1.4 basis — self-declared" value={basis} />
+        <Item label="Documents on file" value={ev.has_cv ? "CV/résumé only" : "none"} ok={ev.has_cv} />
         <Item label="References in" value={`${ev.refs_received} received`} ok={ev.refs_received >= 1} />
         <Item label="Domains" value={`${ev.declared_domains} declared${ev.tested_domains ? ` · tested: ${ev.tested_domains}` : ""}`} />
       </div>
@@ -4594,7 +4594,7 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
         </ul>
       )}
       <p className="mt-3 text-xs text-gray-500">
-        Confirm competence, pick &amp; record the §3.1.4 basis from the CV, read the reference, and approve only evidenced domains. Flags are review prompts, not gates.
+        Degree level &amp; years are <strong>self-declared</strong> from the application form — the only document on file is the CV/résumé (no diploma/transcript verified). Verify the diploma (route a/b) or experience evidence (route c) against the CV, record the §3.1.4 basis, read the reference, and approve only evidenced domains. Flags are review prompts, not gates.
       </p>
     </div>
   );
