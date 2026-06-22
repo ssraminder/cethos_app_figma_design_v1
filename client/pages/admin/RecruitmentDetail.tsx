@@ -4541,6 +4541,7 @@ interface IsoEvidence {
   screened_count: number;
   screened_any_verified: boolean;
   screened_items: { title: string; type: string | null; verified: boolean; confidence: string | null }[] | null;
+  applicant_vendor_id: string | null;
 }
 
 const EV_TYPE_LABEL: Record<string, string> = {
@@ -4597,6 +4598,17 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${theme.chip}`}>
           <Icon className={`w-3.5 h-3.5 ${theme.iconColor}`} /> {theme.label}
         </span>
+        {ev.applicant_vendor_id && (
+          <a
+            href={`/admin/vendors/${ev.applicant_vendor_id}?tab=qms`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Manually upload a document the applicant emailed in (AI-screens automatically)"
+            className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-800"
+          >
+            <FileText className="w-3.5 h-3.5" /> Upload / manage documents
+          </a>
+        )}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <Item label="Competence" value={competence} ok={ev.approved_combos > 0 || ev.quiz_score != null} />
