@@ -118,6 +118,13 @@ const TIER_COLORS: Record<string, string> = {
   expert: "bg-purple-100 text-purple-700",
 };
 
+// ISO readiness badge for the Ready-for-Approval tab (from cvp_application_iso_evidence).
+const ISO_BADGE_META: Record<string, { label: string; cls: string }> = {
+  ready: { label: "ISO ✓ Ready", cls: "bg-green-100 text-green-700" },
+  check: { label: "ISO Check", cls: "bg-amber-100 text-amber-700" },
+  hold: { label: "ISO Hold", cls: "bg-red-100 text-red-700" },
+};
+
 // Per-combination chip helpers for the "Tests to Review" tab. The Status
 // column on that tab shows one chip per combo (Domain — Outcome) instead of
 // the application-level status, so staff can see test results at a glance.
@@ -221,6 +228,7 @@ export default function RecruitmentList() {
 
   const [applications, setApplications] = useState<Application[]>([]);
   const [combosByApp, setCombosByApp] = useState<Record<string, ComboChip[]>>({});
+  const [isoBadges, setIsoBadges] = useState<Record<string, string>>({});
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({
@@ -622,10 +630,27 @@ export default function RecruitmentList() {
       } else {
         setCombosByApp({});
       }
+
+      // Ready tab: load the deterministic ISO readiness badge per visible row.
+      if (activeTab === "ready" && !isSearching && rows.length > 0) {
+        const ids = rows.map((r) => r.id);
+        const { data: ev } = await supabase
+          .from("cvp_application_iso_evidence")
+          .select("application_id, iso_badge")
+          .in("application_id", ids);
+        const m: Record<string, string> = {};
+        for (const e of (ev ?? []) as { application_id: string; iso_badge: string }[]) {
+          m[e.application_id] = e.iso_badge;
+        }
+        setIsoBadges(m);
+      } else {
+        setIsoBadges({});
+      }
     } catch (err) {
       console.error("Failed to fetch applications:", err);
       setApplications([]);
       setCombosByApp({});
+      setIsoBadges({});
       setTotalCount(0);
     } finally {
       setLoading(false);
@@ -1048,8 +1073,15 @@ export default function RecruitmentList() {
                         to={`/admin/recruitment/${app.id}`}
                         className="hover:text-teal-700"
                       >
-                        <div className="font-medium text-gray-900">
+                        <div className="font-medium text-gray-900 flex items-center gap-2">
                           {app.full_name}
+                          {activeTab === "ready" && isoBadges[app.id] && ISO_BADGE_META[isoBadges[app.id]] && (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${ISO_BADGE_META[isoBadges[app.id]].cls}`}
+                            >
+                              {ISO_BADGE_META[isoBadges[app.id]].label}
+                            </span>
+                          )}
                         </div>
                         <div className="text-gray-500 text-xs">
                           {app.email}

@@ -4518,11 +4518,94 @@ function QuizSubmissionPanel({
 
 // ---------- Component ----------
 
+interface IsoEvidence {
+  application_id: string;
+  role_type: string;
+  ai_prescreening_score: number | null;
+  education_level: string | null;
+  years_experience: number | null;
+  has_cv: boolean;
+  refs_received: number;
+  approved_combos: number;
+  tested_domains: string | null;
+  declared_domains: number;
+  quiz_score: number | null;
+  flag_no_cv: boolean;
+  flag_low_prescreen: boolean;
+  flag_thin_experience: boolean;
+  flag_broad_domains: boolean;
+  iso_badge: "ready" | "check" | "hold";
+}
+
+// ISO 17100 evidence summary shown at the top of the profile for review/approval.
+// Pure/deterministic (driven by cvp_application_iso_evidence) — the flags are
+// review PROMPTS, not gates. Reviewer still records the §3.1.4 basis on approval.
+function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
+  if (!ev) return null;
+  const theme =
+    ev.iso_badge === "ready"
+      ? { box: "bg-green-50 border-green-200", chip: "bg-green-100 text-green-800", Icon: CheckCircle, label: "Ready for ISO review", iconColor: "text-green-600" }
+      : ev.iso_badge === "hold"
+        ? { box: "bg-red-50 border-red-200", chip: "bg-red-100 text-red-800", Icon: Ban, label: "Hold — blocking issue", iconColor: "text-red-600" }
+        : { box: "bg-amber-50 border-amber-200", chip: "bg-amber-100 text-amber-800", Icon: AlertTriangle, label: "Check before approving", iconColor: "text-amber-600" };
+  const { Icon } = theme;
+
+  const flags: string[] = [];
+  if (ev.flag_no_cv) flags.push("No CV on file — cannot verify the §3.1.4 basis or identity. Request a CV before approving.");
+  if (ev.flag_low_prescreen) flags.push(`Low AI prescreen (${ev.ai_prescreening_score ?? "?"}) — read the AI red flags below and corroborate against the CV.`);
+  if (ev.flag_thin_experience) flags.push(`Thin experience (${ev.years_experience}y) — only approvable via a translation degree (route a); otherwise hold.`);
+  if (ev.flag_broad_domains) flags.push(`${ev.declared_domains} domains declared — approve only evidenced domains (§6.1.6); medical/pharma/legal/certified need proof.`);
+
+  const Item = ({ label, value, ok }: { label: string; value: string; ok?: boolean }) => (
+    <div className="flex flex-col">
+      <span className="text-[11px] uppercase tracking-wide text-gray-500">{label}</span>
+      <span className={`text-sm font-medium ${ok === false ? "text-red-600" : "text-gray-900"}`}>{value}</span>
+    </div>
+  );
+
+  const competence = ev.approved_combos > 0
+    ? `Test passed (${ev.approved_combos} combo${ev.approved_combos > 1 ? "s" : ""})`
+    : ev.quiz_score != null ? `Quiz ${ev.quiz_score}%` : "—";
+  const basis = `${ev.education_level ? ev.education_level + " degree" : "no degree on file"}${ev.years_experience != null ? ` · ${ev.years_experience}y exp` : ""}`;
+
+  return (
+    <div className={`mb-6 rounded-lg border p-4 ${theme.box}`}>
+      <div className="flex items-center gap-2 mb-3">
+        <Shield className="w-4 h-4 text-gray-500" />
+        <span className="font-semibold text-gray-900">ISO 17100 evidence</span>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${theme.chip}`}>
+          <Icon className={`w-3.5 h-3.5 ${theme.iconColor}`} /> {theme.label}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <Item label="Competence" value={competence} ok={ev.approved_combos > 0 || ev.quiz_score != null} />
+        <Item label="§3.1.4 basis (verify in CV)" value={basis} />
+        <Item label="CV on file" value={ev.has_cv ? "Yes" : "No"} ok={ev.has_cv} />
+        <Item label="References in" value={`${ev.refs_received} received`} ok={ev.refs_received >= 1} />
+        <Item label="Domains" value={`${ev.declared_domains} declared${ev.tested_domains ? ` · tested: ${ev.tested_domains}` : ""}`} />
+      </div>
+      {flags.length > 0 && (
+        <ul className="mt-3 space-y-1">
+          {flags.map((f, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" /> {f}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-3 text-xs text-gray-500">
+        Confirm competence, pick &amp; record the §3.1.4 basis from the CV, read the reference, and approve only evidenced domains. Flags are review prompts, not gates.
+      </p>
+    </div>
+  );
+}
+
 export default function RecruitmentDetail() {
   const { id } = useParams<{ id: string }>();
   const { session } = useAdminAuthContext();
 
   const [app, setApp] = useState<Application | null>(null);
+  const [isoEvidence, setIsoEvidence] = useState<IsoEvidence | null>(null);
   const [combinations, setCombinations] = useState<TestCombination[]>([]);
   const [submissions, setSubmissions] = useState<TestSubmission[]>([]);
   const [quizSubmissions, setQuizSubmissions] = useState<QuizSubmission[]>([]);
@@ -4580,6 +4663,15 @@ export default function RecruitmentDetail() {
 
       const application = appData as Application;
       setApp(application);
+
+      // ISO 17100 evidence summary (deterministic view) for the top-of-profile panel.
+      const { data: isoEv } = await supabase
+        .from("cvp_application_iso_evidence")
+        .select("*")
+        .eq("application_id", id)
+        .maybeSingle();
+      setIsoEvidence((isoEv as IsoEvidence) ?? null);
+
       setStaffNotes(application.staff_review_notes || "");
       setTierValue(application.assigned_tier || "");
       setRejectionDraft(application.rejection_email_draft || "");
@@ -5327,6 +5419,9 @@ export default function RecruitmentDetail() {
           <span>({formatDistanceToNow(new Date(app.created_at), { addSuffix: true })})</span>
         </div>
       </div>
+
+      {/* ISO 17100 evidence — top of profile, for review/approval */}
+      <IsoEvidencePanel ev={isoEvidence} />
 
       {/* Three-column grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

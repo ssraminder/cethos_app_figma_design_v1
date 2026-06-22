@@ -1019,3 +1019,11 @@ Context: user wanted recruitment fully automated to the final human approval, al
 - **Gated** behind `cvp_system_config.auto_evidence_sweep` (default **OFF**, fail-closed) for safe rollout — mirrors auto_doc_request. Deployed `--no-verify-jwt`. Dry-run verified: 25 selected, all clinical-first, 0 sent. **Toggle OFF pending user go to send to 140 real applicants.** Kill-switch: set enabled=false.
 - **Docs side:** largely already chased via existing auto_doc_request (315 v17-request-more-info sent) — kept this change references-only (the queue's binding constraint); enriching the doc-request content to name degree + work-history/invoice proof explicitly is a fast-follow.
 - Migration `20260621_cvp_auto_evidence_sweep.sql`. See user-memory [[project-iqvia-audit-2026-06-29]].
+
+## ISO evidence panel in recruitment review (2026-06-21)
+
+- **Need:** reviewers must see ISO 17100 §3.1.4 evidence in-context, not in a side doc. (Asked: "is everyone in the approval queue ISO-compliant?" — answer: review-ready, NOT auto-compliant; `qualification_basis` is NULL for all 31 ready — the reviewer records it on approval.)
+- **Built:** view `cvp_application_iso_evidence` (deterministic, no AI) → competence (combos/quiz), §3.1.4 basis signals (degree level + years + CV present), references received, declared-vs-tested domains, flags + a `iso_badge` (ready/check/hold). hold=no CV; check=low prescreen(<50)/thin exp(<2y, translators)/broad domains(>6).
+- **UI:** ISO evidence panel at the **top of the RecruitmentDetail profile** (primary, where approval happens) + a compact **ISO badge on the Ready-for-Approval list rows** (triage). Flags are review PROMPTS, not gates. Migration `20260621_cvp_application_iso_evidence_view.sql`.
+- Of the 31 ready: 8 ready / 22 check / 1 hold (Mahdi ALAVI APP-26-0020 = no CV). Static checklist also delivered: `docs/audits/2026-06-iqvia/ready-queue-iso-review-checklist.md`.
+- See user-memory [[project-iqvia-audit-2026-06-29]].
