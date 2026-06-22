@@ -4535,6 +4535,9 @@ interface IsoEvidence {
   flag_thin_experience: boolean;
   flag_broad_domains: boolean;
   iso_badge: "ready" | "check" | "hold";
+  uploaded_docs_count: number;
+  uploaded_doc_names: string[] | null;
+  has_degree_doc: boolean;
 }
 
 // ISO 17100 evidence summary shown at the top of the profile for review/approval.
@@ -4567,6 +4570,10 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
     ? `Test passed (${ev.approved_combos} combo${ev.approved_combos > 1 ? "s" : ""})`
     : ev.quiz_score != null ? `Quiz ${ev.quiz_score}%` : "—";
   const basis = `${ev.education_level ? ev.education_level + " (self-declared)" : "no degree declared"}${ev.years_experience != null ? ` · ${ev.years_experience}y exp (self-declared)` : ""}`;
+  const docCount = ev.uploaded_docs_count || 0;
+  const docsValue = ev.has_cv
+    ? (docCount > 0 ? `CV + ${docCount} uploaded` : "CV/résumé only")
+    : (docCount > 0 ? `${docCount} uploaded (no CV)` : "none");
 
   return (
     <div className={`mb-6 rounded-lg border p-4 ${theme.box}`}>
@@ -4580,10 +4587,24 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <Item label="Competence" value={competence} ok={ev.approved_combos > 0 || ev.quiz_score != null} />
         <Item label="§3.1.4 basis — self-declared" value={basis} />
-        <Item label="Documents on file" value={ev.has_cv ? "CV/résumé only" : "none"} ok={ev.has_cv} />
+        <Item label="Documents on file" value={docsValue} ok={ev.has_cv || docCount > 0} />
         <Item label="References in" value={`${ev.refs_received} received`} ok={ev.refs_received >= 1} />
         <Item label="Domains" value={`${ev.declared_domains} declared${ev.tested_domains ? ` · tested: ${ev.tested_domains}` : ""}`} />
       </div>
+      {ev.uploaded_doc_names && ev.uploaded_doc_names.length > 0 && (
+        <div className="mt-3">
+          <span className="text-[11px] uppercase tracking-wide text-gray-500">
+            Uploaded documents{ev.has_degree_doc ? " — degree/diploma on file (unverified)" : ""}
+          </span>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {ev.uploaded_doc_names.map((n, i) => (
+              <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200 text-xs text-gray-700">
+                <FileText className="w-3 h-3 text-gray-400" /> {n}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {flags.length > 0 && (
         <ul className="mt-3 space-y-1">
           {flags.map((f, i) => (
@@ -4594,7 +4615,16 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
         </ul>
       )}
       <p className="mt-3 text-xs text-gray-500">
-        Degree level &amp; years are <strong>self-declared</strong> from the application form — the only document on file is the CV/résumé (no diploma/transcript verified). Verify the diploma (route a/b) or experience evidence (route c) against the CV, record the §3.1.4 basis, read the reference, and approve only evidenced domains. Flags are review prompts, not gates.
+        {docCount > 0 ? (
+          <>
+            Applicant has uploaded <strong>{docCount} document{docCount > 1 ? "s" : ""}</strong> (above, <strong>unverified</strong>). Open and verify the degree/experience evidence on the vendor's Documents/QMS tab, then record the §3.1.4 basis, read the reference, and approve only evidenced domains.
+          </>
+        ) : (
+          <>
+            Degree level &amp; years are <strong>self-declared</strong> from the application form — the only document on file is the CV/résumé (no diploma uploaded). Verify the diploma (route a/b) or experience evidence (route c) against the CV and record the §3.1.4 basis.
+          </>
+        )}{" "}
+        Flags are review prompts, not gates.
       </p>
     </div>
   );
