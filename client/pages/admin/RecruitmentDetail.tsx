@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { REFERENCE_MCQS, referenceAnswerLabel, referenceDomainLabel, WOULD_WORK_AGAIN_LABEL } from "@/lib/referenceQuestions";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { toast } from "sonner";
 import {
@@ -2868,6 +2869,14 @@ interface ReferenceRow {
   } | null;
   ai_analysis_error: string | null;
   created_at: string;
+  // Exact referee answers (verbatim Q&A display).
+  competence_responses: Record<string, string | null> | null;
+  applicant_stated_start_year: number | null;
+  reference_confirmed_start_year: number | null;
+  year_verification: string | null;
+  applicant_stated_domains: string[] | null;
+  reference_confirmed_domains: string[] | null;
+  domain_verification: string | null;
 }
 
 interface ReassessmentOutput {
@@ -2924,7 +2933,7 @@ function ReferencesSection({
             .order("created_at", { ascending: false }),
           supabase
             .from("cvp_application_references")
-            .select("id, request_id, reference_name, reference_email, reference_company, reference_relationship, status, feedback_text, feedback_rating, feedback_received_at, declined_at, decline_reason, ai_analysis, ai_analysis_error, created_at")
+            .select("id, request_id, reference_name, reference_email, reference_company, reference_relationship, status, feedback_text, feedback_rating, feedback_received_at, declined_at, decline_reason, ai_analysis, ai_analysis_error, created_at, competence_responses, applicant_stated_start_year, reference_confirmed_start_year, year_verification, applicant_stated_domains, reference_confirmed_domains, domain_verification")
             .eq("application_id", applicationId)
             .order("created_at", { ascending: false }),
           supabase
@@ -3238,8 +3247,49 @@ function ReferencesSection({
                       AI analysis failed: {r.ai_analysis_error}
                     </div>
                   )}
+                  {r.competence_responses && (
+                    <div className="mb-2 p-2 bg-white border border-gray-200 rounded">
+                      <div className="font-semibold text-gray-700 mb-1.5">Reference responses (verbatim)</div>
+                      {r.applicant_stated_start_year != null && (
+                        <div className="mb-1.5">
+                          <span className="text-gray-500">Worked together since:</span>{" "}
+                          applicant said <strong>{r.applicant_stated_start_year}</strong>
+                          {r.year_verification === "cant_recall" ? (
+                            <> · reference couldn't recall</>
+                          ) : r.reference_confirmed_start_year != null ? (
+                            <> · reference confirmed <strong>{r.reference_confirmed_start_year}</strong>{r.year_verification ? ` (${r.year_verification})` : ""}</>
+                          ) : null}
+                        </div>
+                      )}
+                      {Array.isArray(r.reference_confirmed_domains) && r.reference_confirmed_domains.length > 0 && (
+                        <div className="mb-1.5">
+                          <span className="text-gray-500">Domains confirmed:</span>{" "}
+                          {r.reference_confirmed_domains.map(referenceDomainLabel).join(", ")}
+                          {r.domain_verification ? ` (${r.domain_verification})` : ""}
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        {REFERENCE_MCQS.map((q) => {
+                          const ans = referenceAnswerLabel(q.slug, (r.competence_responses?.[q.slug] as string | null) ?? null);
+                          if (!ans) return null;
+                          return (
+                            <div key={q.slug}>
+                              <div className="text-gray-600">{q.prompt.replace(/\{\{name\}\}/g, "the applicant")}</div>
+                              <div className="text-gray-900 font-medium">↳ {ans}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {r.competence_responses?.would_work_again && (
+                        <div className="mt-1.5">
+                          <span className="text-gray-500">Would work with them again:</span>{" "}
+                          <strong>{WOULD_WORK_AGAIN_LABEL[r.competence_responses.would_work_again as string] ?? r.competence_responses.would_work_again}</strong>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {r.feedback_text && (
-                    <details className="mt-1">
+                    <details className="mt-1" open>
                       <summary className="cursor-pointer text-gray-600 hover:text-gray-900">
                         Show full reference text
                       </summary>
