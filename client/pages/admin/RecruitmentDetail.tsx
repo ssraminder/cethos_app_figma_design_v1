@@ -4682,7 +4682,7 @@ const DOMAIN_DISPLAY: Record<string, string> = {
 // Deterministic, candidate-specific "how to approve this person" checklist for
 // the reviewer — reasons over the same evidence the panel shows. Ordered steps
 // with done / check / todo status, ending in a bottom-line recommendation.
-function IsoReviewerGuide({ ev, ndaSignedAt }: { ev: IsoEvidence; ndaSignedAt: string | null }) {
+function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSignedAt: string | null; coaQuiz?: QuizSubmission | null }) {
   type Step = { state: "done" | "check" | "todo"; text: string };
   const steps: Step[] = [];
 
@@ -4713,6 +4713,36 @@ function IsoReviewerGuide({ ev, ndaSignedAt }: { ev: IsoEvidence; ndaSignedAt: s
     steps.push({ state: "done", text: `Competence: quiz passed (${ev.quiz_score}%). See Quiz Results below.` });
   } else {
     steps.push({ state: "todo", text: "Competence: no test/quiz on file — do not approve until competence is demonstrated." });
+  }
+
+  // 1b. COA quiz gate — required when coa_linguistic_validation domain is declared
+  const hasCOADomain = declaredList.includes("coa_linguistic_validation");
+  if (hasCOADomain || coaQuiz) {
+    if (!coaQuiz || coaQuiz.status !== "submitted") {
+      steps.push({
+        state: "todo",
+        text: `COA quiz: not yet submitted${coaQuiz ? ` (status: ${coaQuiz.status})` : " — send via Assessment Path panel below"}. Required before approving COA Linguistic Validation domain.`,
+      });
+    } else {
+      const score = coaQuiz.score_pct !== null ? `${Number(coaQuiz.score_pct).toFixed(0)}%` : "?%";
+      const rec = coaQuiz.assessment_recommendation ?? null;
+      if (!rec || /not recommended|fail/i.test(rec)) {
+        steps.push({
+          state: "check",
+          text: `COA quiz: ${score} MCQ — AI: "${rec ?? "no recommendation"}". Part-2 translation failure(s) detected. Do NOT approve COA domain without reviewing the translations in the COA Quiz Results section.`,
+        });
+      } else if (/needs human review|flagged/i.test(rec)) {
+        steps.push({
+          state: "check",
+          text: `COA quiz: ${score} MCQ — AI: "${rec}". Part-2 translations flagged. Review the COA Quiz Results section before approving COA domain.`,
+        });
+      } else {
+        steps.push({
+          state: "done",
+          text: `COA quiz: ${score} — AI: ${rec}. COA Linguistic Validation competence confirmed.`,
+        });
+      }
+    }
   }
 
   // 2. §3.1.4 qualification basis — name the actual documents
@@ -4853,7 +4883,7 @@ function DocOpenButton({ storagePath }: { storagePath?: string | null }) {
 // ISO 17100 evidence summary shown at the top of the profile for review/approval.
 // Pure/deterministic (driven by cvp_application_iso_evidence) — the flags are
 // review PROMPTS, not gates. Reviewer still records the §3.1.4 basis on approval.
-function IsoEvidencePanel({ ev, ndaSignedAt }: { ev: IsoEvidence | null; ndaSignedAt: string | null }) {
+function IsoEvidencePanel({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence | null; ndaSignedAt: string | null; coaQuiz?: QuizSubmission | null }) {
   if (!ev) return null;
   const theme =
     ev.iso_badge === "ready"
@@ -4969,7 +4999,7 @@ function IsoEvidencePanel({ ev, ndaSignedAt }: { ev: IsoEvidence | null; ndaSign
         )}{" "}
         Flags are review prompts, not gates.
       </p>
-      <IsoReviewerGuide ev={ev} ndaSignedAt={ndaSignedAt} />
+      <IsoReviewerGuide ev={ev} ndaSignedAt={ndaSignedAt} coaQuiz={coaQuiz} />
     </div>
   );
 }
@@ -5820,7 +5850,120 @@ export default function RecruitmentDetail() {
       </div>
 
       {/* ISO 17100 evidence — top of profile, for review/approval */}
-      <IsoEvidencePanel ev={isoEvidence} ndaSignedAt={ndaSignedAt} />
+      <IsoEvidencePanel ev={isoEvidence} ndaSignedAt={ndaSignedAt} coaQuiz={quizSubmissions.find(q => q.is_coa) ?? null} />
+
+      {/* COA Quiz Results — dedicated full-width panel, always visible for COA applicants.
+          Surfaces score + AI decision prominently so reviewers can't miss translation failures. */}
+      {(() => {
+        const coaQuizzes = quizSubmissions.filter(q => q.is_coa);
+        if (coaQuizzes.length === 0) return null;
+        return (
+          <div className="mb-6 rounded-lg border-2 border-indigo-300 bg-indigo-50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm font-bold text-indigo-900 uppercase tracking-wide">COA Linguistic Validation — Quiz Results</span>
+            </div>
+            <div className="space-y-3">
+              {coaQuizzes.map(q => {
+                const scorePct = q.score_pct !== null ? Number(q.score_pct) : null;
+                const rec = q.assessment_recommendation ?? null;
+                const scoreColor = scorePct === null ? "bg-gray-100 text-gray-600"
+                  : scorePct >= 80 ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700";
+                const recColor = !rec ? "bg-gray-100 text-gray-600"
+                  : /not recommended|fail/i.test(rec) ? "bg-red-100 text-red-700"
+                  : /needs human review|flagged/i.test(rec) ? "bg-amber-100 text-amber-700"
+                  : "bg-green-100 text-green-700";
+                const breakdown = q.competence_breakdown ?? {};
+                const competenceOrder = ["linguistic_textual_competence","cultural_competence","domain_competence","research_competence","technical_competence"];
+                return (
+                  <div key={q.id} className="bg-white rounded-lg border border-indigo-200 p-3">
+                    {/* Header row */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-sm font-bold px-2.5 py-1 rounded ${scoreColor}`}>
+                          {scorePct === null ? (q.status === "submitted" ? "Scored 0%" : "Not submitted") : `${scorePct.toFixed(0)}%`}
+                          {q.correct_count !== null && q.total_count !== null && (
+                            <span className="ml-1 font-normal opacity-75"> ({q.correct_count}/{q.total_count} correct)</span>
+                          )}
+                        </span>
+                        {rec && (
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded ${recColor}`}>
+                            AI: {rec}
+                          </span>
+                        )}
+                        <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 capitalize">{q.status}</span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {q.submitted_at
+                          ? `Submitted ${format(new Date(q.submitted_at), "MMM d, yyyy h:mm a")}`
+                          : `Issued ${format(new Date(q.created_at), "MMM d, yyyy h:mm a")}`}
+                      </span>
+                    </div>
+
+                    {/* Assessment summary */}
+                    {q.assessment_summary && (
+                      <div className={`mb-3 p-2 rounded border text-xs ${/not recommended|fail/i.test(rec ?? "") ? "border-red-200 bg-red-50 text-red-800" : /needs human review|flagged/i.test(rec ?? "") ? "border-amber-200 bg-amber-50 text-amber-800" : "border-gray-200 bg-gray-50 text-gray-800"}`}>
+                        <span className="font-semibold block mb-1">AI Assessment</span>
+                        {q.assessment_summary}
+                      </div>
+                    )}
+
+                    {/* Competence breakdown */}
+                    {Object.keys(breakdown).length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+                        {competenceOrder.map(slug => {
+                          const b = breakdown[slug];
+                          if (!b) return null;
+                          const pct = b.total > 0 ? (b.correct / b.total) * 100 : 0;
+                          const cellColor = pct >= 70 ? "text-green-700 border-green-200" : pct >= 60 ? "text-yellow-700 border-yellow-200" : "text-red-700 border-red-200";
+                          return (
+                            <div key={slug} className={`rounded border px-2 py-1.5 ${cellColor}`}>
+                              <div className="text-[10px] uppercase tracking-wide text-gray-500">
+                                {COMPETENCE_LABELS[slug] ?? slug.replace(/_/g, " ")}
+                              </div>
+                              <div className="text-sm font-bold">{b.correct}/{b.total}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* COA Part-2 translation responses */}
+                    {q.is_coa && coaResponses.length > 0 && (
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mb-1">
+                          Part-2 translations — {coaResponses.length} sentence{coaResponses.length > 1 ? "s" : ""}
+                        </div>
+                        <div className="space-y-2">
+                          {coaResponses.map(cr => {
+                            const vColor = cr.verdict === "pass" ? "bg-green-100 text-green-700"
+                              : cr.verdict === "fail" ? "bg-red-100 text-red-700"
+                              : "bg-amber-100 text-amber-700";
+                            return (
+                              <div key={cr.id} className="rounded border border-gray-200 p-2 bg-gray-50">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${vColor}`}>
+                                    {cr.verdict ?? (cr.needs_human_review ? "needs review" : "—")}
+                                  </span>
+                                  {cr.mqm_score != null && <span className="text-[10px] text-gray-500">MQM {cr.mqm_score}</span>}
+                                  {cr.conceptual_equivalence && <span className="text-[10px] text-gray-500">conceptual: {cr.conceptual_equivalence}</span>}
+                                  {cr.target_language_name && <span className="text-[10px] text-gray-500">{cr.target_language_name}</span>}
+                                </div>
+                                {cr.applicant_translation && <p className="text-xs text-gray-900 whitespace-pre-wrap mb-1">{cr.applicant_translation}</p>}
+                                {cr.ai_rationale && <p className="text-[11px] text-gray-500 italic">{cr.ai_rationale}</p>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Three-column grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
