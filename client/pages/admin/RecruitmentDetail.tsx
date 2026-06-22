@@ -4592,6 +4592,68 @@ interface IsoEvidence {
   screened_any_verified: boolean;
   screened_items: { title: string; type: string | null; verified: boolean; confidence: string | null }[] | null;
   applicant_vendor_id: string | null;
+  ref_min_confirmed_year: number | null;
+  ref_documented_years: number | null;
+  ref_positive_count: number;
+}
+
+// Deterministic, candidate-specific "how to approve this person" checklist for
+// the reviewer — reasons over the same evidence the panel shows. Ordered steps
+// with done / check / todo status, ending in a bottom-line recommendation.
+function IsoReviewerGuide({ ev }: { ev: IsoEvidence }) {
+  type Step = { state: "done" | "check" | "todo"; text: string };
+  const steps: Step[] = [];
+
+  // 1. Competence
+  if (ev.approved_combos > 0) steps.push({ state: "done", text: `Competence: translation test passed (${ev.approved_combos} combo${ev.approved_combos > 1 ? "s" : ""}). See Test Combinations below.` });
+  else if (ev.quiz_score != null) steps.push({ state: "done", text: `Competence: quiz passed (${ev.quiz_score}%). See Quiz Results below.` });
+  else steps.push({ state: "todo", text: "Competence: no test/quiz on file — do not approve until competence is demonstrated." });
+
+  // 2. §3.1.4 qualification basis
+  if (ev.has_degree_doc) {
+    steps.push({ state: "check", text: "§3.1.4 basis: a degree/diploma is on file (above) — open it. If it's in translation → route (a); another field + ≥2 yrs → route (b). Verify the field before recording." });
+  } else if ((ev.ref_documented_years ?? 0) >= 5) {
+    steps.push({ state: "done", text: `§3.1.4 basis: route (c) — references confirm ~${ev.ref_documented_years} yrs professional experience (since ${ev.ref_min_confirmed_year}), meeting the 5-year route. No degree needed; record basis = §3.1.4(c).` });
+  } else if ((ev.years_experience ?? 0) >= 5) {
+    steps.push({ state: "check", text: `§3.1.4 basis: ${ev.years_experience} yrs is self-declared but not yet documented. Get a reference/letter confirming 5+ yrs (route c) or a degree (route a/b) before recording.` });
+  } else {
+    steps.push({ state: "todo", text: "§3.1.4 basis: not established yet — needs a degree (route a/b) or documented 5+ yrs experience (route c)." });
+  }
+
+  // 3. References
+  if (ev.refs_received > 0) steps.push({ state: "check", text: `References: ${ev.refs_received} received (${ev.ref_positive_count} positive). Read the verbatim responses below — confirm they corroborate the experience and competence.` });
+  else steps.push({ state: "todo", text: "References: none received yet — request/await at least one good reference." });
+
+  // 4. Domains (§6.1.6)
+  steps.push({ state: "check", text: `Domains (§6.1.6): approve only evidenced domains${ev.tested_domains ? ` — tested: ${ev.tested_domains}` : ""}. ${ev.declared_domains} declared — don't approve unevidenced ones (medical/pharma/legal/certified need proof).` });
+
+  // 5. NDA
+  steps.push({ state: "check", text: "NDA: confirm a signed NDA is (or will be) on file before the vendor goes active." });
+
+  const competenceOk = ev.approved_combos > 0 || ev.quiz_score != null;
+  const basisOk = ev.has_degree_doc || (ev.ref_documented_years ?? 0) >= 5;
+  let bottom: { tone: string; text: string };
+  if (ev.flag_no_cv) bottom = { tone: "text-red-700", text: "→ HOLD: no CV on file — can't verify identity or basis. Request the CV first." };
+  else if (competenceOk && basisOk && ev.refs_received > 0) bottom = { tone: "text-green-700", text: `→ Looks approvable${(ev.ref_documented_years ?? 0) >= 5 && !ev.has_degree_doc ? " via route (c)" : ""}. Record the §3.1.4 basis and approve only the evidenced domains.` };
+  else bottom = { tone: "text-amber-700", text: "→ Not yet — resolve the steps marked ⚠ / ◻ above (usually: document the §3.1.4 basis or collect a reference)." };
+
+  const ICON: Record<Step["state"], string> = { done: "✓", check: "⚠", todo: "◻" };
+  const COLOR: Record<Step["state"], string> = { done: "text-green-600", check: "text-amber-600", todo: "text-gray-400" };
+
+  return (
+    <details className="mt-3 border-t border-gray-200 pt-2" open>
+      <summary className="cursor-pointer text-sm font-semibold text-gray-800">Reviewer guide — how to approve this candidate</summary>
+      <ol className="mt-2 space-y-1.5">
+        {steps.map((s, i) => (
+          <li key={i} className="flex items-start gap-2 text-xs text-gray-700">
+            <span className={`font-bold ${COLOR[s.state]}`}>{ICON[s.state]}</span>
+            <span><strong>{i + 1}.</strong> {s.text}</span>
+          </li>
+        ))}
+      </ol>
+      <p className={`mt-2 text-xs font-medium ${bottom.tone}`}>{bottom.text}</p>
+    </details>
+  );
 }
 
 const EV_TYPE_LABEL: Record<string, string> = {
@@ -4723,6 +4785,7 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
         )}{" "}
         Flags are review prompts, not gates.
       </p>
+      <IsoReviewerGuide ev={ev} />
     </div>
   );
 }
