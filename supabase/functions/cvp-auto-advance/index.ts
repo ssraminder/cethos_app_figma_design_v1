@@ -220,6 +220,61 @@ serve(async (req: Request) => {
     actions.push({ id: p.id, name: p.full_name, action: "request_references" });
   }
 
+  // ── Phase C2: DURABLE EVIDENCE SWEEP (references). Phase C above only catches
+  // status='test_assessed'. Many applicants pass competence while parked in
+  // staff_review / prescreened / etc. and are NEVER asked for references, so
+  // they never reach the Ready-for-Approval queue (assessment + >=1 reference).
+  // This sweeps EVERY assessment-passed applicant with no reference request
+  // (source view cvp_pipeline_needs_reference_request), CLINICAL-FIRST, throttled
+  // by `limit` (drains the backlog over a few cron cycles, no rate-limit blast).
+  // Gated behind the auto_evidence_sweep toggle (fail-closed) for safe rollout.
+  let evidenceSweepRequested = 0;
+  {
+    let sweepOn = false;
+    try {
+      const { data: cfg } = await supabase
+        .from("cvp_system_config")
+        .select("value")
+        .eq("key", "auto_evidence_sweep")
+        .maybeSingle();
+      sweepOn = (cfg?.value as any)?.enabled === true;
+    } catch {
+      sweepOn = false; // fail-closed
+    }
+
+    if (sweepOn) {
+      const { data: needRefs } = await supabase
+        .from("cvp_pipeline_needs_reference_request")
+        .select("application_id, is_clinical")
+        .order("is_clinical", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(limit);
+      for (const p of (needRefs ?? []) as any[]) {
+        if (!dryRun) {
+          const resp = await fetch(`${supabaseUrl}/functions/v1/cvp-request-references`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+            body: JSON.stringify({ applicationId: p.application_id, internalAuto: true, actingStaffId: SYSTEM_STAFF_ID }),
+          });
+          const out = await resp.json().catch(() => ({}));
+          if (!resp.ok || out?.success === false) {
+            skipped++;
+            actions.push({ id: p.application_id, action: "evidence_sweep_ref_failed", detail: out?.error ?? `http ${resp.status}` });
+            continue;
+          }
+          // Reflect the new wait-state; never clobber a terminal status.
+          await supabase
+            .from("cvp_applications")
+            .update({ status: "references_requested", updated_at: nowIso })
+            .eq("id", p.application_id)
+            .not("status", "in", "(approved,rejected,archived,waitlisted)");
+        }
+        evidenceSweepRequested++;
+        actions.push({ id: p.application_id, action: "evidence_sweep_request_references", clinical: p.is_clinical });
+      }
+    }
+  }
+
   // ── Phase D: borderline General test parked in staff_review → auto-offer the
   // quiz as a second instrument (once), instead of leaving it for a human. Reset
   // the general combos so the quiz dispatch picks them up; the quiz then settles
@@ -360,6 +415,6 @@ serve(async (req: Request) => {
 
   return json({
     success: true,
-    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, referencesRequested, quizOffered, agenciesAdvanced, unparked, consultantsParked, skipped, actions },
+    data: { dry_run: dryRun, considered: candidates.length, advanced, rejected, referencesRequested, evidenceSweepRequested, quizOffered, agenciesAdvanced, unparked, consultantsParked, skipped, actions },
   });
 });
