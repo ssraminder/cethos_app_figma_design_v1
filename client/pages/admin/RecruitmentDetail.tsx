@@ -4538,7 +4538,21 @@ interface IsoEvidence {
   uploaded_docs_count: number;
   uploaded_doc_names: string[] | null;
   has_degree_doc: boolean;
+  screened_count: number;
+  screened_any_verified: boolean;
+  screened_items: { title: string; type: string | null; verified: boolean; confidence: string | null }[] | null;
 }
+
+const EV_TYPE_LABEL: Record<string, string> = {
+  degree_translation: "Translation degree",
+  degree_other: "Degree (other field)",
+  documented_translation_experience: "Experience",
+  references_verified: "Reference",
+  domain_specific_certification: "Certification",
+  internal_test_passed: "Internal test",
+  professional_membership: "Membership",
+  language_proficiency_test: "Language proficiency",
+};
 
 // ISO 17100 evidence summary shown at the top of the profile for review/approval.
 // Pure/deterministic (driven by cvp_application_iso_evidence) — the flags are
@@ -4591,10 +4605,31 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
         <Item label="References in" value={`${ev.refs_received} received`} ok={ev.refs_received >= 1} />
         <Item label="Domains" value={`${ev.declared_domains} declared${ev.tested_domains ? ` · tested: ${ev.tested_domains}` : ""}`} />
       </div>
-      {ev.uploaded_doc_names && ev.uploaded_doc_names.length > 0 && (
+      {ev.screened_items && ev.screened_items.length > 0 ? (
         <div className="mt-3">
           <span className="text-[11px] uppercase tracking-wide text-gray-500">
-            Uploaded documents{ev.has_degree_doc ? " — degree/diploma on file (unverified)" : ""}
+            AI document screening ({ev.screened_count}){ev.screened_any_verified ? "" : " — all unverified, confirm before recording basis"}
+          </span>
+          <ul className="mt-1 space-y-1">
+            {ev.screened_items.map((it, i) => {
+              const conf = it.confidence != null ? Number(it.confidence) : null;
+              const confCls = conf == null ? "" : conf >= 70 ? "bg-green-100 text-green-700" : conf >= 40 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700";
+              return (
+                <li key={i} className="flex items-start gap-2 text-xs text-gray-700">
+                  <FileText className="w-3 h-3 text-gray-400 mt-0.5 shrink-0" />
+                  <span className="flex-1">{it.title}</span>
+                  {it.type && <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 whitespace-nowrap">{EV_TYPE_LABEL[it.type] ?? it.type}</span>}
+                  {conf != null && <span className={`px-1.5 py-0.5 rounded whitespace-nowrap ${confCls}`}>AI {conf}%</span>}
+                  <span className={`px-1.5 py-0.5 rounded whitespace-nowrap ${it.verified ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{it.verified ? "Verified" : "Screened"}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : ev.uploaded_doc_names && ev.uploaded_doc_names.length > 0 ? (
+        <div className="mt-3">
+          <span className="text-[11px] uppercase tracking-wide text-gray-500">
+            Uploaded documents{ev.has_degree_doc ? " — degree/diploma on file (unverified)" : ""} — not yet AI-screened
           </span>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {ev.uploaded_doc_names.map((n, i) => (
@@ -4604,7 +4639,7 @@ function IsoEvidencePanel({ ev }: { ev: IsoEvidence | null }) {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
       {flags.length > 0 && (
         <ul className="mt-3 space-y-1">
           {flags.map((f, i) => (
