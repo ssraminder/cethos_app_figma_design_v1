@@ -184,7 +184,9 @@ serve(async (req: Request) => {
 
   // ── Phase C: assessment passed (test_assessed) → auto-request references.
   // Any role. References are collected automatically; the human reads them at
-  // the single final approval gate. Skip anyone who already has a request.
+  // the single final approval gate.
+  // Repair path: if a reference request exists but status is still test_assessed
+  // (race condition on a previous run), just advance the status — don't re-send.
   let referencesRequested = 0;
   const { data: passed } = await supabase
     .from("cvp_applications")
@@ -197,19 +199,23 @@ serve(async (req: Request) => {
       .from("cvp_application_reference_requests")
       .select("id", { count: "exact", head: true })
       .eq("application_id", p.id);
-    if ((count ?? 0) > 0) { skipped++; continue; }
+    const hasRefRequest = (count ?? 0) > 0;
     if (!dryRun) {
-      const resp = await fetch(`${supabaseUrl}/functions/v1/cvp-request-references`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
-        body: JSON.stringify({ applicationId: p.id, internalAuto: true, actingStaffId: SYSTEM_STAFF_ID }),
-      });
-      const out = await resp.json().catch(() => ({}));
-      if (!resp.ok || out?.success === false) {
-        skipped++;
-        actions.push({ id: p.id, name: p.full_name, action: "references_request_failed", detail: out?.error ?? `http ${resp.status}` });
-        continue;
+      if (!hasRefRequest) {
+        // Normal path: send reference request then advance status.
+        const resp = await fetch(`${supabaseUrl}/functions/v1/cvp-request-references`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ applicationId: p.id, internalAuto: true, actingStaffId: SYSTEM_STAFF_ID }),
+        });
+        const out = await resp.json().catch(() => ({}));
+        if (!resp.ok || out?.success === false) {
+          skipped++;
+          actions.push({ id: p.id, name: p.full_name, action: "references_request_failed", detail: out?.error ?? `http ${resp.status}` });
+          continue;
+        }
       }
+      // Advance status — covers both the normal path and the repair-of-stuck case.
       await supabase
         .from("cvp_applications")
         .update({ status: "references_requested", updated_at: nowIso })
@@ -217,7 +223,7 @@ serve(async (req: Request) => {
         .eq("status", "test_assessed");
     }
     referencesRequested++;
-    actions.push({ id: p.id, name: p.full_name, action: "request_references" });
+    actions.push({ id: p.id, name: p.full_name, action: hasRefRequest ? "repair_references_requested" : "request_references" });
   }
 
   // ── Phase C2: DURABLE EVIDENCE SWEEP (references). Phase C above only catches

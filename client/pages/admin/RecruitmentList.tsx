@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Loader2,
   UserPlus,
+  FileText,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -229,6 +230,7 @@ export default function RecruitmentList() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [combosByApp, setCombosByApp] = useState<Record<string, ComboChip[]>>({});
   const [isoBadges, setIsoBadges] = useState<Record<string, string>>({});
+  const [ceCounts, setCeCounts] = useState<Record<string, number>>({});
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({
@@ -631,26 +633,32 @@ export default function RecruitmentList() {
         setCombosByApp({});
       }
 
-      // Ready tab: load the deterministic ISO readiness badge per visible row.
-      if (activeTab === "ready" && !isSearching && rows.length > 0) {
+      // Load ISO evidence data for all tabs — iso_badge shown on "ready",
+      // screened_count shown as a doc indicator on all other tabs.
+      if (rows.length > 0) {
         const ids = rows.map((r) => r.id);
         const { data: ev } = await supabase
           .from("cvp_application_iso_evidence")
-          .select("application_id, iso_badge")
+          .select("application_id, iso_badge, screened_count")
           .in("application_id", ids);
-        const m: Record<string, string> = {};
-        for (const e of (ev ?? []) as { application_id: string; iso_badge: string }[]) {
-          m[e.application_id] = e.iso_badge;
+        const badges: Record<string, string> = {};
+        const counts: Record<string, number> = {};
+        for (const e of (ev ?? []) as { application_id: string; iso_badge: string; screened_count: number }[]) {
+          badges[e.application_id] = e.iso_badge;
+          if ((e.screened_count ?? 0) > 0) counts[e.application_id] = e.screened_count;
         }
-        setIsoBadges(m);
+        setIsoBadges(badges);
+        setCeCounts(counts);
       } else {
         setIsoBadges({});
+        setCeCounts({});
       }
     } catch (err) {
       console.error("Failed to fetch applications:", err);
       setApplications([]);
       setCombosByApp({});
       setIsoBadges({});
+      setCeCounts({});
       setTotalCount(0);
     } finally {
       setLoading(false);
@@ -1080,6 +1088,15 @@ export default function RecruitmentList() {
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${ISO_BADGE_META[isoBadges[app.id]].cls}`}
                             >
                               {ISO_BADGE_META[isoBadges[app.id]].label}
+                            </span>
+                          )}
+                          {activeTab !== "ready" && ceCounts[app.id] && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-50 text-teal-700 border border-teal-200"
+                              title={`${ceCounts[app.id]} AI-screened document${ceCounts[app.id] > 1 ? "s" : ""}`}
+                            >
+                              <FileText size={10} />
+                              {ceCounts[app.id]}
                             </span>
                           )}
                         </div>
