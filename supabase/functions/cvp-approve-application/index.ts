@@ -280,8 +280,6 @@ serve(async (req: Request) => {
       fullName: app.full_name,
       applicationNumber: app.application_number,
       vendorPortalUrl: vendorPortalUrlPreview,
-      passwordSetupLink: `${vendorPortalUrlPreview}/setup-password?token=__PREVIEW_TOKEN__`,
-      passwordSetupExpiryHours: 72,
       approvedCombinationsList: approvedCombinationsListHtmlPreview,
       staffMessage: staffMessagePreview,
     });
@@ -631,7 +629,6 @@ serve(async (req: Request) => {
   }
 
   const vendorPortalUrl = Deno.env.get("VENDOR_PORTAL_URL") ?? "https://vendor.cethos.com";
-  const passwordSetupLink = `${vendorPortalUrl}/setup-password?token=${setupToken}`;
   const approvedCombinationsListHtml = `<ul>${approvedCombos
     .map((c) => `<li>${domainLabel(c.domain)} — ${pairLabel(c.source_language_id, c.target_language_id)}</li>`)
     .join("")}</ul>`;
@@ -901,8 +898,6 @@ serve(async (req: Request) => {
     fullName: app.full_name,
     applicationNumber: app.application_number,
     vendorPortalUrl,
-    passwordSetupLink,
-    passwordSetupExpiryHours: 72,
     approvedCombinationsList: approvedCombinationsListHtml,
     staffMessage: staffMessageForEmail,
   });
