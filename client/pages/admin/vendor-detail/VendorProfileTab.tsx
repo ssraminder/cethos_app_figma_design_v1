@@ -323,7 +323,7 @@ export default function VendorProfileTab({
     );
   };
 
-  const chipDisplay = (items: string[] | null) =>
+  const chipDisplay = (items: (string | { name: string })[] | null) =>
     items && items.length > 0 ? (
       <div className="flex flex-wrap gap-1.5">
         {items.map((item, i) => (
@@ -331,7 +331,7 @@ export default function VendorProfileTab({
             key={i}
             className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs rounded-full"
           >
-            {item}
+            {typeof item === "string" ? item : item.name}
           </span>
         ))}
       </div>
