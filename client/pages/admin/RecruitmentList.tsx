@@ -46,6 +46,9 @@ const TAB_STATUSES: Record<string, string[]> = {
 };
 
 const TAB_LABELS: Record<string, string> = {
+  // "All" = every application regardless of status. Useful when filtered by
+  // role (e.g. role=cognitive_debriefing) to see the full picture at once.
+  all: "All",
   // "Ready for Approval" = the single human-review queue: assessment passed +
   // at least one reference received (per the "request 2, approve on 1 good
   // reference" policy). Backed by the cvp_ready_for_approval view, not a flat
@@ -234,6 +237,7 @@ export default function RecruitmentList() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({
+    all: 0,
     ready: 0,
     attention: 0,
     tests: 0,
@@ -373,6 +377,13 @@ export default function RecruitmentList() {
       tests: testsAppIds.size,
       ready: readyAppIds.size,
     };
+
+    // "All" tab count — every application regardless of status.
+    const { count: allCount } = await supabase
+      .from("cvp_applications")
+      .select("*", { count: "exact", head: true });
+    counts.all = allCount ?? 0;
+
     await Promise.all(
       Object.entries(TAB_STATUSES).map(async ([tab, statuses]) => {
         if (tab === "in_progress" && (testsAppIds.size > 0 || readyAppIds.size > 0)) {
@@ -545,22 +556,30 @@ export default function RecruitmentList() {
         }
         query = query.in("id", intersected);
       } else if (!isSearching) {
-        // Status filter: intersection of explicit selection (if any) with
-        // the active tab's allowed statuses. If the explicit selection is
-        // disjoint from the tab — empty result.
-        const tabStatuses = TAB_STATUSES[activeTab] || [];
-        let statuses = tabStatuses;
-        if (statusFilter.length > 0) {
-          statuses = tabStatuses.filter((s) => statusFilter.includes(s));
-          if (statuses.length === 0) {
-            setApplications([]);
-            setCombosByApp({});
-            setTotalCount(0);
-            setLoading(false);
-            return;
+        if (activeTab === "all") {
+          // "All" tab: no status restriction — show every applicant.
+          // Explicit status filter from the multi-select still applies.
+          if (statusFilter.length > 0) {
+            query = query.in("status", statusFilter);
           }
+        } else {
+          // Status filter: intersection of explicit selection (if any) with
+          // the active tab's allowed statuses. If the explicit selection is
+          // disjoint from the tab — empty result.
+          const tabStatuses = TAB_STATUSES[activeTab] || [];
+          let statuses = tabStatuses;
+          if (statusFilter.length > 0) {
+            statuses = tabStatuses.filter((s) => statusFilter.includes(s));
+            if (statuses.length === 0) {
+              setApplications([]);
+              setCombosByApp({});
+              setTotalCount(0);
+              setLoading(false);
+              return;
+            }
+          }
+          query = query.in("status", statuses);
         }
-        query = query.in("status", statuses);
         if (excludeIds.length > 0) {
           query = query.not("id", "in", `(${excludeIds.join(",")})`);
         }
@@ -845,7 +864,7 @@ export default function RecruitmentList() {
             Status{statusFilter.length > 0 ? ` · ${statusFilter.length}` : ""}
           </summary>
           <div className="absolute z-10 mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-2 w-64 max-h-72 overflow-y-auto">
-            {(TAB_STATUSES[activeTab] ?? []).map((s) => (
+            {(activeTab === "all" ? Object.keys(STATUS_LABELS) : (TAB_STATUSES[activeTab] ?? [])).map((s) => (
               <label key={s} className="flex items-center gap-2 px-1.5 py-1 hover:bg-gray-50 rounded text-xs cursor-pointer">
                 <input
                   type="checkbox"
@@ -1110,14 +1129,22 @@ export default function RecruitmentList() {
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           app.role_type === "translator"
                             ? "bg-blue-100 text-blue-700"
+                            : app.role_type === "agency"
+                            ? "bg-gray-100 text-gray-700"
                             : "bg-violet-100 text-violet-700"
                         }`}
                       >
                         {app.role_type === "translator"
                           ? "Translator"
+                          : app.role_type === "cognitive_debriefing"
+                          ? "CD Interviewer"
                           : app.role_type === "cd_clinician_consultant"
-                          ? "CD & Clinician Consultant"
-                          : "CD Interviewer"}
+                          ? "CD & Clinician"
+                          : app.role_type === "clinician_reviewer"
+                          ? "Clinician Reviewer"
+                          : app.role_type === "agency"
+                          ? "Agency"
+                          : app.role_type}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{app.country}</td>
