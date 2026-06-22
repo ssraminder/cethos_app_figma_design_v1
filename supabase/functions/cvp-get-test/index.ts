@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { hasCurrentNda, getActiveNdaTemplate, ndaGateEnabled } from "../_shared/nda-gate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -138,6 +139,31 @@ serve(async (req: Request) => {
         },
         400
       );
+    }
+
+    // NDA-before-access gate. Reveal no test content until the confidentiality
+    // agreement is accepted (clickwrap via cvp-applicant-sign-nda). Soft 200 so
+    // the page renders the NDA step instead of an error.
+    if (ndaGateEnabled()) {
+      const { data: gateApp } = await supabase
+        .from("cvp_applications")
+        .select("full_name, email")
+        .eq("id", sub.application_id)
+        .maybeSingle();
+      const gateEmail = ((gateApp as Record<string, unknown> | null)?.email as string) ?? null;
+      const ndaOk = await hasCurrentNda(supabase, sub.application_id, gateEmail);
+      if (!ndaOk) {
+        const tmpl = await getActiveNdaTemplate(supabase);
+        return jsonResponse({
+          success: true,
+          data: {
+            nda_required: true,
+            applicantName: ((gateApp as Record<string, unknown> | null)?.full_name as string) ?? "",
+            applicantEmail: gateEmail,
+            nda: tmpl,
+          },
+        });
+      }
     }
 
     // Fetch the test content from library

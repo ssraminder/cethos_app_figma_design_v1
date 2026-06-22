@@ -108,36 +108,11 @@ serve(async (req: Request) => {
     );
   }
 
-  // NDA-before-test gate (applicant-login cutover, env APPLICANT_LOGIN_ENABLED).
-  // This is the authoritative chokepoint — both the prescreen path and
-  // cvp-auto-advance reach the assessment through here, so gating here closes
-  // the bypass. Do NOT issue the assessment invitation until the applicant's
-  // NDA is signed in the portal; once signed, the next auto-advance run re-issues
-  // it. Soft 200 so callers treat it as a non-fatal hold, not an error.
-  if (Deno.env.get("APPLICANT_LOGIN_ENABLED") === "true") {
-    const emailLc = (app.email ?? "").toLowerCase();
-    let ndaOk = false;
-    const { data: v } = await supabase.from("vendors").select("id").ilike("email", emailLc).maybeSingle();
-    if ((v as { id?: string } | null)?.id) {
-      const { count } = await supabase.from("vendor_nda_signatures")
-        .select("id", { count: "exact", head: true })
-        .eq("vendor_id", (v as { id: string }).id).eq("is_current", true);
-      ndaOk = (count ?? 0) > 0;
-    }
-    if (!ndaOk) {
-      const { count: c2 } = await supabase.from("vendor_nda_signatures")
-        .select("id", { count: "exact", head: true })
-        .eq("application_id", applicationId).eq("is_current", true);
-      ndaOk = (c2 ?? 0) > 0;
-    }
-    if (!ndaOk) {
-      return jsonResponse({
-        success: false,
-        error: "nda_required",
-        message: "Assessment invitation held until the applicant signs their NDA.",
-      }, 200);
-    }
-  }
+  // NDA gate moved from SEND to ACCESS (2026-06-22). The invitation now goes out
+  // without requiring a pre-signed NDA; the confidentiality agreement is enforced
+  // (and signed via clickwrap) when the applicant opens the assessment — see the
+  // NDA gate in cvp-get-quiz / cvp-get-test + cvp-applicant-sign-nda. The
+  // invitation email below tells the applicant they'll accept a short NDA first.
 
   // Generate fresh token (UUID) + 10-day expiry. Overwrites any existing
   // token on the row — re-sending the invitation invalidates the old link.
@@ -228,6 +203,10 @@ serve(async (req: Request) => {
         <strong>Heads up:</strong> this link expires in <strong>240 hours</strong>. Once you pick a path, you'll receive a follow-up email with the actual test or quiz links.
       </div>
 
+      <div style="margin-top: 14px; padding: 14px 16px; background: #EEF2FF; border-left: 3px solid #6366F1; font-size: 13px; color: #374151;">
+        <strong>One quick step first:</strong> before your assessment opens, you'll be asked to read and accept a short <strong>confidentiality agreement (NDA)</strong>. It takes under a minute and protects the test materials and any client content you may see.
+      </div>
+
       <div style="margin-top: 20px; font-size: 13px; color: #6B7280;">
         Need help deciding or have a question? Reply to this email and we'll get back to you.
       </div>
@@ -239,6 +218,8 @@ serve(async (req: Request) => {
     `  1. Translation test — 60–120 min, applied skill, AI-graded\n` +
     `  2. ISO competence quiz — 20–30 min, 40 MCQs, deterministic\n\n` +
     `Either path is sufficient. Open: ${chooseUrl}\n\n` +
+    `Before your assessment opens, you'll be asked to read and accept a short ` +
+    `confidentiality agreement (NDA) — it takes under a minute.\n\n` +
     `Link expires in 240 hours.\n`;
 
   await sendMailgunEmail({
