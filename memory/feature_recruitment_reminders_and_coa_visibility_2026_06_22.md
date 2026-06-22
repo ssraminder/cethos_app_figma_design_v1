@@ -40,12 +40,14 @@ translators one-by-one.
     scoped reminder {chase:1,referee:0,contacts:0} → applicant email; unscoped cron
     {referee:24,chase:18,contacts:4} unchanged; guard paths reject bad input.
 
-## ⚠️ OPEN — COA quiz audit gaps (found, not yet fixed)
-1. **3 of 7 COA quiz takers are AI "Not recommended — translation failure(s)"** despite
-   93–100% MCQ scores (Jean Carlos Laporte APP-26-0546, Sylvie Loncle APP-26-0530,
-   Alessia Rosafio APP-26-0185). The MCQ auto-approved their combos (≥80%) and advanced
-   them to references_requested — the Part-2 translation failure never gated them. Policy
-   question for the user: should a failed COA Part-2 block auto-advance?
+## COA quiz audit gaps
+1. ✅ RESOLVED (#1070, 2026-06-22) — Policy set by user: **COA competence bar = 90% MCQ;
+   the Part-2 translation AI verdict is ADVISORY** (corroborate the overall score with
+   references + §3.1.4 + CV at approval), never an auto-block. cvp-submit-quiz now
+   auto-approves COA combos at ≥90% and routes <90% to staff_review (assessed) instead of
+   auto-reject. Reviewer Guide + COA panel reflect the 90% bar + "AI (advisory)" label.
+   The 3 flagged applicants (Jean Carlos 96%, Sylvie 100%, Alessia 94%) all clear 90% and
+   were already advanced — fine to proceed.
 2. **Missing combo rows**: some COA quiz passers have NO `coa_linguistic_validation` row in
    `cvp_test_combinations` (Jean Carlos, Ilaria, Alessandro, Alessia) — the cascade in
    `cvp-submit-quiz` had no COA rows to mark approved, so the approval is silently lost.
