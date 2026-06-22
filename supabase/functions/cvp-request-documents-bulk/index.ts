@@ -111,10 +111,23 @@ serve(async (req: Request) => {
     .limit(800);
 
   const cutoffIso = dedupDays > 0 ? new Date(Date.now() - dedupDays * 86400000).toISOString() : null;
+
+  // Skip applicants who already uploaded supporting documents — don't re-nag the
+  // ones who responded. Their uploads live in the matched applicant vendor
+  // account (vendors.certifications), surfaced by cvp_application_iso_evidence.
+  const { data: uploadedRows } = await supabase
+    .from("cvp_application_iso_evidence")
+    .select("application_id")
+    .gt("uploaded_docs_count", 0);
+  const alreadyUploaded = new Set(
+    (uploadedRows ?? []).map((r) => (r as { application_id: string }).application_id),
+  );
+
   const eligible: Array<Record<string, string>> = [];
   for (const a of (raw ?? []) as Array<Record<string, string>>) {
     if (eligible.length >= limit) break;
     if (!a.email) continue;
+    if (alreadyUploaded.has(a.id)) continue;
     // g1 requires a passed combo (competence proven); g2 must NOT have one
     const { count: passed } = await supabase
       .from("cvp_test_combinations").select("id", { count: "exact", head: true })
