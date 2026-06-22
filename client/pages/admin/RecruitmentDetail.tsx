@@ -6184,6 +6184,35 @@ export default function RecruitmentDetail() {
             )}
           </Section>
 
+          {/* Quiz Results — standalone, so quiz-only candidates (cognitive
+              debriefing has NO test combos) still show their quiz + score.
+              Skips quizzes already rendered under a quiz combo (no dup). */}
+          {(() => {
+            const shownLangIds = new Set(
+              combinations
+                .filter((c) => c.instrument_kind === "quiz")
+                .map((c) => c.target_language_id),
+            );
+            const orphanQuizzes = quizSubmissions.filter(
+              (q) => !shownLangIds.has(q.target_language_id),
+            );
+            if (orphanQuizzes.length === 0) return null;
+            return (
+              <Section title={`Quiz Results (${orphanQuizzes.length})`} defaultOpen>
+                <div className="space-y-3">
+                  {orphanQuizzes.map((q, i) => (
+                    <QuizSubmissionPanel
+                      key={q.id ?? i}
+                      submission={q}
+                      questions={quizQuestions}
+                      languageLabel={languages[q.target_language_id] || "?"}
+                    />
+                  ))}
+                </div>
+              </Section>
+            );
+          })()}
+
           {/* Negotiation History */}
           {app.negotiation_log && app.negotiation_log.length > 0 && (
             <Section title="Negotiation History">
