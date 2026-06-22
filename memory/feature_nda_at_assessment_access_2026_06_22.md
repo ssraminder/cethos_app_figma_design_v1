@@ -58,6 +58,24 @@ cvp-applicant-sign-nda 400'd on the IP-extraction line; fixed by splitting into
 - sign-nda guards: bad token → "Invalid or expired assessment link"; short name → "Please
   type your full legal name to sign". Happy-path sign NOT run on a real applicant.
 
+## One-time / audit-ready / reliable (2026-06-22, PR #1072 admin + #265 vendor)
+User directive: "NDA signature should be a one time activity." Findings + fixes:
+- Real applicants get a vendor row at APPLICATION time (cvp-approve-application line ~369,
+  APPLICANT_LOGIN_ENABLED), so their access-time signature is vendor-linked immediately →
+  QMS doc created (trigger) + vendor portal recognises it (get-nda-status keys on vendor_id)
+  → already one-time. Only the test dummy had a vendor-less signature (aliased email).
+- cvp-applicant-sign-nda: idempotency — if a current NDA exists (by application OR vendor),
+  return the existing signature ({alreadySigned:true}); never insert a duplicate. Verified
+  live (2 re-sign attempts → same signatureId, 1 current row, 0 dupes).
+- cvp-approve-application: carry-over — backfill vendor_id onto any access-time applicant-only
+  signature on approval (non-fatal). Trigger fires on UPDATE (events = INSERT UPDATE) → QMS
+  doc. Covers the edge case where no vendor row existed at sign time.
+- NdaGate UX: copy tells the applicant it's one-time (carries to assessments + vendor account).
+- NOT done: signed-PDF for the applicant clickwrap (vendor sign-nda makes one; applicant flow
+  stores HTML snapshot + e-sig metadata only — audit-defensible, PDF is a follow-up). Carry-over
+  not live-tested (would need a real approval = irreversible onboarding; verified by logic +
+  the confirmed UPDATE-trigger behaviour).
+
 ## Open / next
 - Paul Kremel (APP-26-0816): the send is now unblocked — user can retry "send invitation"
   in the portal; he'll sign the NDA at access.
