@@ -5833,7 +5833,7 @@ export default function RecruitmentDetail() {
         {/* CENTRE PANEL — Stage Content */}
         <div className="lg:col-span-5 space-y-4">
           {/* AI Pre-screening */}
-          <Section title="AI Pre-screening">
+          <Section title="AI Pre-screening (advisory)" defaultOpen={false}>
             {/* Reassess button — visible once there's staff context for this app */}
             {aiResult && (flagFeedback.length > 0 || (() => {
               const r = aiResult as Record<string, unknown>;
@@ -6031,51 +6031,23 @@ export default function RecruitmentDetail() {
                   );
                 })()}
 
-                {/* AI-recommended rejection callout — visible when AI says reject
-                    but staff hasn't decided yet. Clicking Approve runs the same
-                    rejection flow as the right-panel Reject button (queues V12
-                    inside 48hr intercept). AI never auto-emails on rejection. */}
+                {/* AI pre-screen note — advisory only, NON-ACTIONABLE. The
+                    pre-screen is an early CV-vs-form check (it can misread a
+                    strong candidate whose background is simply misaligned with
+                    the test domain). The qualification decision is made from the
+                    competence test/quiz, references, and §3.1.4 evidence via the
+                    Reviewer guide at the top — never from this score. */}
                 {(() => {
                   const r = aiResult as Record<string, unknown>;
-                  if (r.recommendation !== "reject") return null;
-                  if (app.status === "rejected") return null;
-                  if (app.status === "approved") return null;
+                  if (r.recommendation === "proceed" || r.recommendation === "staff_review") return null;
+                  if (!r.notes) return null;
                   return (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-red-800">AI recommends rejection</p>
-                          <p className="text-xs text-red-700 mt-1">
-                            {r.notes ? String(r.notes) : "Score below the auto-advance threshold."}
-                            {" "}
-                            No email is sent until you approve below.
-                          </p>
-                          <div className="flex gap-2 mt-3">
-                            <button
-                              type="button"
-                              disabled={actionLoading === "rejected"}
-                              onClick={() => handleDecision("rejected")}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-medium rounded-md"
-                            >
-                              {actionLoading === "rejected" ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Ban className="w-3.5 h-3.5" />
-                              )}
-                              Approve rejection (queues 48h intercept)
-                            </button>
-                            <button
-                              type="button"
-                              disabled={actionLoading === "info_requested"}
-                              onClick={() => handleDecision("info_requested")}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-xs font-medium rounded-md"
-                            >
-                              Request more info instead
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="text-xs font-semibold text-gray-600">AI pre-screen note — advisory, not a decision</p>
+                      <p className="text-xs text-gray-700 mt-1">{String(r.notes)}</p>
+                      <p className="text-[11px] text-gray-400 mt-1.5">
+                        Early CV-vs-form screen only — it can flag a qualified applicant whose background is misaligned with the test domain. Decide from the competence test/quiz, references, and §3.1.4 evidence, not this score.
+                      </p>
                     </div>
                   );
                 })()}
