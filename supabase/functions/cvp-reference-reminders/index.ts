@@ -31,6 +31,7 @@ const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&a
 const daysSince = (iso: string) => (Date.now() - new Date(iso).getTime()) / 86400000;
 /** milestones passed for an age = how many reminders SHOULD have gone out. */
 const dueCount = (ageDays: number) => MILESTONES.filter((m) => ageDays >= m).length;
+const fmtDate = (iso: string) => { try { return new Date(iso).toISOString().slice(0, 10); } catch { return ""; } };
 
 function wrap(title: string, bodyHtml: string, btnLabel: string, btnUrl: string): string {
   return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1f2937;">
@@ -44,10 +45,18 @@ function wrap(title: string, bodyHtml: string, btnLabel: string, btnUrl: string)
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-  let body: { confirm?: boolean; dry_run?: boolean; limit?: number } = {};
+  let body: { confirm?: boolean; dry_run?: boolean; limit?: number; application_id?: string; force?: boolean; only_type?: "referee" | "chase" | "contacts" } = {};
   try { body = await req.json(); } catch { /* cron may send empty */ }
   const send = body.confirm === true && body.dry_run !== true;
   const limit = Math.min(Math.max(1, Number(body.limit ?? 100)), 400);
+  // Manual single-application mode (admin "Remind applicant" button):
+  // application_id scopes the sweep to one applicant, force bypasses the
+  // 3/7/14-day cadence (staff clicked deliberately), only_type restricts to one
+  // job kind. only_type:"chase" = the vendor-only reminder with shareable links.
+  const appFilter = (body.application_id ?? "").trim() || null;
+  const force = body.force === true;
+  const onlyType = body.only_type ?? null;
+  const typeAllowed = (t: "referee" | "chase" | "contacts") => !onlyType || onlyType === t;
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -68,11 +77,13 @@ serve(async (req: Request) => {
   const jobs: Job[] = [];
 
   // ---- A: referees who haven't completed the form ----
-  const { data: pendingRefs } = await supabase
+  let pendingQuery = supabase
     .from("cvp_application_references")
     .select("id, application_id, reference_name, reference_email, feedback_token, status, created_at, feedback_token_expires_at")
     .eq("status", "requested")
     .gt("feedback_token_expires_at", nowIso);
+  if (appFilter) pendingQuery = pendingQuery.eq("application_id", appFilter);
+  const { data: pendingRefs } = await pendingQuery;
   // applicant names for the pending refs
   const appIds = Array.from(new Set((pendingRefs ?? []).map((r) => (r as { application_id: string }).application_id)));
   const appById = new Map<string, { full_name: string | null; email: string | null }>();
@@ -80,13 +91,13 @@ serve(async (req: Request) => {
     const { data: apps } = await supabase.from("cvp_applications").select("id, full_name, email").in("id", appIds);
     for (const a of apps ?? []) appById.set((a as { id: string }).id, a as { full_name: string | null; email: string | null });
   }
-  const pendingByApp = new Map<string, { name: string; token: string }[]>();
+  const pendingByApp = new Map<string, { name: string; token: string; sentAt: string }[]>();
   for (const r of (pendingRefs ?? []) as Array<Record<string, string>>) {
     if (!r.reference_email || !r.feedback_token) continue;
     const applicant = appById.get(r.application_id);
     const aName = applicant?.full_name ?? "your applicant";
-    // A — referee reminder
-    if (priorCount("referee", r.id) < dueCount(daysSince(r.created_at)) && priorCount("referee", r.id) < MAX_REMINDERS) {
+    // A — referee reminder (force bypasses cadence; only_type can exclude it)
+    if (typeAllowed("referee") && (force || (priorCount("referee", r.id) < dueCount(daysSince(r.created_at)) && priorCount("referee", r.id) < MAX_REMINDERS))) {
       const url = `${APP_URL}/reference-feedback/${r.feedback_token}`;
       jobs.push({
         type: "referee", id: r.id, to: r.reference_email, toName: r.reference_name ?? r.reference_email,
@@ -98,33 +109,45 @@ serve(async (req: Request) => {
     }
     // collect for B (applicant chase)
     const arr = pendingByApp.get(r.application_id) ?? [];
-    arr.push({ name: r.reference_name ?? r.reference_email, token: r.feedback_token });
+    arr.push({ name: r.reference_name ?? r.reference_email, token: r.feedback_token, sentAt: r.created_at });
     pendingByApp.set(r.application_id, arr);
   }
 
   // ---- B: applicants whose referees are still pending (chase) ----
   for (const [appId, refs] of pendingByApp) {
+    if (!typeAllowed("chase")) break;
     const applicant = appById.get(appId);
     if (!applicant?.email) continue;
     // age = oldest pending ref for this app
     const oldest = Math.max(...(pendingRefs ?? []).filter((r) => (r as { application_id: string }).application_id === appId).map((r) => daysSince((r as { created_at: string }).created_at)));
-    if (priorCount("chase", appId) >= dueCount(oldest) || priorCount("chase", appId) >= MAX_REMINDERS) continue;
-    const list = refs.map((x) => `<li style="margin:4px 0;">${esc(x.name)} — <a href="${APP_URL}/reference-feedback/${x.token}">their reference form</a></li>`).join("");
+    if (!force && (priorCount("chase", appId) >= dueCount(oldest) || priorCount("chase", appId) >= MAX_REMINDERS)) continue;
+    // Each line carries the date that referee's form was sent + the raw link
+    // (visible, copyable text) so the applicant can forward it to their referee.
+    const list = refs.map((x) => {
+      const url = `${APP_URL}/reference-feedback/${x.token}`;
+      return `<li style="margin:8px 0;">${esc(x.name)} — <span style="color:#6b7280;">form sent ${fmtDate(x.sentAt)}</span><br/><a href="${url}" style="word-break:break-all;">${url}</a></li>`;
+    }).join("");
     jobs.push({
       type: "chase", id: appId, to: applicant.email, toName: applicant.full_name ?? applicant.email,
       subject: "Your references are still pending — Cethos",
       html: wrap("Your application is waiting on references",
-        `<p>Hi ${esc(applicant.full_name ?? "there")},</p><p>Your application is held up waiting on your referee(s) to complete a short form. Please give them a nudge — each can use their own link below:</p><ul>${list}</ul>`,
+        `<p>Hi ${esc(applicant.full_name ?? "there")},</p><p>Your application is held up waiting on your referee(s) to complete a short form. Please give them a nudge — each can use their own direct link below (copy &amp; share it with them):</p><ul style="padding-left:18px;">${list}</ul>`,
         "View your application", `${APP_URL}`),
     });
   }
 
   // ---- C: applicants who never submitted referee contacts ----
-  const { data: reqs } = await supabase
-    .from("cvp_application_reference_requests")
-    .select("id, application_id, request_token, contacts_submitted_at, created_at, request_token_expires_at")
-    .is("contacts_submitted_at", null)
-    .gt("request_token_expires_at", nowIso);
+  let reqs: Array<Record<string, string>> = [];
+  if (typeAllowed("contacts")) {
+    let reqsQuery = supabase
+      .from("cvp_application_reference_requests")
+      .select("id, application_id, request_token, contacts_submitted_at, created_at, request_token_expires_at")
+      .is("contacts_submitted_at", null)
+      .gt("request_token_expires_at", nowIso);
+    if (appFilter) reqsQuery = reqsQuery.eq("application_id", appFilter);
+    const { data } = await reqsQuery;
+    reqs = (data ?? []) as Array<Record<string, string>>;
+  }
   const reqAppIds = Array.from(new Set((reqs ?? []).map((r) => (r as { application_id: string }).application_id)));
   if (reqAppIds.length) {
     const missing = reqAppIds.filter((id) => !appById.has(id));
@@ -136,7 +159,7 @@ serve(async (req: Request) => {
   for (const rq of (reqs ?? []) as Array<Record<string, string>>) {
     const applicant = appById.get(rq.application_id);
     if (!applicant?.email || !rq.request_token) continue;
-    if (priorCount("contacts", rq.id) >= dueCount(daysSince(rq.created_at)) || priorCount("contacts", rq.id) >= MAX_REMINDERS) continue;
+    if (!force && (priorCount("contacts", rq.id) >= dueCount(daysSince(rq.created_at)) || priorCount("contacts", rq.id) >= MAX_REMINDERS)) continue;
     jobs.push({
       type: "contacts", id: rq.id, to: applicant.email, toName: applicant.full_name ?? applicant.email,
       subject: "We still need your references — Cethos",
