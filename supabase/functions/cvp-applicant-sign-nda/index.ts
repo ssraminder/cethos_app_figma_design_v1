@@ -97,8 +97,41 @@ serve(async (req: Request) => {
   const ip = req.headers.get("cf-connecting-ip") ?? (xff || null);
   const userAgent = req.headers.get("user-agent") ?? null;
 
-  // 4. Supersede any prior current NDA for this applicant (by application + vendor)
-  // so is_current stays single. Append-friendly: prior rows are retained.
+  // 3b. One-time / idempotent. Signing the NDA is a once-ever action. If a current
+  // NDA already exists for this applicant (by application or by their vendor row),
+  // do NOT create another — return the existing one. This makes the endpoint safe
+  // against double-clicks, retries and races, and guarantees a single live NDA.
+  {
+    let existing: { id: string } | null = null;
+    const { data: byApp } = await supabase
+      .from("vendor_nda_signatures")
+      .select("id")
+      .eq("application_id", applicationId)
+      .eq("agreement_type", "nda")
+      .eq("is_current", true)
+      .limit(1)
+      .maybeSingle();
+    existing = (byApp as { id: string } | null) ?? null;
+    if (!existing && vendorId) {
+      const { data: byVendor } = await supabase
+        .from("vendor_nda_signatures")
+        .select("id")
+        .eq("vendor_id", vendorId)
+        .eq("agreement_type", "nda")
+        .eq("is_current", true)
+        .limit(1)
+        .maybeSingle();
+      existing = (byVendor as { id: string } | null) ?? null;
+    }
+    if (existing) {
+      return json({ success: true, data: { signatureId: existing.id, alreadySigned: true } });
+    }
+  }
+
+  // 4. Supersede any prior (non-current) NDA bookkeeping for this applicant (by
+  // application + vendor) so is_current stays single. Append-friendly: prior rows
+  // are retained. (No current row exists here — the idempotency check above
+  // returned early if one did.)
   const supersede = {
     is_current: false,
     superseded_at: nowIso,

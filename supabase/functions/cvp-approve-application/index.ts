@@ -476,6 +476,24 @@ serve(async (req: Request) => {
     vendorId = newVendor.id;
   }
 
+  // One-time NDA carry-over. If the applicant accepted the NDA at assessment
+  // access before a vendor row existed (applicant-only signature, vendor_id NULL),
+  // link it to this vendor now. That makes the signature visible to the vendor
+  // portal's NDA check (which keys on vendor_id) — so they are never asked to
+  // sign again — and the vendor_nda_signatures UPDATE trigger materialises it as
+  // a QMS document (qms.nda_agreements). Non-fatal: never blocks approval.
+  try {
+    await supabase
+      .from("vendor_nda_signatures")
+      .update({ vendor_id: vendorId })
+      .eq("application_id", body.applicationId)
+      .is("vendor_id", null)
+      .eq("agreement_type", "nda")
+      .eq("is_current", true);
+  } catch (ndaLinkErr) {
+    console.error("NDA vendor-link backfill failed (non-fatal):", ndaLinkErr);
+  }
+
   // Agencies don't get a cvp_translators row — that table represents the
   // *individual linguist* identity, which for agencies lives on the
   // blinded roster (PR A3). The vendor record IS the agency.
