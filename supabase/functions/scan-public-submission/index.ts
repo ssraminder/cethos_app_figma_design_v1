@@ -67,7 +67,12 @@ interface AnonFileMeta {
   originalName: string;
   size: number;
   mimeType: string;
-  scanStatus: "scan_pending" | "scan_clean" | "scan_infected" | "scan_error";
+  scanStatus:
+    | "scan_pending"
+    | "scan_clean"
+    | "scan_infected"
+    | "scan_error"
+    | "scan_skipped";
 }
 
 interface CustomerFileRow {
@@ -75,6 +80,83 @@ interface CustomerFileRow {
   storage_path: string;
   original_filename: string;
   customer_id: string;
+}
+
+// Thrown for VirusTotal rate-limit (429) / transient (5xx) failures. The batch
+// loop leaves the file scan_pending instead of burning it to scan_error, so the
+// self-reinvoke + sweeper cron retry it once the free-tier quota frees up.
+class RetryableScanError extends Error {}
+
+const AV_SCAN_SETTING_KEY = "public_submission_av_scan";
+const SWEEP_LIMIT = 25;
+const SWEEP_MIN_AGE_MS = 30 * 1000;
+
+// Reads the AV kill-switch. Fails SAFE to scanning ON when the row is absent or
+// unreadable — turning scanning off is always an explicit 'false'.
+async function isAvScanEnabled(
+  supabaseAdmin: ReturnType<typeof createClient>,
+): Promise<boolean> {
+  try {
+    const { data } = await supabaseAdmin
+      .from("app_settings")
+      .select("setting_value")
+      .eq("setting_key", AV_SCAN_SETTING_KEY)
+      .maybeSingle();
+    if (!data) return true;
+    return String(data.setting_value).toLowerCase() === "true";
+  } catch {
+    return true;
+  }
+}
+
+// Fire-and-forget the quote conversion for a submission. Idempotent on the
+// convert side (returns the existing quote if already converted).
+function fireConvert(submissionId: string): void {
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) return;
+  scheduleAfterResponse(
+    fetch(`${url}/functions/v1/convert-submission-to-quote`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({ submission_id: submissionId }),
+    }),
+  );
+}
+
+// Sweeper (cron, every minute): resume any submission stuck in scan_pending.
+// Inert when the AV kill-switch is off.
+async function handleSweep(
+  supabaseAdmin: ReturnType<typeof createClient>,
+): Promise<Response> {
+  if (!(await isAvScanEnabled(supabaseAdmin))) {
+    return jsonResponse(200, { success: true, swept: 0, skipped: "av_scan_disabled" });
+  }
+  const cutoff = new Date(Date.now() - SWEEP_MIN_AGE_MS).toISOString();
+  const { data: stuck, error } = await supabaseAdmin
+    .from("public_submissions")
+    .select("id")
+    .eq("scan_status", "scan_pending")
+    .lt("created_at", cutoff)
+    .order("created_at", { ascending: true })
+    .limit(SWEEP_LIMIT);
+  if (error) throw new Error(`sweep fetch: ${error.message}`);
+
+  const ids = ((stuck || []) as Array<{ id: string }>).map((r) => r.id);
+  for (const id of ids) {
+    scheduleAfterResponse(
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/scan-public-submission`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "submission", submissionId: id }),
+      }),
+    );
+  }
+  console.log(`sweep re-kicked ${ids.length} stuck submission(s)`);
+  return jsonResponse(200, { success: true, swept: ids.length });
 }
 
 serve(async (req) => {
@@ -91,21 +173,28 @@ serve(async (req) => {
   });
 
   try {
-    if (!vtKey) throw new Error("VIRUSTOTAL_API_KEY not configured");
-
     const body = await req.json().catch(() => ({}));
-    const kind: Kind = body.kind === "customer-batch" ? "customer-batch" : "submission";
+    const kind =
+      body.kind === "customer-batch"
+        ? "customer-batch"
+        : body.kind === "sweep"
+          ? "sweep"
+          : "submission";
 
+    if (kind === "sweep") {
+      // Reliability net: re-kick anything stuck in scan_pending. Inert when the
+      // AV kill-switch is off (nothing is scan_pending in that mode).
+      return await handleSweep(supabaseAdmin);
+    }
     if (kind === "submission") {
       return await handleSubmission(supabaseAdmin, vtKey, body.submissionId);
-    } else {
-      return await handleCustomerBatch(
-        supabaseAdmin,
-        vtKey,
-        body.uploadSessionId,
-        body.customerId,
-      );
     }
+    return await handleCustomerBatch(
+      supabaseAdmin,
+      vtKey,
+      body.uploadSessionId,
+      body.customerId,
+    );
   } catch (err: unknown) {
     const msg = (err instanceof Error ? err.message : String(err)).slice(0, 500);
     console.error("scan-public-submission error:", msg);
@@ -125,6 +214,7 @@ async function handleSubmission(
   if (!submissionId) {
     return jsonResponse(400, { success: false, error: "submissionId required" });
   }
+  if (!vtKey) throw new Error("VIRUSTOTAL_API_KEY not configured");
 
   const { data: row } = await supabaseAdmin
     .from("public_submissions")
@@ -158,6 +248,7 @@ async function handleSubmission(
 
   const batchIdx = pendingIdx.slice(0, BATCH_SIZE);
   const updated = [...allFiles];
+  let retryableHit = false;
 
   for (let n = 0; n < batchIdx.length; n++) {
     const i = batchIdx[n];
@@ -172,6 +263,15 @@ async function handleSubmission(
         updated[i] = { ...f, scanStatus: "scan_clean" };
       }
     } catch (fileErr) {
+      if (fileErr instanceof RetryableScanError) {
+        // Rate-limited / VT transient — leave this file scan_pending and stop
+        // the batch. The self-reinvoke + sweeper cron retry it later, so a
+        // free-tier quota burst no longer freezes the submission or burns it
+        // to a false scan_error.
+        console.warn(`scan retryable for ${f.path}: ${fileErr.message} — leaving pending`);
+        retryableHit = true;
+        break;
+      }
       console.error(`scan failed for ${f.path}:`, fileErr);
       updated[i] = { ...f, scanStatus: "scan_error" };
     }
@@ -200,7 +300,8 @@ async function handleSubmission(
     })
     .eq("id", submissionId);
 
-  if (remaining > 0) {
+  if (remaining > 0 && !retryableHit) {
+    // Normal fast path — immediately continue the next batch.
     scheduleAfterResponse(
       fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/scan-public-submission`, {
         method: "POST",
@@ -208,6 +309,22 @@ async function handleSubmission(
         body: JSON.stringify({ kind: "submission", submissionId }),
       }),
     );
+  } else if (remaining > 0) {
+    // Rate-limited this batch — do NOT self-reinvoke (that would just hit the
+    // quota again in a tight loop). The 1-minute sweeper cron resumes it once
+    // the VirusTotal quota frees up.
+    console.log(`anon ${submissionId} rate-limited; deferring to sweeper cron`);
+  } else {
+    // Terminal — the scan is done. Auto-create the draft quote from the
+    // (now scanned) files. convert-submission-to-quote is idempotent, skips
+    // infected files, and no-ops cleanly when nothing is eligible.
+    const eligibleCount = updated.filter(
+      (f) =>
+        f.scanStatus === "scan_clean" ||
+        f.scanStatus === "scan_error" ||
+        f.scanStatus === "scan_skipped",
+    ).length;
+    if (eligibleCount > 0) fireConvert(submissionId);
   }
 
   console.log(`anon ${submissionId} batch done remaining=${remaining} overall=${overall}`);
@@ -236,6 +353,7 @@ async function handleCustomerBatch(
       error: "uploadSessionId and customerId required",
     });
   }
+  if (!vtKey) throw new Error("VIRUSTOTAL_API_KEY not configured");
 
   const { data: pending, error: pendingErr } = await supabaseAdmin
     .from("customer_files")
@@ -353,9 +471,11 @@ async function scanOneFile(
     body: vtForm,
   });
   if (!uploadResp.ok) {
-    throw new Error(
-      `VT upload: ${uploadResp.status} ${await uploadResp.text().catch(() => "")}`,
-    );
+    const bodyText = await uploadResp.text().catch(() => "");
+    if (uploadResp.status === 429 || uploadResp.status >= 500) {
+      throw new RetryableScanError(`VT upload ${uploadResp.status} (rate-limited/transient)`);
+    }
+    throw new Error(`VT upload: ${uploadResp.status} ${bodyText}`);
   }
   const uploadData = await uploadResp.json();
   const analysisId = uploadData?.data?.id;
@@ -367,6 +487,9 @@ async function scanOneFile(
       headers: { "x-apikey": vtKey },
     });
     if (!analysisResp.ok) {
+      if (analysisResp.status === 429 || analysisResp.status >= 500) {
+        throw new RetryableScanError(`VT analysis ${analysisResp.status} (rate-limited/transient)`);
+      }
       throw new Error(`VT analysis fetch: ${analysisResp.status}`);
     }
     const analysisData = await analysisResp.json();

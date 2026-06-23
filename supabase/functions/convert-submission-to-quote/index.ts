@@ -33,7 +33,12 @@ interface SubmissionFile {
   originalName: string;
   size: number;
   mimeType: string;
-  scanStatus: "scan_pending" | "scan_clean" | "scan_infected" | "scan_error";
+  scanStatus:
+    | "scan_pending"
+    | "scan_clean"
+    | "scan_infected"
+    | "scan_error"
+    | "scan_skipped";
 }
 
 function jsonResponse(data: Record<string, unknown>, status = 200) {
@@ -101,8 +106,13 @@ serve(async (req: Request) => {
     }
 
     const allFiles = (sub.file_paths as SubmissionFile[]) || [];
+    // scan_skipped = AV scan was disabled for the public route (not scanned, not
+    // claimed clean); treated as downloadable, same as scan_error.
     const eligible = allFiles.filter(
-      (f) => f.scanStatus === "scan_clean" || f.scanStatus === "scan_error",
+      (f) =>
+        f.scanStatus === "scan_clean" ||
+        f.scanStatus === "scan_error" ||
+        f.scanStatus === "scan_skipped",
     );
     const skippedInfected = allFiles.length - eligible.length;
     if (eligible.length === 0) {

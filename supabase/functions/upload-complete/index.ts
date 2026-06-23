@@ -239,13 +239,20 @@ serve(async (req) => {
         });
       }
 
+      // AV scan kill-switch for the public route. When ON, files land
+      // scan_pending and the scanner runs (converting to a quote on
+      // completion). When OFF, files are marked scan_skipped (not scanned, not
+      // claimed clean) and the submission converts to a quote immediately.
+      const avEnabled = await isAvScanEnabled(supabaseAdmin);
+      const initialScan = avEnabled ? "scan_pending" : "scan_skipped";
+
       const filePathsMeta = files.map((f) => ({
         path: f.path,
         originalName: f.originalName.slice(0, 200),
         size: f.size,
         mimeType: f.mimeType,
         folder: (f.folder || "").slice(0, 80) || null,
-        scanStatus: "scan_pending" as const,
+        scanStatus: initialScan,
       }));
 
       const { error: insertErr } = await supabaseAdmin
@@ -264,7 +271,8 @@ serve(async (req) => {
               : "main_web",
           ip_address: ipHeader,
           user_agent: userAgent,
-          scan_status: "scan_pending",
+          scan_status: initialScan,
+          scan_completed_at: avEnabled ? null : new Date().toISOString(),
           customer_id: null,
         });
 
@@ -273,15 +281,27 @@ serve(async (req) => {
         throw new Error(insertErr.message);
       }
 
-      // Trigger scan
-      fetch(`${supabaseUrl}/functions/v1/scan-public-submission`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({ kind: "submission", submissionId }),
-      }).catch(() => {});
+      if (avEnabled) {
+        // Trigger scan; conversion to a quote fires when the scan completes.
+        fetch(`${supabaseUrl}/functions/v1/scan-public-submission`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ kind: "submission", submissionId }),
+        }).catch(() => {});
+      } else {
+        // Scan disabled — create the draft quote immediately (idempotent).
+        fetch(`${supabaseUrl}/functions/v1/convert-submission-to-quote`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ submission_id: submissionId }),
+        }).catch(() => {});
+      }
 
       // Email the admin team. Fire-and-forget so a Brevo hiccup doesn't fail
       // the whole submission. Recipient comes from ADMIN_NOTIFICATION_EMAIL
@@ -300,6 +320,7 @@ serve(async (req) => {
         orderOrQuoteId,
         message,
         files: filePathsMeta,
+        avEnabled,
       });
     } else {
       // Customer or admin context — one customer_files row per file
@@ -439,6 +460,25 @@ async function customerExists(
   return !!data;
 }
 
+// Reads the public-route AV scan kill-switch (app_settings). Fails SAFE to
+// scanning ON when the row is absent or unreadable — disabling is always an
+// explicit 'false'.
+async function isAvScanEnabled(
+  supabaseAdmin: ReturnType<typeof createClient>,
+): Promise<boolean> {
+  try {
+    const { data } = await supabaseAdmin
+      .from("app_settings")
+      .select("setting_value")
+      .eq("setting_key", "public_submission_av_scan")
+      .maybeSingle();
+    if (!data) return true;
+    return String(data.setting_value).toLowerCase() === "true";
+  } catch {
+    return true;
+  }
+}
+
 const EXT_TO_MIME: Record<string, string> = {
   pdf: "application/pdf",
   jpg: "image/jpeg",
@@ -476,6 +516,7 @@ async function notifyAdminOfSubmission(args: {
     size: number;
     folder?: string | null;
   }>;
+  avEnabled: boolean;
 }): Promise<void> {
   if (!args.brevoKey) {
     console.warn("BREVO_API_KEY not configured — skipping admin email");
@@ -536,12 +577,20 @@ async function notifyAdminOfSubmission(args: {
       [
         statusBadge("info", "New secure upload"),
         titleHelper(`${escShell(args.fullName)} just uploaded ${totalCount} file${totalCount === 1 ? "" : "s"}`),
-        lead(`A new submission just came in via <code style="background:${C.slate100};padding:2px 6px;border-radius:4px;">/secure-upload</code>. Review the files in the admin portal — they're being scanned now and downloads will unlock once the scan completes.`),
+        lead(
+          args.avEnabled
+            ? `A new submission just came in via <code style="background:${C.slate100};padding:2px 6px;border-radius:4px;">/secure-upload</code>. Review the files in the admin portal — they're being scanned now and downloads will unlock once the scan completes.`
+            : `A new submission just came in via <code style="background:${C.slate100};padding:2px 6px;border-radius:4px;">/secure-upload</code>. A draft quote is being created automatically with these files attached — review it in the admin portal.`,
+        ),
         detailsTable(detailRows),
         messageCallout,
         `<div style="margin:0 0 22px;">${folderHtml}</div>`,
         ctaButton({ label: "Open in admin portal", url: reviewUrl, align: "left" }),
-        hint(`Files are scanning. Downloads unlock once the scan completes.`),
+        hint(
+          args.avEnabled
+            ? `Files are scanning. Downloads unlock once the scan completes.`
+            : `A draft quote was created automatically from these files.`,
+        ),
       ].join(""),
       { replyTo: args.email, template: TEMPLATE, preheader: `New secure upload — ${escShell(args.fullName)} (${totalCount} file${totalCount === 1 ? "" : "s"})` },
     );

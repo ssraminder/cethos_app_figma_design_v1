@@ -39,7 +39,12 @@ interface FileMeta {
   size: number;
   mimeType: string;
   folder?: string | null;
-  scanStatus: 'scan_pending' | 'scan_clean' | 'scan_infected' | 'scan_error';
+  scanStatus:
+    | 'scan_pending'
+    | 'scan_clean'
+    | 'scan_infected'
+    | 'scan_error'
+    | 'scan_skipped';
 }
 
 interface Submission {
@@ -51,7 +56,12 @@ interface Submission {
   message: string | null;
   file_paths: FileMeta[];
   submitted_from: string | null;
-  scan_status: 'scan_pending' | 'scan_clean' | 'scan_infected' | 'scan_error';
+  scan_status:
+    | 'scan_pending'
+    | 'scan_clean'
+    | 'scan_infected'
+    | 'scan_error'
+    | 'scan_skipped';
   scan_completed_at: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
@@ -173,7 +183,10 @@ export default function PublicSubmissionsPage() {
 
   const downloadAll = async (submission: Submission) => {
     const downloadable = (submission.file_paths || []).filter(
-      (f) => f.scanStatus === 'scan_clean' || f.scanStatus === 'scan_error',
+      (f) =>
+        f.scanStatus === 'scan_clean' ||
+        f.scanStatus === 'scan_error' ||
+        f.scanStatus === 'scan_skipped',
     );
     if (downloadable.length === 0) {
       toast.info('No files ready to download');
@@ -481,6 +494,16 @@ function ScanBadge({ status }: { status: FileMeta['scanStatus'] }) {
           Scan error
         </span>
       );
+    case 'scan_skipped':
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-xs"
+          title="Antivirus scanning is disabled for the public route — these files were not scanned."
+        >
+          <ShieldQuestion className="w-3 h-3" />
+          Not scanned
+        </span>
+      );
   }
 }
 
@@ -602,7 +625,10 @@ function DetailModal({
                 Files ({submission.file_paths?.length || 0})
               </div>
               {(submission.file_paths || []).filter(
-                (f) => f.scanStatus === 'scan_clean' || f.scanStatus === 'scan_error',
+                (f) =>
+                  f.scanStatus === 'scan_clean' ||
+                  f.scanStatus === 'scan_error' ||
+                  f.scanStatus === 'scan_skipped',
               ).length > 1 && (
                 <button
                   onClick={onDownloadAll}
@@ -714,7 +740,9 @@ function FileRow({
   const fileInfected = f.scanStatus === 'scan_infected';
   const filePending = f.scanStatus === 'scan_pending';
   const canAccess =
-    f.scanStatus === 'scan_clean' || f.scanStatus === 'scan_error';
+    f.scanStatus === 'scan_clean' ||
+    f.scanStatus === 'scan_error' ||
+    f.scanStatus === 'scan_skipped';
   const previewable =
     canAccess &&
     (f.mimeType === 'application/pdf' || f.mimeType.startsWith('image/'));
