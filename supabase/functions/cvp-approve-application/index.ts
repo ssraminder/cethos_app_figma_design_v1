@@ -153,18 +153,54 @@ serve(async (req: Request) => {
   //     pending domains the applicant chose but never validated.
   const comboQuery = supabase
     .from("cvp_test_combinations")
-    .select("id, source_language_id, target_language_id, domain, service_type, approved_rate, status, test_submission_id")
+    .select("id, source_language_id, target_language_id, domain, service_type, approved_rate, status, test_submission_id, ai_score")
     .eq("application_id", body.applicationId);
 
   //   - When skipTesting is set (experience/degree onboarding), approve ALL
   //     of the applicant's declared combinations regardless of test status —
   //     this is the "no test required" path; the §3.1.4 basis is recorded
   //     separately on the application.
-  const { data: combos, error: comboErr } = body.combinationIds && body.combinationIds.length > 0
-    ? await comboQuery.in("id", body.combinationIds)
-    : body.skipTesting
-      ? await comboQuery
-      : await comboQuery.in("status", ["approved", "skip_manual_review"]);
+  // Option B (2026-06-23): the combo `status='approved'` flag is NOT proof a
+  // domain was tested — a General test pass CASCADES `approved` onto every
+  // declared domain (cvp-assess-test), and a backfill stamped others, all with no
+  // test_submission_id/ai_score. So the default must qualify ONLY genuinely
+  // evidenced domains, never the phantom: (a) combos with a real graded+passed
+  // test (test_submission_id + ai_score), PLUS (b) — since the COA quiz is the
+  // only real clinical assessment — the applicant's declared clinical domains
+  // when a COA quiz passed (>=90%). The admin domain-pick step still overrides via
+  // combinationIds.
+  let combos: Array<Record<string, unknown>> | null = null;
+  let comboErr: { message: string } | null = null;
+  if (body.combinationIds && body.combinationIds.length > 0) {
+    ({ data: combos, error: comboErr } = await comboQuery.in("id", body.combinationIds));
+  } else if (body.skipTesting) {
+    ({ data: combos, error: comboErr } = await comboQuery);
+  } else {
+    const graded = await comboQuery
+      .eq("status", "approved")
+      .not("test_submission_id", "is", null)
+      .not("ai_score", "is", null);
+    comboErr = graded.error;
+    combos = (graded.data ?? []) as Array<Record<string, unknown>>;
+    // COA quiz pass -> qualify the applicant's declared clinical domains.
+    const { data: coaPass } = await supabase
+      .from("cvp_quiz_submissions")
+      .select("id")
+      .eq("application_id", body.applicationId)
+      .eq("is_coa", true).eq("status", "submitted").gte("score_pct", 90)
+      .limit(1);
+    if ((coaPass ?? []).length > 0) {
+      const { data: clinical } = await supabase
+        .from("cvp_test_combinations")
+        .select("id, source_language_id, target_language_id, domain, service_type, approved_rate, status, test_submission_id, ai_score")
+        .eq("application_id", body.applicationId)
+        .in("domain", ["medical", "life_sciences", "pharmaceutical", "coa_linguistic_validation"]);
+      const seen = new Set(combos.map((c) => c.id as string));
+      for (const c of (clinical ?? []) as Array<Record<string, unknown>>) {
+        if (!seen.has(c.id as string)) combos.push(c);
+      }
+    }
+  }
   if (comboErr) return json({ success: false, error: "combination_lookup_failed", detail: comboErr.message }, 500);
 
   // Validate: every requested ID belongs to this application. Foreign IDs
