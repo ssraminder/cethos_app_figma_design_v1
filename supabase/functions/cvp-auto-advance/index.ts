@@ -106,6 +106,29 @@ serve(async (req: Request) => {
 
   const candidates = rows ?? [];
 
+  // Deliverability guard (2026-06-23): only invite applicants the EN→Target
+  // assessment can actually dispatch for. The quiz dispatcher + cvp-send-tests
+  // key on an EN-SOURCE combo with a non-English TARGET. Into-English
+  // back-translators (e.g. it→en) and applicants with no declared pairs have
+  // none, so a chooser invite would dead-end when they pick test/quiz. We skip
+  // + flag those instead of emailing a dead link. (Precompute as one Set so the
+  // per-applicant loop stays O(1).)
+  const { data: enLangRows } = await supabase.from("languages").select("id").ilike("code", "en%");
+  const EN_LANG_IDS = (enLangRows ?? []).map((r: any) => String(r.id));
+  const deliverable = new Set<string>();
+  const candidateIds = (candidates as any[]).map((c) => c.id);
+  if (candidateIds.length > 0 && EN_LANG_IDS.length > 0) {
+    const { data: dRows } = await supabase
+      .from("cvp_test_combinations")
+      .select("application_id")
+      .in("application_id", candidateIds)
+      .in("status", ["pending", "test_sent", "skip_manual_review"])
+      .in("source_language_id", EN_LANG_IDS)
+      .not("target_language_id", "is", null)
+      .not("target_language_id", "in", `(${EN_LANG_IDS.join(",")})`);
+    for (const r of (dRows ?? []) as any[]) deliverable.add(r.application_id);
+  }
+
   const actions: Array<Record<string, unknown>> = [];
   let advanced = 0, rejected = 0, skipped = 0;
 
@@ -129,6 +152,15 @@ serve(async (req: Request) => {
       }
       rejected++;
       actions.push({ id: a.id, name: a.full_name, action: "reject", reason: junkReason });
+      continue;
+    }
+
+    // Deliverability guard: no EN→(non-English target) combo → the assessment
+    // can't dispatch (into-English back-translator / no declared pairs). Skip +
+    // flag for separate handling rather than send a dead-end invite.
+    if (!deliverable.has(a.id)) {
+      skipped++;
+      actions.push({ id: a.id, name: a.full_name, action: "skipped_no_en_target_combo" });
       continue;
     }
 
