@@ -15,8 +15,10 @@
  *
  * Body:
  *   applicationId      (required)
- *   inboundEmailId     (required) — the inbound we're replying TO
- *   subject?           defaults to "Re: <inbound.subject>"
+ *   inboundEmailId     (optional) — the inbound we're replying TO. When omitted,
+ *                      we compose a FRESH message to the applicant (new thread).
+ *   subject?           defaults to "Re: <inbound.subject>" (reply) or a generic
+ *                      application subject (fresh message)
  *   body?              plain text applicant-facing message (if not useAIDraft)
  *   useAIDraft?        when true, Opus drafts the body using conversation
  *                      context + optional guidance in aiInstructions
@@ -98,6 +100,17 @@ If the applicant's reply is unclear or confrontational, acknowledge receipt and 
 
 Return ONLY the plain-text body. No markdown, no JSON, no preamble.`;
 
+const STAFF_MESSAGE_SYSTEM_PROMPT = `You are drafting a NEW email that CETHOS vendor-management staff will send to a translation-vendor applicant (someone who applied to join our linguist pool). This is NOT a reply — there is no prior message from the applicant to respond to.
+
+Write 2–4 short paragraphs of plain text, warm but professional, that carry out the staff member's intent (for example: ask for a missing document or reference, nudge them to complete a step, answer a likely question, or check in on their application).
+
+Do NOT:
+- Copy internal jargon, scoring numbers, AI flags, or staff-only reasoning
+- Invent rates, deadlines, or commitments unless the staff instructions explicitly include them
+- Include a salutation line ("Hi Name,") or signoff — the template wraps them
+
+Return ONLY the plain-text body. No markdown, no JSON, no preamble.`;
+
 async function draftWithOpus(args: {
   applicantName: string;
   applicationNumber: string;
@@ -107,6 +120,7 @@ async function draftWithOpus(args: {
   inboundBody: string;
   aiReplyAnalysis: Record<string, unknown> | null;
   staffInstructions: string;
+  isReply: boolean;
 }): Promise<{ ok: boolean; text: string | null; error: string | null }> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return { ok: false, text: null, error: "ANTHROPIC_API_KEY not configured" };
@@ -114,7 +128,8 @@ async function draftWithOpus(args: {
   const analysisSummary = args.aiReplyAnalysis
     ? JSON.stringify(args.aiReplyAnalysis).slice(0, 1500)
     : "(none)";
-  const userMessage = `Applicant: ${args.applicantName}
+  const userMessage = args.isReply
+    ? `Applicant: ${args.applicantName}
 Application: ${args.applicationNumber}
 
 --- CETHOS previously sent ---
@@ -131,7 +146,12 @@ ${args.inboundBody.slice(0, 3000)}
 ${analysisSummary}
 
 --- Staff instructions for this draft ---
-${args.staffInstructions || "(none — use your best judgement on tone + next step)"}`;
+${args.staffInstructions || "(none — use your best judgement on tone + next step)"}`
+    : `Applicant: ${args.applicantName}
+Application: ${args.applicationNumber}
+
+--- Staff instructions for this message ---
+${args.staffInstructions || "(none — write a brief, friendly check-in about their application)"}`;
 
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -144,7 +164,7 @@ ${args.staffInstructions || "(none — use your best judgement on tone + next st
       body: JSON.stringify({
         model: MODEL_QUALITY,
         max_tokens: 800,
-        system: STAFF_DRAFT_SYSTEM_PROMPT,
+        system: args.isReply ? STAFF_DRAFT_SYSTEM_PROMPT : STAFF_MESSAGE_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],
       }),
     });
@@ -186,28 +206,47 @@ serve(async (req: Request) => {
   }
 
   if (!body.applicationId) return json({ success: false, error: "applicationId_required" }, 400);
-  if (!body.inboundEmailId) return json({ success: false, error: "inboundEmailId_required" }, 400);
+
+  // inboundEmailId is OPTIONAL. Present -> threaded reply to that inbound.
+  // Absent -> fresh message to the applicant (new thread).
+  const isReply = Boolean(body.inboundEmailId);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
-  // Load the inbound we're replying to + the linked outbound (if any) for
-  // conversational context.
-  const { data: inbound, error: inboundErr } = await supabase
-    .from("cvp_inbound_emails")
-    .select(
-      "id, subject, body_plain, stripped_text, message_id, from_email, from_name, matched_outbound_id, ai_reply_analysis",
-    )
-    .eq("id", body.inboundEmailId)
-    .maybeSingle();
-  if (inboundErr || !inbound) {
-    return json({ success: false, error: "inbound_not_found" }, 404);
+  // Load the inbound we're replying to (reply mode only) + the linked outbound
+  // (if any) for conversational context.
+  let inbound:
+    | {
+        id: string;
+        subject: string | null;
+        body_plain: string | null;
+        stripped_text: string | null;
+        message_id: string | null;
+        from_email: string | null;
+        from_name: string | null;
+        matched_outbound_id: string | null;
+        ai_reply_analysis: Record<string, unknown> | null;
+      }
+    | null = null;
+  if (isReply) {
+    const { data, error: inboundErr } = await supabase
+      .from("cvp_inbound_emails")
+      .select(
+        "id, subject, body_plain, stripped_text, message_id, from_email, from_name, matched_outbound_id, ai_reply_analysis",
+      )
+      .eq("id", body.inboundEmailId)
+      .maybeSingle();
+    if (inboundErr || !data) {
+      return json({ success: false, error: "inbound_not_found" }, 404);
+    }
+    inbound = data as typeof inbound;
   }
 
   let originalOutbound: Record<string, unknown> | null = null;
-  if (inbound.matched_outbound_id) {
+  if (inbound?.matched_outbound_id) {
     const { data: ob } = await supabase
       .from("cvp_outbound_messages")
       .select("subject, body_text, body_html, message_id, template_tag")
@@ -232,19 +271,22 @@ serve(async (req: Request) => {
       applicationNumber: String(app.application_number ?? ""),
       originalOutboundSubject: (originalOutbound?.subject as string) ?? "",
       originalOutboundBody: (originalOutbound?.body_text as string) ?? "",
-      inboundSubject: (inbound.subject as string) ?? "",
-      inboundBody: (inbound.stripped_text as string) ?? (inbound.body_plain as string) ?? "",
-      aiReplyAnalysis: inbound.ai_reply_analysis as Record<string, unknown> | null,
+      inboundSubject: (inbound?.subject as string) ?? "",
+      inboundBody: (inbound?.stripped_text as string) ?? (inbound?.body_plain as string) ?? "",
+      aiReplyAnalysis: (inbound?.ai_reply_analysis as Record<string, unknown> | null) ?? null,
       staffInstructions: body.aiInstructions ?? "",
+      isReply,
     });
     aiDraft = d.ok ? d.text : null;
     aiError = d.ok ? null : d.error;
   }
 
   const finalBody = (body.editedBody ?? body.body ?? aiDraft ?? "").trim();
-  const defaultSubject = inbound.subject
-    ? `Re: ${String(inbound.subject).replace(/^Re:\s*/i, "")}`
-    : "Re: Your message";
+  const defaultSubject = isReply
+    ? (inbound?.subject
+        ? `Re: ${String(inbound.subject).replace(/^Re:\s*/i, "")}`
+        : "Re: Your message")
+    : "A message regarding your Cethos application";
   const subject = (body.editedSubject ?? body.subject ?? defaultSubject).trim() || defaultSubject;
 
   const rendered = wrapStaffReply(finalBody || "(empty body)");
@@ -260,7 +302,7 @@ serve(async (req: Request) => {
         subject,
         html: rendered.html,
         text: rendered.text,
-        inboundMessageId: inbound.message_id,
+        inboundMessageId: inbound?.message_id ?? null,
         originalOutboundMessageId: (originalOutbound?.message_id as string | undefined) ?? null,
       },
     });
@@ -270,38 +312,41 @@ serve(async (req: Request) => {
     return json({ success: false, error: "body_required_for_send" }, 400);
   }
 
-  // Build threading headers: In-Reply-To = applicant's Message-Id; References
-  // = original outbound id (if any) + inbound Message-Id.
-  const inReplyTo = (inbound.message_id as string | null) ?? undefined;
+  // Build threading headers (reply mode only): In-Reply-To = applicant's
+  // Message-Id; References = original outbound id (if any) + inbound Message-Id.
+  // Fresh messages start a new thread (no In-Reply-To / References).
+  const inReplyTo = isReply ? ((inbound?.message_id as string | null) ?? undefined) : undefined;
   const references: string[] = [];
-  if (originalOutbound?.message_id) {
-    references.push(String(originalOutbound.message_id));
+  if (isReply) {
+    if (originalOutbound?.message_id) references.push(String(originalOutbound.message_id));
+    if (inbound?.message_id) references.push(String(inbound.message_id));
   }
-  if (inbound.message_id) {
-    references.push(String(inbound.message_id));
-  }
+
+  const toEmail = String(inbound?.from_email ?? app.email ?? "");
+  if (!toEmail) return json({ success: false, error: "applicant_has_no_email" }, 400);
+  const templateTag = isReply ? "staff-reply" : "staff-message";
 
   const sendResult = await sendMailgunEmail({
     to: {
-      email: String(inbound.from_email ?? app.email),
-      name: String(inbound.from_name ?? app.full_name ?? undefined),
+      email: toEmail,
+      name: String(inbound?.from_name ?? app.full_name ?? "") || undefined,
     },
     subject,
     html: rendered.html,
     text: rendered.text,
     respectDoNotContactFor: String(app.email),
-    tags: ["staff-reply", String(body.applicationId)],
+    tags: [templateTag, String(body.applicationId)],
     inReplyTo,
     references,
     trackContext: {
       applicationId: String(body.applicationId),
-      templateTag: "staff-reply",
+      templateTag,
       staffUserId: staffId,
     },
   });
 
-  // Stamp the inbound as acknowledged by the staff replying.
-  if (sendResult.sent) {
+  // Stamp the inbound as acknowledged by the staff replying (reply mode only).
+  if (sendResult.sent && isReply && body.inboundEmailId) {
     await supabase
       .from("cvp_inbound_emails")
       .update({
