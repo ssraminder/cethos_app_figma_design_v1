@@ -43,7 +43,7 @@ async function readCatFile(file: File): Promise<{ text: string; format: string }
 
 // Modes the modal supports. Each maps to vendor_payables.rate_unit on the
 // server (cat → per_word at the parent level, with a child-table breakdown).
-type Mode = "flat" | "per_word" | "per_hour" | "per_page" | "cat";
+type Mode = "flat" | "per_word" | "per_hour" | "per_page" | "cat" | "profit_share";
 
 const MODE_LABELS: Record<Mode, string> = {
   flat: "Flat",
@@ -51,6 +51,7 @@ const MODE_LABELS: Record<Mode, string> = {
   per_hour: "Per hour",
   per_page: "Per page",
   cat: "CAT analysis",
+  profit_share: "Profit share",
 };
 
 const MODE_HELP: Record<Mode, string> = {
@@ -59,6 +60,7 @@ const MODE_HELP: Record<Mode, string> = {
   per_hour: "Rate × billable hours.",
   per_page: "Rate × billable pages.",
   cat: "Paste a Trados / SDL / memoQ / XTM / Plunet / XTRF analysis. Word counts per tier are extracted automatically; the vendor's CAT grid converts those into a payable.",
+  profit_share: "Pay this vendor a share of the project profit (receivables − other vendor costs). The amount is computed from the order's receivables and the other payables.",
 };
 
 interface ExistingPayable {
@@ -152,6 +154,15 @@ export default function ManagePayableModal({
   // be paid in, rather than a hardcoded CAD.
   const [vendorPreferredCurrency, setVendorPreferredCurrency] = useState<string | null>(null);
 
+  // Profit-share state. The amount is computed server-side from the order's
+  // receivables minus the other vendor costs; the modal only collects the %.
+  const [sharePct, setSharePct] = useState<string>("50");
+  const [psPreview, setPsPreview] = useState<{
+    revenue: number; cost: number; profit: number; share_amount: number;
+    currency: string; share_pct: number; other_currency_lines: number;
+  } | null>(null);
+  const [psLoading, setPsLoading] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -217,15 +228,48 @@ export default function ManagePayableModal({
 
   const subtotal = useMemo<number>(() => {
     if (mode === "flat") return Number(flatAmount) || 0;
+    if (mode === "profit_share") return psPreview?.share_amount ?? 0;
     if (mode === "cat") {
       return catLines.reduce((s, l) => s + (Number(l.line_subtotal) || 0), 0);
     }
     return (Number(rate) || 0) * (Number(units) || 0);
-  }, [mode, rate, units, flatAmount, catLines]);
+  }, [mode, rate, units, flatAmount, catLines, psPreview]);
 
   const taxRate = (Number(taxRatePct) || 0) / 100;
   const taxAmount = Math.round(subtotal * taxRate * 100) / 100;
   const total = Math.round((subtotal + taxAmount) * 100) / 100;
+
+  // Profit-share preview: ask the server to compute revenue − costs → share
+  // whenever the % / currency changes while this mode is active.
+  const runProfitSharePreview = async () => {
+    if (!workflowStepId) return;
+    setPsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<any>("manage-vendor-payables", {
+        body: {
+          action: "preview_profit_share",
+          workflow_step_id: workflowStepId,
+          share_pct: Number(sharePct) || 0,
+          currency,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || "Preview failed");
+      setPsPreview(data);
+    } catch (e: any) {
+      setPsPreview(null);
+      toast.error(e?.message || "Profit-share preview failed");
+    } finally {
+      setPsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open || mode !== "profit_share") return;
+    const t = setTimeout(() => { runProfitSharePreview(); }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mode, sharePct, currency, workflowStepId]);
 
   // Shared invoker for both the paste path and the file-upload path.
   // Takes already-prepared text + the source label and pushes it through
@@ -313,9 +357,10 @@ export default function ManagePayableModal({
   const canSave = useMemo(() => {
     if (saving) return false;
     if (mode === "flat") return Number(flatAmount) > 0;
+    if (mode === "profit_share") return (psPreview?.share_amount ?? 0) > 0;
     if (mode === "cat") return catLines.length > 0 && subtotal > 0;
     return Number(rate) > 0 && Number(units) > 0;
-  }, [mode, flatAmount, catLines, subtotal, rate, units, saving]);
+  }, [mode, flatAmount, catLines, subtotal, rate, units, saving, psPreview]);
 
   const handleSave = async () => {
     if (!vendorId) {
@@ -335,6 +380,8 @@ export default function ManagePayableModal({
       };
       if (mode === "flat") {
         payload.flat_amount = Number(flatAmount);
+      } else if (mode === "profit_share") {
+        payload.share_pct = Number(sharePct);
       } else if (mode === "cat") {
         payload.base_rate = Number(catBaseRate);
         payload.cat_lines = catLines.map((l) => ({
@@ -423,6 +470,60 @@ export default function ManagePayableModal({
                 className="w-full border border-gray-300 rounded px-3 py-2 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
                 placeholder="e.g. 150.00"
               />
+            </div>
+          )}
+
+          {mode === "profit_share" && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Share of project profit (%)</label>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="100"
+                  value={sharePct}
+                  onChange={(e) => setSharePct(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm tabular-nums focus:ring-2 focus:ring-teal-500"
+                  placeholder="e.g. 50"
+                />
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+                {psLoading ? (
+                  <div className="text-gray-400">Computing profit…</div>
+                ) : psPreview ? (
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Revenue (receivables)</span>
+                      <span className="tabular-nums">{fmt(psPreview.revenue, psPreview.currency)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Other vendor costs</span>
+                      <span className="tabular-nums">− {fmt(psPreview.cost, psPreview.currency)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-200 pt-1 font-medium">
+                      <span>Project profit</span>
+                      <span className="tabular-nums">{fmt(psPreview.profit, psPreview.currency)}</span>
+                    </div>
+                    <div className="flex justify-between text-teal-700 font-semibold">
+                      <span>{psPreview.share_pct}% share</span>
+                      <span className="tabular-nums">{fmt(psPreview.share_amount, psPreview.currency)}</span>
+                    </div>
+                    {psPreview.other_currency_lines > 0 && (
+                      <div className="text-amber-600 text-xs mt-1">
+                        ⚠ {psPreview.other_currency_lines} receivable/payable line(s) in another currency are excluded from this calculation.
+                      </div>
+                    )}
+                    {psPreview.share_amount <= 0 && (
+                      <div className="text-amber-600 text-xs mt-1">
+                        No positive profit yet — add receivables / finalize other vendor costs first.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-gray-400">Enter a % to compute the share.</div>
+                )}
+              </div>
             </div>
           )}
 
