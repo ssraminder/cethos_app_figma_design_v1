@@ -59,12 +59,12 @@ Legend: ✅ done & verified · 🔄 in progress · ⬜ pending · 🚫 blocked
 | 14 | `cethosweb_locales` | B (reference) | anon+auth SELECT (marketing) + service_role | `…_public_read`, `…_service_role_all` | ✅ read 77 all roles | 77 stays 77 ✅ | ✅ | ✅ `20260623_rls_cethosweb_locales.sql` |
 | 15 | `cethosweb_settings` | B (reference) | ✅ NOT sensitive (ga4/gtm/ads public IDs) → anon+auth SELECT + service_role | `…_public_read`, `…_service_role_all` | ✅ read 3 all roles | 3 stays 3 ✅ | ✅ | ✅ `20260623_rls_cethosweb_settings.sql` |
 | 16 | `service_terms` | B (vendor) | **service_role only** — read server-side via `vendor-accept-terms` edge fn (no direct client read) | `…_service_role_all` | ✅ anon 0 / auth 0 / service 2 | 2 → `*/0` ✅ | ✅ | ✅ `20260623_rls_service_terms.sql` |
-| 17 | `app_settings` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
-| 18 | `certification_types` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
-| 19 | `delivery_options` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
-| 20 | `document_types` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
-| 21 | `intended_uses` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
-| 22 | `languages` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
+| 17 | `app_settings` | A | existing public SELECT + staff_manage (no secrets in 89 rows) | enable only | ✅ read 89 all roles | 89 stays 89 ✅ | ✅ | ✅ `20260623_rls_app_settings.sql` |
+| 18 | `certification_types` | A | existing public SELECT + staff_manage | enable only | ✅ read 4 all roles | 4 stays 4 ✅ | ✅ | ✅ `20260623_rls_certification_types.sql` |
+| 19 | `delivery_options` | A | existing public SELECT + staff_manage | enable only | ✅ read 7 all roles | 7 stays 7 ✅ | ✅ | ✅ `20260623_rls_delivery_options.sql` |
+| 20 | `document_types` | A | existing public SELECT + staff_manage | enable only | ✅ read 25 all roles | 25 stays 25 ✅ | ✅ | ✅ `20260623_rls_document_types.sql` |
+| 21 | `intended_uses` | A | existing public SELECT + staff_manage | enable only | ✅ read 241 all roles | 241 stays 241 ✅ | ✅ | ✅ `20260623_rls_intended_uses.sql` |
+| 22 | `languages` | A | existing public SELECT + staff_manage | enable only | ✅ read 143 all roles | 143 stays 143 ✅ | ✅ | ✅ `20260623_rls_languages.sql` |
 
 ---
 
@@ -151,3 +151,20 @@ Legend: ✅ done & verified · 🔄 in progress · ⬜ pending · 🚫 blocked
 - **Dry-run:** anon 0 / authenticated 0 / service_role 2. **Applied** `20260623_rls_service_terms.sql`.
 - **Verify:** anon REST probe → `*/0` (was 2). The vendor terms-acceptance flow is unaffected
   (edge fn = service_role).
+
+### 17–22. Group A — activate existing policies — ✅ done (2026-06-23)
+
+- **Pre-state:** each already had two correct policies (created earlier, dormant because RLS was off):
+  `Allow public select on <T>` (SELECT TO anon, authenticated USING true) + `staff_manage_<T>`
+  (ALL TO authenticated USING is_active_staff() WITH CHECK is_active_staff()). service_role bypasses RLS.
+- **Coverage check:** no missing writer policy needed — confirmed **no SECURITY INVOKER function**
+  writes any of the 6 (only `tr_<t>_updated_at` BEFORE-UPDATE timestamp triggers, which modify the
+  triggering row, not other tables). `app_settings` scanned for secrets → none (89 non-sensitive
+  config rows). So enabling RLS preserves current access exactly.
+- **Dry-run:** all 6 read full counts for anon/authenticated/service_role
+  (89 / 4 / 7 / 25 / 241 / 143).
+- **Applied:** 6 migrations, each just `ENABLE ROW LEVEL SECURITY` (policies already present).
+- **Verify:** anon REST probe still returns full counts for all 6 → public quote-form dropdowns
+  (languages, intended_uses, document_types, certification_types, delivery_options) + app_settings
+  config remain readable. Staff write path = the same `staff_manage`/`is_active_staff()` pattern
+  proven on `services`.

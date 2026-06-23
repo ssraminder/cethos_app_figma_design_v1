@@ -1,0 +1,12 @@
+-- =====================================================================
+-- RLS remediation (2026-06-23) — table 22 of 22: languages  [Group A]
+--
+-- Existing dormant policies: "Allow public select on languages"
+-- (SELECT TO anon, authenticated USING true) + "staff_manage_languages"
+-- (ALL TO authenticated USING is_active_staff()). service_role bypasses RLS.
+-- No SECURITY INVOKER writer. Enable RLS to activate them (preserves current access).
+-- Read by the public quote form language pickers (anon) — verified anon still reads 143.
+--
+-- Rollback: ALTER TABLE public.languages DISABLE ROW LEVEL SECURITY;
+-- =====================================================================
+ALTER TABLE public.languages ENABLE ROW LEVEL SECURITY;
