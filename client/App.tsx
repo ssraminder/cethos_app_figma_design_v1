@@ -105,6 +105,7 @@ import RecruitmentList from "./pages/admin/RecruitmentList";
 import EmploymentApplications from "./pages/admin/EmploymentApplications";
 import RecruitmentDetail from "./pages/admin/RecruitmentDetail";
 import RecruitmentRegradeBackfill from "./pages/admin/RecruitmentRegradeBackfill";
+import RecruitmentApprovalQueue from "./pages/admin/RecruitmentApprovalQueue";
 import AdminQuickPayment from "./pages/admin/AdminQuickPayment";
 import AdminPaymentHistory from "./pages/admin/AdminPaymentHistory";
 import PaymentsList from "./pages/admin/PaymentsList";
@@ -458,6 +459,7 @@ const App = () => (
                     <Route path="employment-applications" element={<EmploymentApplications />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
                     <Route path="recruitment/system/regrade-backfill" element={<RecruitmentRegradeBackfill />} />
+                    <Route path="recruitment/approval-queue" element={<RecruitmentApprovalQueue />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
                     <Route path="trainings" element={<TrainingsList />} />
                     <Route path="trainings/:slug" element={<TrainingOverview />} />
