@@ -5040,11 +5040,18 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
   // that is the primary, IQVIA-weighted evidence. A domain-specific certificate
   // or experience doc is a fallback. So a high-risk domain is "evidenced" if the
   // applicant PASSED the test in it, OR has a cert/doc naming it.
+  // Only GENUINELY-graded domains count (passed_domains = real submission + score).
+  // A passed COA quiz (>=90%) is the only real CLINICAL assessment, so it qualifies
+  // the clinical domains. Cascaded/backfilled 'approved' combos are NOT evidence.
   const passedDomains = (ev.passed_domains ?? "")
     .split(",").map((d) => d.trim()).filter(Boolean);
-  const highRiskTested = highRiskDeclared.filter((d) => passedDomains.includes(d));
+  const coaQuizPassed = !!coaQuiz && coaQuiz.status === "submitted" &&
+    coaQuiz.score_pct != null && Number(coaQuiz.score_pct) >= 90;
+  const CLINICAL_DOMAINS = new Set(["medical", "life_sciences", "pharmaceutical", "coa_linguistic_validation"]);
+  const domainEvidencedByTest = (d: string) => passedDomains.includes(d) || (coaQuizPassed && CLINICAL_DOMAINS.has(d));
+  const highRiskTested = highRiskDeclared.filter(domainEvidencedByTest);
   const highRiskWithEvidence = highRiskDeclared.filter((d) =>
-    passedDomains.includes(d) ||
+    domainEvidencedByTest(d) ||
     certItems.some((it) => it.title.toLowerCase().includes(d.replace("_", " "))) ||
     expItems.some((it) => it.title.toLowerCase().includes(d.replace("_", " ")))
   );
@@ -5162,7 +5169,7 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
     const unevidencedStr = highRiskNoEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
     let text = `Domains (§6.1.6): ${ev.declared_domains} declared.`;
     if (highRiskTested.length > 0) {
-      text += ` Qualified by a PASSED domain test: ${testedStr}.`;
+      text += ` Qualified by a passed domain test / COA quiz: ${testedStr}.`;
     }
     if (certOnly.length > 0) {
       text += ` Cert/doc evidence (confirm it covers the domain): ${certStr}.`;
