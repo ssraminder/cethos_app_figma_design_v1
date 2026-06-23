@@ -46,12 +46,10 @@ serve(async (req) => {
       { auth: { persistSession: false, autoRefreshToken: false } },
     );
 
-    const { data, error } = await sb
-      .from("cvp_approval_queue")
-      .select(
-        "id, application_number, full_name, country, status, target_langs, clinical, has_nda, approval_route, bucket, is_ref5, ref_documented_years, refs_received, real_passed_combos, has_verified_degree_doc",
-      )
-      .in("bucket", ["ready", "need_info"]);
+    // Read via the SECURITY DEFINER function (runs as owner) so the view chain
+    // into qms.competence_evidence is permitted — service_role cannot read that
+    // table directly. Returns all cvp_approval_queue columns for ready+need_info.
+    const { data, error } = await sb.rpc("get_approval_queue");
     if (error) return json({ success: false, error: error.message }, 500);
 
     const rows = (data ?? []) as Row[];
