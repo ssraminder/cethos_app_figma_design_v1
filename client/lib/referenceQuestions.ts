@@ -82,6 +82,7 @@ export const WOULD_WORK_AGAIN_LABEL: Record<string, string> = {
 };
 
 export const REFERENCE_DOMAIN_LABEL: Record<string, string> = {
+  // Legacy 8-bucket codes (reference rows before 2026-06-23).
   legal: "Legal",
   medical_pharma: "Medical / Pharmaceutical",
   marketing_transcreation: "Marketing / Transcreation",
@@ -89,6 +90,50 @@ export const REFERENCE_DOMAIN_LABEL: Record<string, string> = {
   financial_banking: "Financial / Banking",
   literary_publishing: "Literary / Publishing",
   government_ngo: "Government / NGO",
+  other: "Other",
+  // Applicant claimed-approval domain codes (cvp_applications.domains_offered) —
+  // referees confirm against these since 2026-06-23.
+  certified_official: "Certified / Official Documents",
+  immigration: "Immigration",
+  medical: "Medical",
+  life_sciences: "Life Sciences / Clinical Trials",
+  coa_linguistic_validation: "COA / Linguistic Validation",
+  pharmaceutical: "Pharmaceutical",
+  financial: "Financial",
+  insurance: "Insurance",
+  technical: "Technical",
+  it_software: "IT / Software",
+  automotive_engineering: "Automotive / Engineering",
+  energy: "Energy",
+  marketing_advertising: "Marketing & Advertising",
+  academic_scientific: "Academic & Scientific",
+  government_public: "Government & Public Sector",
+  business_corporate: "Business & Corporate",
+  gaming_entertainment: "Gaming & Entertainment",
+  media_journalism: "Media & Journalism",
+  tourism_hospitality: "Tourism & Hospitality",
+  general: "General",
+};
+
+// Engagement-detail labels (2026-06-23 referee-form enhancement).
+export const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
+  full_time: "Full-time translator",
+  part_time: "Part-time / occasional",
+  unsure: "Not sure",
+};
+export const ANNUAL_VOLUME_LABEL: Record<string, string> = {
+  lt_50k: "Under 50k words/yr",
+  "50k_150k": "50k–150k words/yr",
+  "150k_500k": "150k–500k words/yr",
+  gt_500k: "Over 500k words/yr",
+  unsure: "Volume unsure",
+};
+export const RELATIONSHIP_TYPE_LABEL: Record<string, string> = {
+  client: "Client",
+  employer: "Employer / manager",
+  project_manager: "Project manager",
+  reviser_editor: "Reviser / editor",
+  peer_translator: "Peer translator",
   other: "Other",
 };
 
