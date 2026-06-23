@@ -68,34 +68,38 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
-  let body: { dry_run?: boolean; limit?: number } = {};
+  let body: { dry_run?: boolean; limit?: number; domains?: string[] } = {};
   try { body = await req.json(); } catch { /* empty body ok for cron */ }
   const dryRun = body.dry_run === true;
   const limit = Math.min(Math.max(body.limit ?? DEFAULT_LIMIT, 1), 100);
+  // Optional domain scope (declared domains_offered). When set, only applicants
+  // offering one of these domains are advanced — used to prioritise a cohort
+  // (e.g. COA / life sciences / pharmaceutical) without changing the default
+  // global sweep.
+  const domainsFilter = Array.isArray(body.domains) ? body.domains.filter(Boolean) : null;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const supabase = createClient(supabaseUrl, serviceKey);
 
   const nowIso = new Date().toISOString();
-  // NDA-before-test gate, part of the applicant-login cutover. OFF by default —
-  // when APPLICANT_LOGIN_ENABLED=true, an applicant must have signed their NDA
-  // (in the portal) before we issue the test/quiz. Flips on with the rest of
-  // the applicant-login feature at the coordinated cutover.
-  const applicantLoginOn = Deno.env.get("APPLICANT_LOGIN_ENABLED") === "true";
 
   // Candidates: translators parked at prescreen with no choice yet and no live
   // invite token (so we never re-spam).
   // Re-spam guard lives IN the query (not a post-fetch JS filter) so a backlog
   // of already-invited-but-not-yet-chosen applicants can't fill the fetch window
   // and starve newer applicants. Eligible = no invite token OR an expired one.
-  const { data: rows, error } = await supabase
+  let candidateQuery = supabase
     .from("cvp_applications")
     .select("id, full_name, email, status")
     .in("role_type", ["translator", "cognitive_debriefing"])
     .in("status", ["staff_review", "prescreened"])
     .is("instrument_choice", null)
-    .or(`instrument_choice_token.is.null,instrument_choice_token_expires_at.lt.${nowIso}`)
+    .or(`instrument_choice_token.is.null,instrument_choice_token_expires_at.lt.${nowIso}`);
+  if (domainsFilter && domainsFilter.length > 0) {
+    candidateQuery = candidateQuery.overlaps("domains_offered", domainsFilter);
+  }
+  const { data: rows, error } = await candidateQuery
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) return json({ success: false, error: error.message }, 500);
@@ -128,30 +132,11 @@ serve(async (req: Request) => {
       continue;
     }
 
-    // NDA-before-test gate (flagged). Hold the applicant — don't issue the
-    // test/quiz — until their NDA is signed in the portal. Checked by the
-    // applicant's vendor (by email) or directly by application_id.
-    if (applicantLoginOn) {
-      let ndaOk = false;
-      const { data: av } = await supabase.from("vendors").select("id").ilike("email", a.email).maybeSingle();
-      if ((av as { id?: string } | null)?.id) {
-        const { count } = await supabase.from("vendor_nda_signatures")
-          .select("id", { count: "exact", head: true })
-          .eq("vendor_id", (av as { id: string }).id).eq("is_current", true);
-        ndaOk = (count ?? 0) > 0;
-      }
-      if (!ndaOk) {
-        const { count: c2 } = await supabase.from("vendor_nda_signatures")
-          .select("id", { count: "exact", head: true })
-          .eq("application_id", a.id).eq("is_current", true);
-        ndaOk = (c2 ?? 0) > 0;
-      }
-      if (!ndaOk) {
-        skipped++;
-        actions.push({ id: a.id, name: a.full_name, action: "held_nda_pending" });
-        continue;
-      }
-    }
+    // NDA gate moved from SEND to ACCESS (2026-06-22). We no longer hold the
+    // assessment invitation for a missing NDA — the confidentiality agreement is
+    // enforced (clickwrap) when the applicant opens the quiz/test
+    // (cvp-get-quiz / cvp-get-test). Holding here was leaving prescreened
+    // applicants stuck and starving the roster.
 
     // Advance: bump staff_review→prescreened, then send the choice invite.
     if (!dryRun) {
