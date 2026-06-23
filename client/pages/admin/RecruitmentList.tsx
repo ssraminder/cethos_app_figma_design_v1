@@ -155,6 +155,7 @@ const DOMAIN_LABEL: Record<string, string> = {
   medical: "Medical",
   life_sciences: "Life Sciences",
   pharmaceutical: "Pharmaceutical",
+  coa_linguistic_validation: "COA Linguistic Validation",
   financial: "Financial",
   insurance: "Insurance",
   technical: "Technical",
@@ -268,6 +269,11 @@ export default function RecruitmentList() {
   const countryFilter = searchParams.get("country") || "";
   const roleFilter = searchParams.get("role") || "";
   const scoreFilter = searchParams.get("score") || ""; // "", "85", "70_84", "lt70"
+  // Declared domain (domains_offered) — multi-select, comma-separated like status/tier.
+  const domainFilter = (searchParams.get("domain") || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   const hasAnyFilter =
     statusFilter.length > 0 ||
@@ -276,7 +282,8 @@ export default function RecruitmentList() {
     Boolean(tgtLangFilter) ||
     Boolean(countryFilter) ||
     Boolean(roleFilter) ||
-    Boolean(scoreFilter);
+    Boolean(scoreFilter) ||
+    domainFilter.length > 0;
 
   const [searchInput, setSearchInput] = useState(search);
 
@@ -608,6 +615,11 @@ export default function RecruitmentList() {
       if (roleFilter) {
         query = query.eq("role_type", roleFilter);
       }
+      if (domainFilter.length > 0) {
+        // Declared domain: cvp_applications.domains_offered is a text[]; match
+        // applicants offering ANY of the selected domains (array overlap = OR).
+        query = query.overlaps("domains_offered", domainFilter);
+      }
       if (scoreFilter === "85") {
         query = query.gte("ai_prescreening_score", 85);
       } else if (scoreFilter === "70_84") {
@@ -698,6 +710,7 @@ export default function RecruitmentList() {
     countryFilter,
     roleFilter,
     scoreFilter,
+    domainFilter.join(","),
   ]);
 
   useEffect(() => {
@@ -756,8 +769,8 @@ export default function RecruitmentList() {
     });
   };
 
-  const toggleListFilter = (key: "status" | "tier", value: string) => {
-    const current = key === "status" ? statusFilter : tierFilter;
+  const toggleListFilter = (key: "status" | "tier" | "domain", value: string) => {
+    const current = key === "status" ? statusFilter : key === "tier" ? tierFilter : domainFilter;
     const has = current.includes(value);
     const next = has ? current.filter((v) => v !== value) : [...current, value];
     setFilterParam(key, next.join(","));
@@ -766,7 +779,7 @@ export default function RecruitmentList() {
   const clearAllFilters = () => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      ["status", "tier", "src_lang", "tgt_lang", "country", "role", "score", "page"].forEach((k) => next.delete(k));
+      ["status", "tier", "src_lang", "tgt_lang", "country", "role", "score", "domain", "page"].forEach((k) => next.delete(k));
       return next;
     });
   };
@@ -965,6 +978,26 @@ export default function RecruitmentList() {
                   type="checkbox"
                   checked={tierFilter.includes(key)}
                   onChange={() => toggleListFilter("tier", key)}
+                  className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                />
+                <span className="text-gray-700">{label}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+
+        {/* Domain — multi-select (declared domains_offered). */}
+        <details className="relative">
+          <summary className="cursor-pointer list-none px-3 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700 hover:border-gray-400 select-none">
+            Domain{domainFilter.length > 0 ? ` · ${domainFilter.length}` : ""}
+          </summary>
+          <div className="absolute z-10 mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-2 w-60 max-h-72 overflow-y-auto">
+            {Object.entries(DOMAIN_LABEL).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 px-1.5 py-1 hover:bg-gray-50 rounded text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={domainFilter.includes(key)}
+                  onChange={() => toggleListFilter("domain", key)}
                   className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                 />
                 <span className="text-gray-700">{label}</span>
