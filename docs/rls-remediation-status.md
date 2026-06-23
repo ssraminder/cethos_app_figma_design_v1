@@ -58,7 +58,7 @@ Legend: ✅ done & verified · 🔄 in progress · ⬜ pending · 🚫 blocked
 | 13 | `cethosweb_languages` | B (reference) | anon+auth SELECT (marketing) + service_role | `…_public_read`, `…_service_role_all` | ✅ read 75 all roles | 75 stays 75 ✅ | ✅ | ✅ `20260623_rls_cethosweb_languages.sql` |
 | 14 | `cethosweb_locales` | B (reference) | anon+auth SELECT (marketing) + service_role | `…_public_read`, `…_service_role_all` | ✅ read 77 all roles | 77 stays 77 ✅ | ✅ | ✅ `20260623_rls_cethosweb_locales.sql` |
 | 15 | `cethosweb_settings` | B (reference) | ✅ NOT sensitive (ga4/gtm/ads public IDs) → anon+auth SELECT + service_role | `…_public_read`, `…_service_role_all` | ✅ read 3 all roles | 3 stays 3 ✅ | ✅ | ✅ `20260623_rls_cethosweb_settings.sql` |
-| 16 | `service_terms` | B (vendor read) | authenticated (+anon?) read; admin write | — | ⬜ | — | ⬜ | ⬜ |
+| 16 | `service_terms` | B (vendor) | **service_role only** — read server-side via `vendor-accept-terms` edge fn (no direct client read) | `…_service_role_all` | ✅ anon 0 / auth 0 / service 2 | 2 → `*/0` ✅ | ✅ | ✅ `20260623_rls_service_terms.sql` |
 | 17 | `app_settings` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
 | 18 | `certification_types` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
 | 19 | `delivery_options` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
@@ -140,3 +140,14 @@ Legend: ✅ done & verified · 🔄 in progress · ⬜ pending · 🚫 blocked
   read intact); anon `POST /services` → HTTP 401 (write blocked); catalog confirms policies + RLS on.
 - **Live-UI smoke test** (public quote form dropdowns + admin ServicesSettings edit) → consolidated
   pass at finalize.
+
+### 16. `service_terms` — ✅ done (2026-06-23)
+
+- **Usage map:** the only reference anywhere is the vendor edge function `vendor-accept-terms`
+  (D:\cethos-vendor), which reads/records acceptance using `SUPABASE_SERVICE_ROLE_KEY`. No admin or
+  vendor frontend reads it directly; no DB function/view references it. (Task's "vendors need
+  authenticated SELECT" guess did not match the actual server-side fetch implementation.)
+- **Decision:** service_role only.
+- **Dry-run:** anon 0 / authenticated 0 / service_role 2. **Applied** `20260623_rls_service_terms.sql`.
+- **Verify:** anon REST probe → `*/0` (was 2). The vendor terms-acceptance flow is unaffected
+  (edge fn = service_role).
