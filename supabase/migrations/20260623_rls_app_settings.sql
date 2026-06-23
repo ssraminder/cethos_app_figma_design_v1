@@ -1,0 +1,13 @@
+-- =====================================================================
+-- RLS remediation (2026-06-23) — table 17 of 22: app_settings  [Group A]
+--
+-- Policies already existed (dormant, created in an earlier migration):
+--   * "Allow public select on app_settings"  — SELECT TO anon, authenticated USING (true)
+--   * "staff_manage_app_settings"             — ALL    TO authenticated USING is_active_staff()
+-- service_role bypasses RLS. No SECURITY INVOKER writer; no secret keys (89 rows of
+-- non-sensitive config — only match to a "sensitive" name was recovery_token_expiry_days,
+-- a number). Enabling RLS preserves current access exactly (anon already read these).
+--
+-- Rollback: ALTER TABLE public.app_settings DISABLE ROW LEVEL SECURITY;
+-- =====================================================================
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
