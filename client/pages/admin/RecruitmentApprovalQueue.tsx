@@ -234,13 +234,18 @@ export default function RecruitmentApprovalQueue() {
                       <>
                         <span className="inline-block text-xs font-medium bg-cyan-50 text-cyan-700 rounded px-2 py-0.5 mb-0.5">{r.approval_route}</span>
                         <div className="text-xs text-gray-500">{r.approval_route ? ROUTE_HINT[r.approval_route] : ""}</div>
-                        <DegreeOpenButton doc={r.degree_doc} />
-                        {r.has_other_degree && !r.has_translation_degree && (
-                          <div className="text-[11px] mt-0.5 text-amber-700">
-                            {r.has_experience_doc
-                              ? "Experience doc on file — confirm it documents ≥2 yrs."
-                              : "⚠ No experience doc yet — route (b) needs 2 yrs (request references)."}
-                          </div>
+                        {(r.approval_route === "Degree — translation (route a)" ||
+                          r.approval_route === "Degree — other field (route b · +2yr exp)") && (
+                          <>
+                            <DegreeOpenButton doc={r.degree_doc} />
+                            {r.approval_route === "Degree — other field (route b · +2yr exp)" && (
+                              <div className="text-[11px] mt-0.5 text-amber-700">
+                                {r.has_experience_doc
+                                  ? "Experience doc on file — confirm it documents ≥2 yrs."
+                                  : "⚠ No experience doc yet — route (b) needs 2 yrs (request references)."}
+                              </div>
+                            )}
+                          </>
                         )}
                       </>
                     ) : (
