@@ -2718,7 +2718,9 @@ function ConversationRow({
 
 interface StaffReplyModalProps {
   applicationId: string;
-  inboundEmailId: string;
+  // When set, we reply to that inbound (threaded). When null/undefined, we
+  // compose a fresh message to the applicant (new thread).
+  inboundEmailId?: string | null;
   onClose: () => void;
   onSent: () => Promise<void>;
   callEdgeFunction: (
@@ -2736,6 +2738,9 @@ function StaffReplyModal({
   callEdgeFunction,
   staffId,
 }: StaffReplyModalProps) {
+  const isReply = Boolean(inboundEmailId);
+  // Spread into edge-function payloads so inboundEmailId is only sent in reply mode.
+  const threadRef = inboundEmailId ? { inboundEmailId } : {};
   const [instructions, setInstructions] = useState("");
   const [subject, setSubject] = useState("");
   const [bodyDraft, setBodyDraft] = useState("");
@@ -2750,7 +2755,7 @@ function StaffReplyModal({
     try {
       const res = await callEdgeFunction("cvp-staff-reply", {
         applicationId,
-        inboundEmailId,
+        ...threadRef,
         useAIDraft: true,
         aiInstructions: instructions,
         dryRun: true,
@@ -2778,7 +2783,7 @@ function StaffReplyModal({
     try {
       const res = await callEdgeFunction("cvp-staff-reply", {
         applicationId,
-        inboundEmailId,
+        ...threadRef,
         body: bodyDraft,
         editedSubject: subject,
         dryRun: true,
@@ -2800,12 +2805,12 @@ function StaffReplyModal({
     try {
       await callEdgeFunction("cvp-staff-reply", {
         applicationId,
-        inboundEmailId,
+        ...threadRef,
         body: bodyDraft,
         editedSubject: subject,
         staffId,
       });
-      toast.success("Reply sent");
+      toast.success(isReply ? "Reply sent" : "Message sent");
       onClose();
       await onSent();
     } catch (err) {
@@ -2826,7 +2831,7 @@ function StaffReplyModal({
       >
         <div className="flex items-start justify-between mb-3">
           <h2 className="text-lg font-semibold text-gray-900">
-            Reply to applicant
+            {isReply ? "Reply to applicant" : "Message applicant"}
             {mode === "preview" && (
               <span className="ml-2 text-xs font-normal text-gray-500">· Preview</span>
             )}
@@ -2892,7 +2897,11 @@ function StaffReplyModal({
               <textarea
                 value={bodyDraft}
                 onChange={(e) => setBodyDraft(e.target.value)}
-                placeholder="Type your reply, or click 'Draft with AI' above to generate one."
+                placeholder={
+                  isReply
+                    ? "Type your reply, or click 'Draft with AI' above to generate one."
+                    : "Type your message, or click 'Draft with AI' above to generate one."
+                }
                 rows={10}
                 disabled={busy !== "none"}
                 className="w-full p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50 font-mono"
@@ -2924,7 +2933,8 @@ function StaffReplyModal({
         {mode === "preview" && previewHtml && (
           <>
             <p className="text-xs text-gray-600 mb-2">
-              <strong>Subject:</strong> {subject || "Re: Your message"}
+              <strong>Subject:</strong>{" "}
+              {subject || (isReply ? "Re: Your message" : "A message regarding your Cethos application")}
             </p>
             <div className="mb-3 border border-gray-200 rounded overflow-hidden">
               <iframe
@@ -2959,7 +2969,7 @@ function StaffReplyModal({
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md disabled:opacity-50"
                 >
                   {busy === "send" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  {busy === "send" ? "Sending…" : "Send reply"}
+                  {busy === "send" ? "Sending…" : isReply ? "Send reply" : "Send message"}
                 </button>
               </div>
             </div>
@@ -5975,6 +5985,8 @@ export default function RecruitmentDetail() {
   const [decisionModal, setDecisionModal] = useState<Decision | null>(null);
   // Phase C.2 — staff reply modal is keyed by the inbound we're replying to.
   const [replyInboundId, setReplyInboundId] = useState<string | null>(null);
+  // Compose a fresh message to the applicant (no inbound to reply to).
+  const [composeNew, setComposeNew] = useState(false);
 
   // Maps the generic "editedContent" field in the modal to the per-action
   // request body parameter name.
@@ -7427,28 +7439,48 @@ export default function RecruitmentDetail() {
             </Section>
           )}
 
-          {/* Conversation — outbound + inbound interleaved */}
-          {conversation.length > 0 && (
+          {/* Conversation — outbound + inbound interleaved. Always available so
+              staff can message the applicant even before any reply exists. */}
+          {id && (
             <Section title={`Conversation (${conversation.length})`}>
-              <ConversationTimeline
-                items={conversation}
-                onReply={(inboundId) => setReplyInboundId(inboundId)}
-                onAcknowledge={async (inboundId) => {
-                  try {
-                    await supabase
-                      .from("cvp_inbound_emails")
-                      .update({
-                        acknowledged_at: new Date().toISOString(),
-                        acknowledged_by: session?.staffId,
-                      })
-                      .eq("id", inboundId);
-                    toast.success("Marked reviewed");
-                    await fetchData();
-                  } catch (err) {
-                    toast.error(err instanceof Error ? err.message : "Failed");
-                  }
-                }}
-              />
+              <div className="mt-2 mb-3 flex items-center justify-between gap-3">
+                <p className="text-xs text-gray-500">
+                  Emails send from <span className="font-mono">vm@cethos.com</span>; replies come back
+                  here automatically.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setComposeNew(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-md whitespace-nowrap"
+                >
+                  <Mail className="w-3.5 h-3.5" /> Message applicant
+                </button>
+              </div>
+              {conversation.length > 0 ? (
+                <ConversationTimeline
+                  items={conversation}
+                  onReply={(inboundId) => setReplyInboundId(inboundId)}
+                  onAcknowledge={async (inboundId) => {
+                    try {
+                      await supabase
+                        .from("cvp_inbound_emails")
+                        .update({
+                          acknowledged_at: new Date().toISOString(),
+                          acknowledged_by: session?.staffId,
+                        })
+                        .eq("id", inboundId);
+                      toast.success("Marked reviewed");
+                      await fetchData();
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Failed");
+                    }
+                  }}
+                />
+              ) : (
+                <p className="text-sm text-gray-400 py-4 text-center">
+                  No messages yet. Use “Message applicant” to start the conversation.
+                </p>
+              )}
             </Section>
           )}
 
@@ -7507,11 +7539,14 @@ export default function RecruitmentDetail() {
         />
       )}
 
-      {replyInboundId && id && (
+      {(replyInboundId || composeNew) && id && (
         <StaffReplyModal
           applicationId={id}
           inboundEmailId={replyInboundId}
-          onClose={() => setReplyInboundId(null)}
+          onClose={() => {
+            setReplyInboundId(null);
+            setComposeNew(false);
+          }}
           onSent={fetchData}
           callEdgeFunction={callEdgeFunction}
           staffId={session?.staffId}
