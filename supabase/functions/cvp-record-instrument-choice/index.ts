@@ -32,7 +32,7 @@ const CORS = {
 const APP_URL = Deno.env.get("APP_URL") ?? "https://join.cethos.com";
 
 // Quiz token TTL: same 10-day window as translation tests
-const QUIZ_TTL_MS = 10 * 24 * 60 * 60 * 1000;
+const QUIZ_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7-day window (was 10)
 
 interface Body {
   token?: string;
@@ -374,13 +374,13 @@ async function dispatchCogDebriefQuiz(
         <p style="margin: 24px 0;">
           <a href="${esc(quizUrl)}" style="display: inline-block; background: #0891B2; color: #fff; text-decoration: none; padding: 11px 22px; border-radius: 6px; font-weight: 600; font-size: 14px;">Open the assessment</a>
         </p>
-        <p style="font-size: 13px; color: #6B7280;">When you open the assessment you'll first be asked to read and accept a short <strong>confidentiality agreement (NDA)</strong> — under a minute. This link expires in 240 hours and can be used once. Reply to this email if you need help.</p>
+        <p style="font-size: 13px; color: #6B7280;">When you open the assessment you'll first be asked to read and accept a short <strong>confidentiality agreement (NDA)</strong> — under a minute. This link expires in 7 days and can be used once. Reply to this email if you need help.</p>
       </div>`;
     const text =
       `Hi ${app.full_name},\n\n` +
       `The next step for application ${app.application_number} is a short cognitive-debriefing knowledge assessment (COA methodology, cognitive interviewing, GCP). Multiple choice, ~20 minutes.\n\n` +
       `When you open it you'll first accept a short confidentiality agreement (NDA) — under a minute.\n\n` +
-      `Open: ${quizUrl}\n\nLink expires in 240 hours.\n`;
+      `Open: ${quizUrl}\n\nLink expires in 7 days.\n`;
     await sendMailgunEmail({
       to: { email: app.email, name: app.full_name },
       subject,
@@ -525,7 +525,7 @@ async function sendV8QuizInvitation(
       <p>${isMulti ? `Below are the ${issued.length} quizzes` : `Below is the quiz`} you need to complete — one per target language. Each is 40 questions, multiple choice, and should take about 20–30 minutes.</p>
       ${linksHtml}
       <p style="font-size: 13px; color: #6B7280; margin-top: 24px;">
-        <strong>Heads up:</strong> when you open a quiz you'll first read and accept a short <strong>confidentiality agreement (NDA)</strong> — under a minute. Each link expires in <strong>240 hours</strong> and can only be used once. Your quiz auto-saves as you progress.
+        <strong>Heads up:</strong> when you open a quiz you'll first read and accept a short <strong>confidentiality agreement (NDA)</strong> — under a minute. Each link expires in <strong>7 days</strong> and can only be used once. Your quiz auto-saves as you progress.
       </p>
       <p style="font-size: 13px; color: #6B7280;">
         Need help? Reply to this email and we'll get back to you.
@@ -538,7 +538,7 @@ async function sendV8QuizInvitation(
       .map((i) => `${langName.get(i.targetLanguageId) ?? "(unknown)"}: ${i.tokenUrl}`)
       .join("\n") +
     `\n\nWhen you open a quiz you'll first accept a short confidentiality agreement (NDA) — under a minute.\n` +
-    `Each link expires in 240 hours. Reply if you need help.\n`;
+    `Each link expires in 7 days. Reply if you need help.\n`;
 
   await sendMailgunEmail({
     to: { email: app.email, name: app.full_name },

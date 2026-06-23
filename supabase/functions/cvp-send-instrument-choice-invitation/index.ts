@@ -30,7 +30,7 @@ const CORS = {
 
 const APP_URL = Deno.env.get("APP_URL") ?? "https://join.cethos.com";
 // 10-day TTL — matches translation-test + quiz token TTL
-const CHOICE_TTL_MS = 10 * 24 * 60 * 60 * 1000;
+const CHOICE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7-day window (was 10)
 
 interface Body {
   applicationId?: string;
@@ -200,7 +200,7 @@ serve(async (req: Request) => {
       </p>
 
       <div style="margin-top: 24px; padding: 14px 16px; background: #FFFBEB; border-left: 3px solid #F59E0B; font-size: 13px; color: #374151;">
-        <strong>Heads up:</strong> this link expires in <strong>240 hours</strong>. Once you pick a path, you'll receive a follow-up email with the actual test or quiz links.
+        <strong>Heads up:</strong> this link expires in <strong>7 days</strong>. Once you pick a path, you'll receive a follow-up email with the actual test or quiz links.
       </div>
 
       <div style="margin-top: 14px; padding: 14px 16px; background: #EEF2FF; border-left: 3px solid #6366F1; font-size: 13px; color: #374151;">
@@ -220,7 +220,7 @@ serve(async (req: Request) => {
     `Either path is sufficient. Open: ${chooseUrl}\n\n` +
     `Before your assessment opens, you'll be asked to read and accept a short ` +
     `confidentiality agreement (NDA) — it takes under a minute.\n\n` +
-    `Link expires in 240 hours.\n`;
+    `Link expires in 7 days.\n`;
 
   await sendMailgunEmail({
     to: { email: app.email, name: app.full_name },
