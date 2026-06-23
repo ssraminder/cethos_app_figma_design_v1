@@ -166,6 +166,13 @@ const NAV_ITEMS: NavItem[] = [
     section: "Vendors",
   },
   {
+    label: "Approval Queue",
+    path: "/admin/recruitment/approval-queue",
+    icon: ShieldCheck,
+    section: "Vendors",
+    isChild: true,
+  },
+  {
     label: "Vendor Communication",
     path: "/admin/vendors/communication",
     icon: MessageSquare,
