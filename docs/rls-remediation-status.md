@@ -1,5 +1,11 @@
 # RLS Remediation Status — `public` schema (Cethos_Translation_App)
 
+> **STATUS: ✅ COMPLETE — all 22 tables RLS-enabled & verified on prod (2026-06-23).**
+> Security advisor `rls_disabled_in_public`: **22 → 0**. No target table appears in any remaining
+> lint. One PR/branch `fix/rls-remediation-22-tables` (22 commits, one migration per table).
+> See "Summary — definition of done" at the bottom.
+
+
 Tracking the per-table rollout of Row-Level Security on the **22 `public` base tables**
 that the Supabase security advisor flagged as `rls_disabled_in_public` (anon/authenticated
 could read & write every row). Project ref `lmzoyezvsjgsxveoakdr`.
@@ -168,3 +174,51 @@ Legend: ✅ done & verified · 🔄 in progress · ⬜ pending · 🚫 blocked
   (languages, intended_uses, document_types, certification_types, delivery_options) + app_settings
   config remain readable. Staff write path = the same `staff_manage`/`is_active_staff()` pattern
   proven on `services`.
+
+---
+
+## Summary — definition of done
+
+| Criterion | Result |
+|---|---|
+| All 22 tables RLS-enabled with access-preserving policies | ✅ 22/22 (`pg_class.relrowsecurity` true, ≥1 policy each) |
+| Per-table E2E gate passed (dry-run + live anon probe) before & after prod | ✅ every table |
+| Internal tables NOT readable by anon/authenticated | ✅ all 10 → anon `*/0` (ads_offline_conversions, xtrf_×4, training_×4, service_terms) |
+| Public reference tables still readable | ✅ all 12 → anon full counts (services 50, currencies 78, cethosweb_×4, app_settings 89, certification_types 4, delivery_options 7, document_types 25, intended_uses 241, languages 143) |
+| `services` staff write preserved; anon write blocked | ✅ staff INSERT passes RLS (23502), anon POST → 401 |
+| Supabase advisor `rls_disabled_in_public` cleared | ✅ **22 → 0**; no target table in any remaining lint |
+| `public` base tables still RLS-disabled | ✅ **0** |
+| Application code changed | none (only `.sql` migrations + 1 trigger function + this doc) → build/typecheck unaffected |
+
+**End-state role matrix**
+
+- **service_role only (10):** `ads_offline_conversions`, `xtrf_language_map`, `xtrf_branches`,
+  `xtrf_payment_methods`*, `xtrf_currency_map`*, `training_lessons/modules/slides/quiz_questions`,
+  `service_terms`.  *(`xtrf_currency_map` & `xtrf_payment_methods` additionally allow authenticated
+  SELECT for the admin VendorPayments/Invoices tabs.)*
+- **anon + authenticated SELECT + service_role (11):** `services` (+ staff_manage write), `currencies`,
+  `cethosweb_countries/languages/locales/settings`, `app_settings`, `certification_types`,
+  `delivery_options`, `document_types`, `intended_uses`, `languages` (last 6 = Group A staff_manage).
+
+**Special handling**
+- `ads_offline_conversions`: trigger `queue_ads_offline_conversion()` (on `orders.paid_at`) converted
+  to `SECURITY DEFINER` so the queue INSERT always succeeds regardless of which role marks an order
+  paid (it only ever runs as service_role today, but this is now safe-by-construction).
+
+**Deliberate, behaviour-preserving notes (not silent tightening)**
+- `xtrf_currency_map` / `xtrf_payment_methods`: anon read dropped (admin-only pages; no anon reader
+  existed). authenticated read kept.
+- `app_settings`: remains anon-readable (its pre-existing public-select policy) — scanned, holds no
+  secrets (89 non-sensitive config rows). Enabling RLS preserves, not changes, current access.
+
+## Recommended follow-ups (out of scope of these 22 — for human review)
+
+1. **Repo/prod drift:** branch `origin/fix/enable-rls-17-tables` (a *different* 17 tables: vendor_payments,
+   xtrf_csv_*_2026_05_21 staging, vendor PO tables, cvp_*) is **applied to prod but unmerged** — its
+   migration file is missing from `main`. Merge it (or cherry-pick the SQL) so the repo reflects prod.
+2. **Live-UI smoke test** (optional confidence): public quote form dropdowns (anon) + admin
+   ServicesSettings edit (staff) + admin VendorPayments currency/method display. The anon-key REST
+   probes already exercise the identical data path, so this is confirmatory only.
+3. **Pre-existing advisor findings** (unrelated to this task): `rls_enabled_no_policy` on 20 tables
+   incl. `comms.rc_subscriptions` (RLS on, zero policies → currently locked to service_role by
+   accident), 11 `security_definer_view` ERRORs, 179 `function_search_path_mutable`. Separate hardening.
