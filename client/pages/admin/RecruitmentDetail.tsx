@@ -4979,6 +4979,7 @@ interface IsoEvidence {
   skip_review_combos: number;
   declared_domain_list: string | null;
   has_verified_degree_doc: boolean;
+  passed_domains: string | null;
   tested_domains: string | null;
   declared_domains: number;
   quiz_score: number | null;
@@ -5035,9 +5036,15 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
   const highRiskDeclared = declaredList.filter((d) => HIGH_RISK_DOMAINS.has(d));
   const safeDeclared = declaredList.filter((d) => !HIGH_RISK_DOMAINS.has(d));
 
-  // For high-risk domains: a domain-specific certification whose title contains
-  // the domain keyword counts as evidence. This is a heuristic — reviewer confirms.
+  // Domain competence (§6.1.6) is established FIRST by a passed domain test —
+  // that is the primary, IQVIA-weighted evidence. A domain-specific certificate
+  // or experience doc is a fallback. So a high-risk domain is "evidenced" if the
+  // applicant PASSED the test in it, OR has a cert/doc naming it.
+  const passedDomains = (ev.passed_domains ?? "")
+    .split(",").map((d) => d.trim()).filter(Boolean);
+  const highRiskTested = highRiskDeclared.filter((d) => passedDomains.includes(d));
   const highRiskWithEvidence = highRiskDeclared.filter((d) =>
+    passedDomains.includes(d) ||
     certItems.some((it) => it.title.toLowerCase().includes(d.replace("_", " "))) ||
     expItems.some((it) => it.title.toLowerCase().includes(d.replace("_", " ")))
   );
@@ -5149,17 +5156,22 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
     steps.push({ state: hasRealCompetence ? "done" : "check", text: `Domains (§6.1.6): ${ev.declared_domains} declared, none flagged high-risk. ${compNote} Domains: ${domainStr}.` });
   } else {
     const safeStr = safeDeclared.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ") || "none";
-    const evidencedHighRiskStr = highRiskWithEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
+    const testedStr = highRiskTested.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
+    const certOnly = highRiskWithEvidence.filter((d) => !highRiskTested.includes(d));
+    const certStr = certOnly.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
     const unevidencedStr = highRiskNoEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
     let text = `Domains (§6.1.6): ${ev.declared_domains} declared.`;
-    if (highRiskNoEvidence.length > 0) {
-      text += ` NO specific evidence for: ${unevidencedStr} — remove these before approving (general test alone is not sufficient for these domains).`;
+    if (highRiskTested.length > 0) {
+      text += ` Qualified by a PASSED domain test: ${testedStr}.`;
     }
-    if (highRiskWithEvidence.length > 0) {
-      text += ` Evidenced high-risk: ${evidencedHighRiskStr} — confirm the certification covers this domain.`;
+    if (certOnly.length > 0) {
+      text += ` Cert/doc evidence (confirm it covers the domain): ${certStr}.`;
+    }
+    if (highRiskNoEvidence.length > 0) {
+      text += ` NO test pass or cert for: ${unevidencedStr} — remove these (or send the domain test) before approving.`;
     }
     if (safeStr !== "none") {
-      text += ` Safe to approve (general test pass covers these): ${safeStr}.`;
+      text += ` Safe (general competence covers these): ${safeStr}.`;
     }
     steps.push({ state: highRiskNoEvidence.length > 0 ? "check" : "done", text });
   }
