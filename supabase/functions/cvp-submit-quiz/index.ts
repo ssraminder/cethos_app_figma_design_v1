@@ -219,8 +219,14 @@ serve(async (req: Request) => {
   // translation AI verdict (anyTranslationFail) is advisory only and never parks
   // or rejects — it is corroborated by the reviewer at final approval.
   const approveBar = sub.is_coa ? COA_APPROVE_THRESHOLD : APPROVE_THRESHOLD;
-  const comboStatus: string = scorePct >= approveBar
-    ? "approved"
+  const quizPassed = scorePct >= approveBar;
+  // A quiz pass is NOT a graded translation test, so it must NOT mark the combo
+  // 'approved' ('approved' is reserved for a real graded submission — test_submission_id
+  // + ai_score). On pass -> 'declared_unverified' (the competence is recorded on the
+  // quiz submission and credited at approval); COA below-bar -> 'assessed' (routes to
+  // staff_review for corroboration); standard fail -> 'rejected'.
+  const comboStatus: string = quizPassed
+    ? "declared_unverified"
     : (sub.is_coa ? "assessed" : "rejected");
 
   // Cognitive-debriefing: standalone knowledge quiz with NO translation combos.
@@ -238,9 +244,6 @@ serve(async (req: Request) => {
     instrument_kind: "quiz",
     updated_at: now.toISOString(),
   };
-  if (comboStatus === "approved") {
-    comboUpdate.approved_at = now.toISOString();
-  }
   await supabase
     .from("cvp_test_combinations")
     .update(comboUpdate)
@@ -248,14 +251,14 @@ serve(async (req: Request) => {
     .eq("target_language_id", sub.target_language_id)
     .in("status", ["pending", "test_sent", "test_submitted", "assessed"]);
 
-  // Cascade: a passing quiz (the core competence gate) auto-approves every other
-  // pending domain combination on the application — life sciences, medical,
-  // pharmaceutical, legal, etc. — so no declared domain is left parked "Pending".
-  // Same policy as the test path (cvp-assess-test). Confirmed at final approval.
-  if (comboStatus === "approved") {
+  // Cascade: a passing quiz marks every other declared domain combination
+  // 'declared_unverified' (NOT 'approved' — same policy as cvp-assess-test). These
+  // are declared specializations; the human qualifies them at approval with real
+  // evidence, and the quiz itself credits the clinical domains there.
+  if (quizPassed) {
     await supabase
       .from("cvp_test_combinations")
-      .update({ status: "approved", approved_at: now.toISOString(), updated_at: now.toISOString() })
+      .update({ status: "declared_unverified", updated_at: now.toISOString() })
       .eq("application_id", sub.application_id)
       .in("status", ["pending", "skip_manual_review"]);
   }
@@ -270,19 +273,21 @@ serve(async (req: Request) => {
   const combos =
     (allCombos as { status: string }[] | null) ?? [];
   const allSettled = combos.every((c) =>
-    ["approved", "rejected", "assessed", "skipped", "no_test_available", "skip_manual_review"].includes(c.status),
+    ["approved", "declared_unverified", "rejected", "assessed", "skipped", "no_test_available", "skip_manual_review"].includes(c.status),
   );
   if (allSettled) {
-    const hasApproved = combos.some((c) => c.status === "approved");
+    // A pass = a real graded 'approved' OR 'declared_unverified' (the cascade only
+    // fires on a passed test/quiz). Either advances the application to test_assessed.
+    const hasPassed = combos.some((c) => c.status === "approved" || c.status === "declared_unverified");
     const hasAssessed = combos.some((c) => c.status === "assessed");
     const allRejected = combos
-      .filter((c) => !["skipped", "no_test_available", "skip_manual_review"].includes(c.status))
+      .filter((c) => !["skipped", "no_test_available", "skip_manual_review", "declared_unverified"].includes(c.status))
       .every((c) => c.status === "rejected");
 
     let appStatus: string;
     if (hasAssessed) appStatus = "staff_review";
+    else if (hasPassed) appStatus = "test_assessed";
     else if (allRejected) appStatus = "rejected";
-    else if (hasApproved) appStatus = "test_assessed";
     else appStatus = "staff_review";
 
     await supabase

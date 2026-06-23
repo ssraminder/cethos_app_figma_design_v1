@@ -573,14 +573,15 @@ Evaluate the applicant's translation against the source text and reference trans
       .update(comboUpdate)
       .eq("id", combinationId);
 
-    // ---- Cascade auto-approval: ALL declared domains follow a General pass ----
-    // Policy (2026-06-18): the General test is the core competence gate. When it
-    // auto-approves (>=70), every OTHER pending domain combination on the same
-    // application — life sciences, medical, pharmaceutical, legal, technical,
-    // certified_official, etc. — auto-approves alongside it. Declared domains are
-    // the applicant's specializations, confirmed by the human at final approval;
-    // no domain is left parked "Pending". A borderline/rejected General does NOT
-    // cascade (the applicant hasn't cleared the core gate).
+    // ---- Cascade: mark declared domains DECLARED-UNVERIFIED after a General pass ----
+    // Policy (revised 2026-06-23): the General test is the core competence gate.
+    // When it passes (>=70), every OTHER pending domain combination is marked
+    // 'declared_unverified' — NOT 'approved'. These are the applicant's declared
+    // specializations; they are NOT domain-tested, so they must never count as a
+    // passed test. 'approved' is reserved for a real GRADED+passed submission
+    // (test_submission_id + ai_score). The human qualifies a declared domain at
+    // final approval only with real evidence (a passed domain test, the COA quiz,
+    // or a domain cert). A borderline/rejected General does NOT cascade.
     if (combinationStatus === "approved") {
       const { data: justAssessed } = await supabase
         .from("cvp_test_combinations")
@@ -590,14 +591,14 @@ Evaluate the applicant's translation against the source text and reference trans
       if ((justAssessed as { domain?: string } | null)?.domain === "general") {
         const { data: cascaded } = await supabase
           .from("cvp_test_combinations")
-          .update({ status: "approved", approved_at: now, updated_at: now })
+          .update({ status: "declared_unverified", updated_at: now })
           .eq("application_id", sub.application_id)
           .neq("id", combinationId)
           .in("status", ["pending", "skip_manual_review"])
           .select("id");
         if ((cascaded ?? []).length > 0) {
           console.log(
-            `Cascade: auto-approved ${(cascaded ?? []).length} domain combination(s) for application ${sub.application_id} after General test passed.`,
+            `Cascade: marked ${(cascaded ?? []).length} declared domain combination(s) declared_unverified for application ${sub.application_id} after General test passed (NOT a domain-test pass).`,
           );
         }
       }
