@@ -5038,6 +5038,22 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
   const certItems = items.filter((it) => it.type === "domain_specific_certification");
   const expItems = items.filter((it) => it.type === "documented_translation_experience");
   const hasDegreeTranslation = items.some((it) => it.type === "degree_translation");
+  const hasOtherDegree = items.some((it) => it.type === "degree_other");
+  const refYears = ev.ref_documented_years ?? 0;
+  const hasTestCompetence = ev.real_passed_combos > 0 || ev.quiz_score != null;
+  // ISO 17100 §3.1.4: a qualifying credential establishes competence on its own
+  // (policy confirmed 2026-06-23) — route (a) translation degree, route (c) 5-yr
+  // documented experience, or route (b) other-field degree + 2-yr experience. The
+  // internal test is an ALTERNATIVE route, not a mandatory gate; references are
+  // waived for a route-(a) degree. The reviewer still verifies the degree (opens
+  // it, confirms the field) at approval — that human check IS the verification.
+  const credentialRoute: "a" | "c" | "b" | "b_incomplete" | null =
+    hasDegreeTranslation ? "a"
+    : refYears >= 5 ? "c"
+    : hasOtherDegree && refYears >= 2 ? "b"
+    : hasOtherDegree ? "b_incomplete"
+    : null;
+  const competenceByCredential = credentialRoute === "a" || credentialRoute === "b" || credentialRoute === "c";
 
   // Risk-classify ALL declared domains (domains_offered), not just those that
   // happen to have a combo — otherwise high-risk domains with no test slip through.
@@ -5075,10 +5091,13 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
     steps.push({ state: "done", text: `Competence: translation test passed (${ev.real_passed_combos} combo${ev.real_passed_combos > 1 ? "s" : ""}). See Test Combinations below.` });
   } else if (ev.quiz_score != null) {
     steps.push({ state: "done", text: `Competence: quiz passed (${ev.quiz_score}%). See Quiz Results below.` });
+  } else if (competenceByCredential) {
+    const rl = credentialRoute === "a" ? "a — translation degree" : credentialRoute === "b" ? "b — degree + 2-yr experience" : "c — 5-yr documented experience";
+    steps.push({ state: "done", text: `Competence: established by the ISO 17100 §3.1.4 qualification (route ${rl}) — see basis below. An internal test is an alternative route and is not required.` });
   } else if (ev.skip_review_combos > 0) {
     steps.push({ state: "check", text: `Competence: ${ev.skip_review_combos} combo${ev.skip_review_combos > 1 ? "s" : ""} routed to manual credential review — the test was BYPASSED, not passed. This is not a completed competence assessment; competence must rest on a verified §3.1.4 basis (below) or a passed test/quiz.` });
   } else {
-    steps.push({ state: "todo", text: "Competence: no test/quiz on file — do not approve until competence is demonstrated." });
+    steps.push({ state: "todo", text: "Competence: no passed test/quiz and no qualifying §3.1.4 credential on file — send a test, or request a degree / 5-yr references." });
   }
 
   // 1b. COA quiz — competence bar is 90% MCQ. At/above the bar = competence
@@ -5144,7 +5163,9 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
   // 3. References — positive isn't enough; flag when the corroborated experience
   // falls materially short of the self-declared figure (the reference, not the
   // form, is the evidence for route (c)).
-  if (ev.refs_received > 0) {
+  if (credentialRoute === "a") {
+    steps.push({ state: "done", text: `References: not required — a route-(a) translation degree establishes the §3.1.4 basis (ISO 17100 doesn't mandate references for a recognised translation qualification).${ev.refs_received > 0 ? ` ${ev.refs_received} on file anyway.` : ""}` });
+  } else if (ev.refs_received > 0) {
     const allPositive = ev.ref_positive_count > 0 && ev.ref_positive_count === ev.refs_received;
     const claimed = ev.years_experience ?? null;
     const corrob = ev.ref_documented_years ?? null;
@@ -5203,25 +5224,35 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
   // Bottom line — ordered hard gates. Competence = a passed test/quiz (NOT
   // skip_manual_review). Basis = VERIFIED degree or references confirming ≥5 yrs
   // (route c) — an unverified doc on file is not enough. NDA must be on file.
-  const competenceOk = ev.real_passed_combos > 0 || ev.quiz_score != null;
-  const basisOk = ev.has_verified_degree_doc || (ev.ref_documented_years ?? 0) >= 5;
+  // Competence is satisfied by a passed test/quiz OR a qualifying §3.1.4 credential
+  // (route a/b/c). References are waived for route (a). NDA is a post-approval
+  // clickwrap, not a hard pre-gate. Domain over-scope (§6.1.6) is an edit, not a block.
   const ndaOk = !!ndaSignedAt;
+  const ndaNote = ndaOk ? "" : " (NDA not yet signed — presented as in-portal clickwrap on first login.)";
+  const removeStr = highRiskNoEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
+  const domainSuffix = highRiskNoEvidence.length > 0 ? ` First remove unevidenced high-risk domains: ${removeStr} (or send the domain test).` : "";
   let bottom: { tone: string; text: string };
   if (ev.flag_no_cv) {
     bottom = { tone: "text-red-700", text: "→ HOLD: no CV on file — can't verify identity or basis. Request the CV first." };
-  } else if (!competenceOk) {
-    bottom = { tone: "text-amber-700", text: `→ Not yet — competence not demonstrated.${ev.skip_review_combos > 0 ? " Skip-review combos are not a test pass." : ""} Send/await a passed test or quiz, or establish a verified §3.1.4 basis.` };
-  } else if (!basisOk) {
-    bottom = { tone: "text-amber-700", text: "→ Not yet — §3.1.4 basis not established by VERIFIED evidence. Verify the degree (route a/b) or confirm ≥5 yrs via references (route c) before approving." };
-  } else if (ev.refs_received === 0) {
-    bottom = { tone: "text-amber-700", text: "→ Not yet — await at least one good reference." };
-  } else if (!ndaOk) {
-    bottom = { tone: "text-amber-700", text: "→ Not yet — no confidentiality agreement (NDA) on file for this application. Confirm a signed, current NDA before approving." };
-  } else if (highRiskNoEvidence.length > 0) {
-    const removeStr = highRiskNoEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
-    bottom = { tone: "text-amber-700", text: `→ Approvable with edits: remove ${removeStr} from the domain list (no specific evidence), record the §3.1.4 basis, then approve only the evidenced domains.` };
+  } else if (credentialRoute === "a") {
+    bottom = { tone: "text-green-700", text: `→ Approvable (route a): open the translation degree, confirm it's genuine and in translation/interpreting, then Skip-to-Approve with basis (a). No internal test or reference required.${domainSuffix}${ndaNote}` };
+  } else if (credentialRoute === "c") {
+    bottom = { tone: "text-green-700", text: `→ Approvable (route c): references confirm ~${refYears} yrs professional experience. Skip-to-Approve with basis (c). No internal test required.${domainSuffix}${ndaNote}` };
+  } else if (credentialRoute === "b") {
+    bottom = { tone: "text-green-700", text: `→ Approvable (route b): non-translation degree + ~${refYears} yrs confirmed experience. Skip-to-Approve with basis (b).${domainSuffix}${ndaNote}` };
+  } else if (hasTestCompetence) {
+    const basisOk = ev.has_verified_degree_doc || refYears >= 5;
+    if (!basisOk) {
+      bottom = { tone: "text-amber-700", text: "→ Not yet — competence shown by test, but the §3.1.4 basis isn't established. Verify a degree (route a/b) or confirm ≥5 yrs via references (route c)." };
+    } else if (ev.refs_received === 0) {
+      bottom = { tone: "text-amber-700", text: `→ Not yet — await at least one good reference.${domainSuffix}` };
+    } else {
+      bottom = { tone: "text-green-700", text: `→ Approvable. Record the §3.1.4 basis and approve.${domainSuffix}${ndaNote}` };
+    }
+  } else if (credentialRoute === "b_incomplete") {
+    bottom = { tone: "text-amber-700", text: "→ Not yet (route b): non-translation degree on file, but 2 yrs documented translation experience isn't confirmed yet — request references or experience-proof documents." };
   } else {
-    bottom = { tone: "text-green-700", text: `→ Approvable. Record the §3.1.4 basis${(ev.ref_documented_years ?? 0) >= 5 && !ev.has_verified_degree_doc ? " = route (c)" : ""} and approve.` };
+    bottom = { tone: "text-amber-700", text: `→ Not yet — no passed test/quiz and no qualifying §3.1.4 credential.${ev.skip_review_combos > 0 ? " Skip-review combos are not a test pass." : ""} Send a test, or request a degree / 5-yr references.` };
   }
 
   const ICON: Record<Step["state"], string> = { done: "✓", check: "⚠", todo: "◻" };
@@ -5302,9 +5333,11 @@ function IsoEvidencePanel({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence | null
     </div>
   );
 
+  const hasCredentialBasis = (ev.screened_items ?? []).some((it) => it.type === "degree_translation" || it.type === "degree_other") || (ev.ref_documented_years ?? 0) >= 5;
   const competence = ev.real_passed_combos > 0
     ? `Test passed (${ev.real_passed_combos} combo${ev.real_passed_combos > 1 ? "s" : ""})`
     : ev.quiz_score != null ? `Quiz ${ev.quiz_score}%`
+    : hasCredentialBasis ? "Via §3.1.4 credential"
     : ev.skip_review_combos > 0 ? `${ev.skip_review_combos} in credential review (not tested)` : "—";
   const basis = `${ev.education_level ? ev.education_level + " (self-declared)" : "no degree declared"}${ev.years_experience != null ? ` · ${ev.years_experience}y exp (self-declared)` : ""}`;
   const docCount = ev.uploaded_docs_count || 0;
@@ -5333,7 +5366,7 @@ function IsoEvidencePanel({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence | null
         )}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Item label="Competence" value={competence} ok={ev.real_passed_combos > 0 || ev.quiz_score != null} />
+        <Item label="Competence" value={competence} ok={ev.real_passed_combos > 0 || ev.quiz_score != null || hasCredentialBasis} />
         <Item label="§3.1.4 basis — self-declared" value={basis} />
         <Item label="Documents on file" value={docsValue} ok={ev.has_cv || docCount > 0} />
         <Item label="References in" value={`${ev.refs_received} received`} ok={ev.refs_received >= 1} />
