@@ -1,0 +1,11 @@
+-- =====================================================================
+-- RLS remediation (2026-06-23) — table 21 of 22: intended_uses  [Group A]
+--
+-- Existing dormant policies: "Allow public select on intended_uses"
+-- (SELECT TO anon, authenticated USING true) + "staff_manage_intended_uses"
+-- (ALL TO authenticated USING is_active_staff()). service_role bypasses RLS.
+-- No SECURITY INVOKER writer. Enable RLS to activate them (preserves current access).
+--
+-- Rollback: ALTER TABLE public.intended_uses DISABLE ROW LEVEL SECURITY;
+-- =====================================================================
+ALTER TABLE public.intended_uses ENABLE ROW LEVEL SECURITY;
