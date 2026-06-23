@@ -228,6 +228,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Quality",
   },
   {
+    label: "Quality & Performance",
+    path: "/admin/quality",
+    icon: ClipboardList,
+    section: "Quality",
+  },
+  {
     label: "Review Jobs",
     path: "/admin/tr/jobs",
     icon: Languages,
