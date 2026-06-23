@@ -1,0 +1,11 @@
+-- =====================================================================
+-- RLS remediation (2026-06-23) — table 18 of 22: certification_types  [Group A]
+--
+-- Existing dormant policies: "Allow public select on certification_types"
+-- (SELECT TO anon, authenticated USING true) + "staff_manage_certification_types"
+-- (ALL TO authenticated USING is_active_staff()). service_role bypasses RLS.
+-- No SECURITY INVOKER writer. Enable RLS to activate them (preserves current access).
+--
+-- Rollback: ALTER TABLE public.certification_types DISABLE ROW LEVEL SECURITY;
+-- =====================================================================
+ALTER TABLE public.certification_types ENABLE ROW LEVEL SECURITY;

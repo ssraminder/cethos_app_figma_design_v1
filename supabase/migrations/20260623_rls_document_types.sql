@@ -1,0 +1,11 @@
+-- =====================================================================
+-- RLS remediation (2026-06-23) — table 20 of 22: document_types  [Group A]
+--
+-- Existing dormant policies: "Allow public select on document_types"
+-- (SELECT TO anon, authenticated USING true) + "staff_manage_document_types"
+-- (ALL TO authenticated USING is_active_staff()). service_role bypasses RLS.
+-- No SECURITY INVOKER writer. Enable RLS to activate them (preserves current access).
+--
+-- Rollback: ALTER TABLE public.document_types DISABLE ROW LEVEL SECURITY;
+-- =====================================================================
+ALTER TABLE public.document_types ENABLE ROW LEVEL SECURITY;

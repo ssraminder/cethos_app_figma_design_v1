@@ -1,0 +1,11 @@
+-- =====================================================================
+-- RLS remediation (2026-06-23) — table 19 of 22: delivery_options  [Group A]
+--
+-- Existing dormant policies: "Allow public select on delivery_options"
+-- (SELECT TO anon, authenticated USING true) + "staff_manage_delivery_options"
+-- (ALL TO authenticated USING is_active_staff()). service_role bypasses RLS.
+-- No SECURITY INVOKER writer. Enable RLS to activate them (preserves current access).
+--
+-- Rollback: ALTER TABLE public.delivery_options DISABLE ROW LEVEL SECURITY;
+-- =====================================================================
+ALTER TABLE public.delivery_options ENABLE ROW LEVEL SECURITY;
