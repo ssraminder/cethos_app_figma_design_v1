@@ -178,44 +178,12 @@ serve(async (req: Request) => {
   }
   const scorePct = totalCount > 0 ? (correctCount / totalCount) * 100 : 0;
 
-  // 3b. COA Part 2: grade each sentence translation reference-free (via
-  // cvp-coa-assess-translation, which stores each to cvp_coa_translation_responses),
-  // and collect verdicts so a failed translation blocks auto-approval.
-  let anyTranslationFail = false;
-  let translationsGraded = 0;
-  if (translations.length > 0) {
-    const { data: langRow } = await supabase
-      .from("languages").select("name, code").eq("id", sub.target_language_id).maybeSingle();
-    const langName = ((langRow as Record<string, unknown> | null)?.name as string) ?? "";
-    const langCode = ((langRow as Record<string, unknown> | null)?.code as string) ?? "";
-    const fnUrl = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "") +
-      "/functions/v1/cvp-coa-assess-translation";
-    for (const t of translations) {
-      if (!t?.item_id || !String(t?.translation ?? "").trim()) continue;
-      try {
-        const resp = await fetch(fnUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
-          },
-          body: JSON.stringify({
-            itemId: t.item_id,
-            targetLanguageCode: langCode,
-            targetLanguageName: langName,
-            translation: t.translation,
-            applicationId: sub.application_id,
-          }),
-        });
-        const out = await resp.json();
-        translationsGraded += 1;
-        if (out?.data?.verdict === "fail") anyTranslationFail = true;
-      } catch (e) {
-        console.error("COA translation grading failed:", e);
-        anyTranslationFail = true; // conservative — route to human review
-      }
-    }
-  }
+  // 3b. COA Part-2 translation grading is deferred to the BACKGROUND (see the end
+  // of this handler). Previously each sentence was graded by an AI call
+  // (cvp-coa-assess-translation) sequentially BEFORE the response returned — N
+  // back-to-back Claude calls made the applicant wait 30-60s on "Submit". The
+  // verdicts are advisory (reviewed by staff at approval) and gate nothing, so
+  // there's no reason to block submission on them.
 
   // 4. Persist submission
   const { error: updateErr } = await supabase
@@ -412,6 +380,47 @@ serve(async (req: Request) => {
     console.error("Staff quiz notification failed:", notifyErr);
   }
 
+  // 9. Grade the COA Part-2 translations in the BACKGROUND so the response below
+  // returns instantly. Each item is graded reference-free by
+  // cvp-coa-assess-translation (stored to cvp_coa_translation_responses); the
+  // verdicts are advisory. Parallelised, and run via EdgeRuntime.waitUntil so the
+  // worker stays alive after the HTTP response is sent.
+  if (translations.length > 0) {
+    const gradeAll = async () => {
+      const { data: langRow } = await supabase
+        .from("languages").select("name, code").eq("id", sub.target_language_id).maybeSingle();
+      const langName = ((langRow as Record<string, unknown> | null)?.name as string) ?? "";
+      const langCode = ((langRow as Record<string, unknown> | null)?.code as string) ?? "";
+      const fnUrl = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "") +
+        "/functions/v1/cvp-coa-assess-translation";
+      await Promise.all(translations.map(async (t) => {
+        if (!t?.item_id || !String(t?.translation ?? "").trim()) return;
+        try {
+          await fetch(fnUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
+            },
+            body: JSON.stringify({
+              itemId: t.item_id,
+              targetLanguageCode: langCode,
+              targetLanguageName: langName,
+              translation: t.translation,
+              applicationId: sub.application_id,
+            }),
+          });
+        } catch (e) {
+          console.error("COA Part-2 background grading failed:", e);
+        }
+      }));
+    };
+    // deno-lint-ignore no-explicit-any
+    const er = (globalThis as any).EdgeRuntime;
+    if (er?.waitUntil) er.waitUntil(gradeAll());
+    else void gradeAll();
+  }
+
   return jsonResponse({
     success: true,
     data: {
@@ -419,8 +428,8 @@ serve(async (req: Request) => {
       submittedAt: now.toISOString(),
       scorePct: Number(scorePct.toFixed(2)),
       verdict: comboStatus,
-      translationsGraded,
-      anyTranslationFail,
+      translationsQueued: translations.length,
+      gradingInBackground: translations.length > 0,
     },
   });
 });
