@@ -6785,11 +6785,10 @@ export default function RecruitmentDetail() {
             />
             {combinations.length === 0 ? (
               <p className="text-sm text-gray-500 mt-2">No test combinations.</p>
-            ) : (
-              <div className="space-y-3 mt-2">
-                {combinations.map((combo) => {
-                  const sub = submissions.find((s) => s.combination_id === combo.id);
-                  return (
+            ) : (() => {
+              const renderCard = (combo: TestCombination) => {
+                const sub = submissions.find((s) => s.combination_id === combo.id);
+                return (
                     <div key={combo.id} className="border border-gray-200 rounded-lg p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div className="flex items-center gap-2">
@@ -6909,9 +6908,30 @@ export default function RecruitmentDetail() {
                       })()}
                     </div>
                   );
-                })}
-              </div>
-            )}
+              };
+              const approvedCombos = combinations.filter((c) => c.status === "approved");
+              const otherCombos = combinations.filter((c) => c.status !== "approved");
+              return (
+                <div className="mt-2 space-y-2">
+                  {approvedCombos.length > 0 && (
+                    <details open className="border border-emerald-200 rounded-lg bg-emerald-50/30">
+                      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-emerald-800">
+                        Approved pairs ({approvedCombos.length})
+                      </summary>
+                      <div className="space-y-3 p-3 pt-0">{approvedCombos.map(renderCard)}</div>
+                    </details>
+                  )}
+                  {otherCombos.length > 0 && (
+                    <details className="border border-gray-200 rounded-lg">
+                      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-gray-700">
+                        Pending / in review ({otherCombos.length})
+                      </summary>
+                      <div className="space-y-3 p-3 pt-0">{otherCombos.map(renderCard)}</div>
+                    </details>
+                  )}
+                </div>
+              );
+            })()}
           </Section>
 
           {/* Quiz Results — standalone, so quiz-only candidates (cognitive
