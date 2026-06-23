@@ -18,6 +18,7 @@ import VendorInvoicesTab from "./vendor-detail/VendorInvoicesTab";
 import VendorPaymentsTab from "./vendor-detail/VendorPaymentsTab";
 import VendorQmsTab from "./vendor-detail/VendorQmsTab";
 import VendorRosterTab from "./vendor-detail/VendorRosterTab";
+import VendorCommunicationTab from "./vendor-detail/VendorCommunicationTab";
 
 const TAB_KEYS = [
   "profile",
@@ -33,6 +34,7 @@ const TAB_KEYS = [
   "qms",
   "roster",
   "jobs",
+  "communication",
 ] as const;
 
 type TabKey = (typeof TAB_KEYS)[number];
@@ -51,6 +53,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   qms: "QMS",
   roster: "Roster",
   jobs: "Jobs",
+  communication: "Communication",
 };
 
 export default function AdminVendorDetail() {
@@ -293,6 +296,14 @@ export default function AdminVendorDetail() {
           <VendorJobsTab
             vendorData={vendorData}
             onRefresh={refreshVendorData}
+          />
+        </TabsContent>
+
+        <TabsContent value="communication">
+          <VendorCommunicationTab
+            vendorId={vendorData.vendor.id}
+            vendorName={vendorData.vendor.business_name || vendorData.vendor.full_name}
+            vendorEmail={vendorData.vendor.email}
           />
         </TabsContent>
       </Tabs>
