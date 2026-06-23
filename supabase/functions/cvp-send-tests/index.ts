@@ -576,9 +576,9 @@ serve(async (req: Request) => {
     }
 
     for (const p of picks) {
-      // 10-day window: 3 reminders at +3 / +6 / +9 days, then expiry.
+      // 7-day window with daily reminders until submitted (was 10-day / +3/+6/+9).
       const tokenExpiresAt = new Date(
-        Date.now() + 10 * 24 * 60 * 60 * 1000,
+        Date.now() + 7 * 24 * 60 * 60 * 1000,
       ).toISOString();
 
       const { data: submission, error: subError } = await supabase
