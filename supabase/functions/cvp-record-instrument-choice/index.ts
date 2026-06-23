@@ -271,7 +271,7 @@ async function dispatchQuizPath(
   const skipped: Array<{ targetLanguageId: string; reason: string }> = [];
 
   for (const targetLanguageId of distinctTargets) {
-    const coverage = await checkQuizCoverage(supabase, targetLanguageId);
+    const coverage = await checkQuizCoverage(supabase, targetLanguageId, isCoa);
     if (!coverage.ok) {
       skipped.push({ targetLanguageId, reason: coverage.reason });
       continue;
@@ -397,8 +397,48 @@ async function dispatchCogDebriefQuiz(
 async function checkQuizCoverage(
   supabase: ReturnType<typeof createClient>,
   targetLanguageId: string,
+  isCoa = false,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  // Need at least 8 active questions per target-scoped competence.
+  // COA quizzes are English-language MCQs (COA methodology + research + technical)
+  // plus Part-2 EN→target translation one-liners — all language-agnostic. They
+  // require NO target-scoped competence bank, so a COA quiz is deliverable for
+  // every target language (this is what unblocks es-419 et al.).
+  if (isCoa) {
+    const banks: Array<{ slug: string; need: number }> = [
+      { slug: "coa_methodology", need: 8 },
+      { slug: "research_competence", need: 8 },
+      { slug: "technical_competence", need: 8 },
+    ];
+    for (const b of banks) {
+      const { count } = await supabase
+        .from("iso_competence_quizzes")
+        .select("id", { count: "exact", head: true })
+        .eq("competence_slug", b.slug)
+        .eq("active", true)
+        .is("target_language_id", null);
+      if ((count ?? 0) < b.need) {
+        return { ok: false, reason: `insufficient_${b.slug}_questions (have ${count ?? 0}, need ${b.need})` };
+      }
+    }
+    // At least one Part-2 translation item (universal, or this target's code).
+    const { data: lang } = await supabase
+      .from("languages").select("code").eq("id", targetLanguageId).maybeSingle();
+    const tgtCode = (lang as { code?: string } | null)?.code ?? null;
+    let part2Q = supabase
+      .from("cvp_coa_translation_items")
+      .select("id", { count: "exact", head: true })
+      .eq("active", true);
+    part2Q = tgtCode
+      ? part2Q.or(`target_language_code.is.null,target_language_code.eq.${tgtCode}`)
+      : part2Q.is("target_language_code", null);
+    const { count: part2 } = await part2Q;
+    if ((part2 ?? 0) < 1) {
+      return { ok: false, reason: "no_coa_translation_items" };
+    }
+    return { ok: true };
+  }
+
+  // Standard quiz: need at least 8 active questions per target-scoped competence.
   const targetCompetences = [
     "linguistic_textual_competence",
     "cultural_competence",
