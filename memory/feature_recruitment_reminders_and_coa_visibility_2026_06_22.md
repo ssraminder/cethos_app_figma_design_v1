@@ -70,7 +70,20 @@ via wildcard-fallback rotation (verified by selection sim). Migration:
 `20260622_seed_coa_linguistic_validation_tests.sql` (idempotent by title). EN lang id
 fde091d2-db5f-4e41-a490-7e15efc419e1.
 
-## QUIZ-route coverage gap (audit finding, NOT yet fixed)
+## COA quiz redesign — English MCQs + translation one-liners (#1073, 2026-06-22)
+The COA quiz (is_coa) used to pull target-LANGUAGE MCQs (linguistic/cultural/domain in
+the candidate's target language) — wrong for a COA translator AND required a per-target
+MCQ bank that only exists for fr/es-Spain/it/pt-BR/de. Redesigned so the COA quiz is
+ENTIRELY ENGLISH (coa_methodology 15 + research 8 + technical 8, all target_language_id
+NULL) and translation competence is tested by the Part-2 EN→target one-liners
+(cvp_coa_translation_items, 9 universal). cvp-get-quiz: is_coa loads only scope!='target'
+competences. cvp-record-instrument-choice: checkQuizCoverage(isCoa) requires only the
+language-agnostic banks → COA quiz deliverable for EVERY target. Verified live on es-419:
+24 English MCQs, 0 target-scoped, 9 one-liners. **This closes the COA quiz coverage gap.**
+Standard (non-COA) quizzes unchanged (still target-scoped; those translators use the test
+route, wildcard-covered).
+
+## QUIZ-route coverage gap — STANDARD quiz only (COA now fixed; see above)
 The quiz route (standard AND is_coa translator quizzes) needs target-scoped competence
 questions (linguistic_textual + cultural + domain, ≥8 each) in iso_competence_quizzes.
 Only **fr, es (Spain), it, pt-BR, de** have coverage. Everything else = 0, notably
