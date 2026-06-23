@@ -336,6 +336,55 @@ serve(async (req: Request) => {
         return json({ success: true });
       }
 
+      // ── Issue Invoice from Receivables ────────────────────────────
+      // Receivables-first path: turn an order's DRAFT order_receivables into
+      // a customer invoice (+ lines), open an accounts_receivable row, and
+      // mark the receivables invoiced — all atomically in the DB RPC. Then
+      // render the branded PDF (best-effort; a Regenerate button exists).
+      case "issue_invoice": {
+        const { order_id, staff_id, invoice_date } = body;
+        if (!order_id) {
+          return json({ success: false, error: "Missing order_id" }, 400);
+        }
+
+        const rpcArgs: Record<string, unknown> = {
+          p_order_id: order_id,
+          p_staff_id: staff_id ?? null,
+        };
+        if (invoice_date) rpcArgs.p_invoice_date = invoice_date;
+
+        const { data: rpc, error: rpcErr } = await sb.rpc(
+          "create_invoice_from_receivables",
+          rpcArgs,
+        );
+        if (rpcErr) {
+          return json({ success: false, error: rpcErr.message }, 500);
+        }
+        if (!rpc || (rpc as any).success !== true) {
+          return json(
+            { success: false, ...(rpc as Record<string, unknown> ?? {}) },
+            400,
+          );
+        }
+
+        const invoiceId = (rpc as any).invoice_id as string;
+
+        // Render the branded PDF (non-fatal: invoice + lines already exist).
+        let pdf: unknown = null;
+        try {
+          const { data: pdfRes, error: pdfErr } = await sb.functions.invoke(
+            "generate-invoice-pdf",
+            { body: { invoice_id: invoiceId } },
+          );
+          if (pdfErr) console.error("generate-invoice-pdf failed:", pdfErr.message);
+          else pdf = pdfRes;
+        } catch (e) {
+          console.error("generate-invoice-pdf threw:", (e as Error).message);
+        }
+
+        return json({ success: true, ...(rpc as Record<string, unknown>), pdf });
+      }
+
       default:
         return json({ success: false, error: `Unknown action: ${action}` }, 400);
     }

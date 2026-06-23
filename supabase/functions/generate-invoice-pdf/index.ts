@@ -235,7 +235,14 @@ async function renderInvoice(ctx: any): Promise<Uint8Array> {
   const draw = (text: string, x: number, y: number, o: any = {}) => {
     const size = o.size ?? 10, font = o.font ?? fontR, color = o.color ?? TEXT_DARK;
     let s = safeText(text);
-    if (o.maxWidth) while (font.widthOfTextAtSize(s, size) > o.maxWidth && s.length > 1) s = s.slice(0, -2) + "..";
+    if (o.maxWidth && font.widthOfTextAtSize(s, size) > o.maxWidth) {
+      // Strictly shrink the base text (the previous "slice(-2)+'..'" kept the
+      // length constant → infinite loop / WORKER_RESOURCE_LIMIT on long text).
+      while (s.length > 1 && font.widthOfTextAtSize(s + "..", size) > o.maxWidth) {
+        s = s.slice(0, -1);
+      }
+      s = s + "..";
+    }
     page.drawText(s, { x, y, size, font, color });
   };
   const drawRight = (text: string, xRight: number, y: number, o: any = {}) => {
