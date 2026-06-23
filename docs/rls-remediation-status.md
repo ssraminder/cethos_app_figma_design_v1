@@ -48,10 +48,10 @@ Legend: ✅ done & verified · 🔄 in progress · ⬜ pending · 🚫 blocked
 | 3 | `xtrf_currency_map` | B (internal) | **authenticated SELECT** (admin VendorInvoices/Payments tabs) + service_role | `…_authenticated_read`, `…_service_role_all` | ✅ anon 0 / auth 6 / service 6 | 6 → `*/0` (anon) ✅ | ✅ | ✅ `20260623_rls_xtrf_currency_map.sql` |
 | 4 | `xtrf_payment_methods` | B (internal) | **authenticated SELECT** (admin VendorPayments tab) + service_role | `…_authenticated_read`, `…_service_role_all` | ✅ anon 0 / auth 10 / service 10 | 10 → `*/0` (anon) ✅ | ✅ | ✅ `20260623_rls_xtrf_payment_methods.sql` |
 | 5 | `xtrf_branches` | B (internal) | service_role only (no client read) | `…_service_role_all` | ✅ anon 0 / auth 0 / service 5 | 5 → `*/0` ✅ | ✅ | ✅ `20260623_rls_xtrf_branches.sql` |
-| 6 | `training_lessons` | B (legacy) | minimal (live LMS is `cvp_training_*`) | — | ⬜ | — | ⬜ | ⬜ |
-| 7 | `training_modules` | B (legacy) | minimal | — | ⬜ | — | ⬜ | ⬜ |
-| 8 | `training_slides` | B (legacy) | minimal | — | ⬜ | — | ⬜ | ⬜ |
-| 9 | `training_quiz_questions` | B (legacy) | minimal | — | ⬜ | — | ⬜ | ⬜ |
+| 6 | `training_lessons` | B (legacy/dead) | service_role only (0 rows; no reader) | `…_service_role_all` | ✅ rls_on, 1 pol | empty → empty (now RLS-gated) ✅ | ✅ | ✅ `20260623_rls_training_lessons.sql` |
+| 7 | `training_modules` | B (legacy/dead) | service_role only (0 rows; no reader) | `…_service_role_all` | ✅ rls_on, 1 pol | empty ✅ | ✅ | ✅ `20260623_rls_training_modules.sql` |
+| 8 | `training_slides` | B (legacy/dead) | service_role only (0 rows; no reader) | `…_service_role_all` | ✅ rls_on, 1 pol | empty ✅ | ✅ | ✅ `20260623_rls_training_slides.sql` |
+| 9 | `training_quiz_questions` | B (legacy/dead) | service_role only (0 rows; no reader) | `…_service_role_all` | ✅ rls_on, 1 pol | empty ✅ | ✅ | ✅ `20260623_rls_training_quiz_questions.sql` |
 | 10 | `services` | B (reference) | public read; service_role write | — | ⬜ | — | ⬜ | ⬜ |
 | 11 | `currencies` | B (reference) | public read; service_role write | — | ⬜ | — | ⬜ | ⬜ |
 | 12 | `cethosweb_countries` | B (reference) | public read (marketing site) | — | ⬜ | — | ⬜ | ⬜ |
@@ -103,3 +103,17 @@ Legend: ✅ done & verified · 🔄 in progress · ⬜ pending · 🚫 blocked
   `rls_on=true`. Authenticated read for currency_map/payment_methods proven by the SET-ROLE
   authenticated dry-run (6 / 10 rows); live admin-UI spot-check (VendorPaymentsTab) deferred to
   the consolidated UI pass.
+
+### 6–9. Legacy training tables — ✅ done (2026-06-23)
+
+- **Usage map:** all 4 are **empty (0 rows)** and **dead** — the live LMS is `cvp_training_*`.
+  No admin-client, vendor-portal, edge-function, DB-function, or view references them. Incoming
+  FKs from `staff_quiz_attempts` / `staff_training_progress` (also empty); FK validation bypasses
+  RLS, so locking these down cannot break referential integrity.
+- **Decision:** service_role only. If the staff LMS is ever built out, add read policies then.
+- **Dry-run (rolled back):** DDL valid; all 4 → `rls_on=true`, 1 policy.
+- **Applied:** `20260623_rls_training_{modules,lessons,slides,quiz_questions}.sql` (one each).
+- **Verify:** catalog confirms RLS on + `…_service_role_all` on each. (Row-count probe moot —
+  empty — but RLS now prevents any future inserted row from leaking to anon.)
+- Related open bug "Can't access to training" (jahstranslations, 06-22) is about the **live
+  `cvp_training_*` LMS**, not these dead tables — unaffected.
