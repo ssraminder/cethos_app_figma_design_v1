@@ -207,7 +207,20 @@ serve(async (req: Request) => {
     }
   }
 
-  for (const c of (sub.is_cog_debrief ? [] : COMPETENCES)) {
+  // Competence MCQs to load:
+  //  - cognitive-debriefing: none (methodology-only knowledge quiz below).
+  //  - COA: the cross-language (English) competences only. The COA quiz is
+  //    English-language throughout; the applicant's TARGET-language and
+  //    translation competence is tested by the Part-2 EN→target translation
+  //    items, not by target-language MCQs. This also makes the COA quiz
+  //    deliverable for every target (no per-target MCQ bank required).
+  //  - standard quiz: all five competences (target-scoped + cross-language).
+  const competencesToLoad = sub.is_cog_debrief
+    ? []
+    : sub.is_coa
+      ? COMPETENCES.filter((c) => c.scope !== "target")
+      : COMPETENCES;
+  for (const c of competencesToLoad) {
     let q = supabase
       .from("iso_competence_quizzes")
       .select("id, competence_slug, question, options, difficulty")
