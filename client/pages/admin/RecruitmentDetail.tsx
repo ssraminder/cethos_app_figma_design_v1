@@ -5439,6 +5439,7 @@ export default function RecruitmentDetail() {
   const { session } = useAdminAuthContext();
 
   const [app, setApp] = useState<Application | null>(null);
+  const [activeVendor, setActiveVendor] = useState<{ id: string } | null>(null);
   const [isoEvidence, setIsoEvidence] = useState<IsoEvidence | null>(null);
   const [ndaSignedAt, setNdaSignedAt] = useState<string | null>(null);
   const [combinations, setCombinations] = useState<TestCombination[]>([]);
@@ -5499,6 +5500,23 @@ export default function RecruitmentDetail() {
 
       const application = appData as Application;
       setApp(application);
+
+      // Flag if this applicant is already an ACTIVE vendor (already onboarded).
+      // Such applicants are excluded from the approval queue; surface a link to
+      // their vendor profile so staff don't try to re-approve (irreversible).
+      if (application.email) {
+        const { data: av } = await supabase
+          .from("vendors")
+          .select("id")
+          .ilike("email", application.email)
+          .eq("status", "active")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        setActiveVendor((av as { id: string } | null) ?? null);
+      } else {
+        setActiveVendor(null);
+      }
 
       // ISO 17100 evidence summary (deterministic view) for the top-of-profile panel.
       const { data: isoEv } = await supabase
@@ -6280,6 +6298,27 @@ export default function RecruitmentDetail() {
           <span>({formatDistanceToNow(new Date(app.created_at), { addSuffix: true })})</span>
         </div>
       </div>
+
+      {/* Already-onboarded guard — this applicant matches an active vendor */}
+      {activeVendor && (
+        <div className="mb-6 rounded-lg border border-emerald-300 bg-emerald-50 p-4 flex items-start gap-3">
+          <CheckCircle className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-emerald-900">Already an active vendor</p>
+            <p className="text-xs text-emerald-800 mt-0.5">
+              This applicant is already onboarded as an active vendor, so they're excluded from the approval queue — don't re-approve (onboarding is irreversible). To add a new language/role qualification, use their vendor profile.
+            </p>
+          </div>
+          <a
+            href={`/admin/vendors/${activeVendor.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700"
+          >
+            <ExternalLink className="w-4 h-4" /> View vendor profile
+          </a>
+        </div>
+      )}
 
       {/* ISO 17100 evidence — top of profile, for review/approval */}
       <IsoEvidencePanel ev={isoEvidence} ndaSignedAt={ndaSignedAt} coaQuiz={quizSubmissions.find(q => q.is_coa) ?? null} />
