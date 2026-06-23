@@ -412,6 +412,31 @@ serve(async (req: Request) => {
         return json({ success: true });
       }
 
+      // ── Preview Profit Share ───────────────────────────────────────
+      // Compute revenue − costs → share for the UI, without creating a payable.
+      case "preview_profit_share": {
+        const { workflow_step_id, order_id, share_pct, currency } = body;
+        let oid = order_id;
+        if (!oid && workflow_step_id) {
+          const { data: s } = await supabase
+            .from("order_workflow_steps")
+            .select("order_id")
+            .eq("id", workflow_step_id)
+            .single();
+          oid = s?.order_id;
+        }
+        if (!oid) return json({ success: false, error: "Missing order_id or workflow_step_id" }, 400);
+        const pct = Number.isFinite(Number(share_pct)) ? Number(share_pct) : 50;
+        const { data: ps, error: psErr } = await supabase.rpc("compute_order_profit_share", {
+          p_order_id: oid,
+          p_share_pct: pct,
+          p_exclude_payable_id: null,
+          p_currency: currency ? String(currency).toUpperCase() : null,
+        });
+        if (psErr) return json({ success: false, error: psErr.message }, 500);
+        return json({ success: true, ...(ps as Record<string, unknown>) });
+      }
+
       // ── Create Payable ─────────────────────────────────────────────
       // Manual payable creation for a workflow step. Supports flat,
       // per-word, per-hour, per-page, and CAT-analysis modes.
@@ -438,6 +463,7 @@ serve(async (req: Request) => {
           tax_rate,         // numeric 0..1 (e.g. 0.05 for 5%)
           description,
           staff_id,
+          share_pct,        // numeric — profit-share % for mode='profit_share'
         } = body;
 
         if (!workflow_step_id) return json({ success: false, error: "Missing workflow_step_id" }, 400);
@@ -483,6 +509,8 @@ serve(async (req: Request) => {
           line_subtotal: number;
           sort_order: number;
         }> = [];
+        let profitShareBreakdown: any = null;
+        let resolvedCurrency: string | null = currency ? String(currency).toUpperCase() : null;
 
         const RATE_UNIT_BY_MODE: Record<string, string> = {
           flat: "flat",
@@ -490,6 +518,7 @@ serve(async (req: Request) => {
           per_hour: "per_hour",
           per_page: "per_page",
           cat: "per_word",
+          profit_share: "flat",
         };
         if (!RATE_UNIT_BY_MODE[mode]) {
           return json({ success: false, error: `Unknown mode: ${mode}` }, 400);
@@ -539,6 +568,44 @@ serve(async (req: Request) => {
           computedRate = baseRateNum;
           computedUnits = totalWords;
           computedSubtotal = Math.round(totalSubtotal * 100) / 100;
+        } else if (mode === "profit_share") {
+          // Profit-share payable: amount = (receivables − other vendor costs)
+          // × share_pct, computed server-side by compute_order_profit_share.
+          const pct = Number.isFinite(Number(share_pct)) ? Number(share_pct) : 50;
+          if (pct <= 0 || pct > 100) {
+            return json({ success: false, error: "share_pct must be between 0 and 100" }, 400);
+          }
+          // Exclude any existing active payable on THIS step from the cost
+          // basis — on a recompute/replace the prior share payable is still
+          // active at compute time and must not be counted against itself.
+          const { data: priorOnStep } = await supabase
+            .from("vendor_payables")
+            .select("id")
+            .eq("workflow_step_id", workflow_step_id)
+            .neq("status", "cancelled")
+            .is("voided_at", null)
+            .maybeSingle();
+          const { data: ps, error: psErr } = await supabase.rpc("compute_order_profit_share", {
+            p_order_id: step.order_id,
+            p_share_pct: pct,
+            p_exclude_payable_id: priorOnStep?.id ?? null,
+            p_currency: resolvedCurrency,
+          });
+          if (psErr) return json({ success: false, error: psErr.message }, 500);
+          const share = Number((ps as any)?.share_amount ?? 0);
+          if (!(share > 0)) {
+            return json({
+              success: false,
+              code: "NO_PROFIT",
+              error: `Computed profit share is ${share} ${(ps as any)?.currency}. Revenue ${(ps as any)?.revenue} must exceed costs ${(ps as any)?.cost} — add receivables / finalize vendor costs first.`,
+              breakdown: ps,
+            }, 400);
+          }
+          profitShareBreakdown = ps;
+          resolvedCurrency = resolvedCurrency || (ps as any).currency;
+          computedRate = share;
+          computedUnits = 1;
+          computedSubtotal = share;
         } else {
           // per_word | per_hour | per_page
           const r = Number(rate);
@@ -557,7 +624,7 @@ serve(async (req: Request) => {
         const taxRateNum = Number.isFinite(Number(tax_rate)) ? Number(tax_rate) : 0;
         const taxAmount = Math.round(computedSubtotal * taxRateNum * 100) / 100;
         const total = Math.round((computedSubtotal + taxAmount) * 100) / 100;
-        const cur = (currency || "CAD").toUpperCase();
+        const cur = resolvedCurrency || "CAD";
 
         // Refuse Replace when the prior payable is invoiced or paid. Audit
         // #2.4 — silently cancelling a paid/invoiced payable and inserting
@@ -613,7 +680,13 @@ serve(async (req: Request) => {
             tax_amount: taxAmount,
             total,
             status: "pending",
-            description: description || `Step ${step.step_number}: ${step.name}`,
+            description:
+              description ||
+              (profitShareBreakdown
+                ? `Project profit share (${profitShareBreakdown.share_pct}% of ${cur} ${profitShareBreakdown.profit} profit = revenue ${profitShareBreakdown.revenue} − costs ${profitShareBreakdown.cost})`
+                : `Step ${step.step_number}: ${step.name}`),
+            order_subtotal: profitShareBreakdown ? profitShareBreakdown.revenue : null,
+            margin_percent: profitShareBreakdown ? profitShareBreakdown.share_pct : null,
             created_by: staff_id ?? null,
           })
           .select("id")

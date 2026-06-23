@@ -74,7 +74,7 @@ serve(async (req: Request) => {
     // Fetch template steps
     const { data: templateSteps } = await supabase
       .from("workflow_template_steps")
-      .select("step_number, name, actor_type, assignment_mode, auto_advance, is_optional, requires_file_upload, instructions, service_id, allowed_actor_types, approval_depends_on_step")
+      .select("step_number, name, actor_type, assignment_mode, auto_advance, is_optional, requires_file_upload, instructions, service_id, allowed_actor_types, approval_depends_on_step, preferred_vendor_id, auto_complete_on_accept, profit_share_pct")
       .eq("template_id", template.id)
       .order("step_number");
 
@@ -131,6 +131,12 @@ serve(async (req: Request) => {
       source_language: sourceLang,
       target_language: targetLang,
       approval_depends_on_step: ts.approval_depends_on_step ?? null,
+      // Carry the preferred vendor (e.g. Usman on the Cogdeb/ClinRev Usman
+      // templates) + the no-delivery profit-share markers so the live step
+      // pre-fills correctly.
+      preferred_vendor_id: ts.preferred_vendor_id ?? null,
+      auto_complete_on_accept: ts.auto_complete_on_accept ?? false,
+      profit_share_pct: ts.profit_share_pct ?? null,
     }));
 
     const { error: stepsErr } = await supabase
