@@ -64,7 +64,15 @@ const ECOA_PLATFORM_LABELS: Record<string, string> = { signant: "Signant Health"
 const SPECIAL_POPULATIONS_LABELS: Record<string, string> = { pediatric: "Pediatric", elderly: "Elderly", cognitively_impaired: "Cognitively impaired", rare_disease: "Rare disease", immigrant_refugee: "Immigrant / refugee", lgbtq: "LGBTQ+", none: "None / general adult only" };
 const EDUCATION_LABELS: Record<string, string> = { bachelor: "Bachelor's", master: "Master's", phd: "PhD", diploma_certificate: "Diploma / Certificate", other: "Other" };
 const CERT_LABELS: Record<string, string> = { ATA: "ATA", CTTIC: "CTTIC", ITI: "ITI", CIOL: "CIOL", ISO_17100: "ISO 17100" };
-const DOMAIN_LABELS: Record<string, string> = { legal: "Legal", medical: "Medical", immigration: "Immigration", financial: "Financial", technical: "Technical", general: "General" };
+const DOMAIN_LABELS: Record<string, string> = {
+  legal: "Legal", certified_official: "Certified / Official", immigration: "Immigration",
+  medical: "Medical", life_sciences: "Life Sciences", pharmaceutical: "Pharmaceutical",
+  coa_linguistic_validation: "COA Linguistic Validation", financial: "Financial",
+  insurance: "Insurance", technical: "Technical", it_software: "IT & Software",
+  academic_scientific: "Academic & Scientific", business_corporate: "Business & Corporate",
+  marketing_advertising: "Marketing & Advertising", government_public: "Government & Public",
+  general: "General", other: "Other",
+};
 const SERVICE_LABELS: Record<string, string> = { translation: "Translation", translation_review: "Translation + Review", lqa_review: "LQA Review" };
 const COA_LABELS: Record<string, string> = { pro: "PROs", clinro: "ClinROs", obro: "ObsROs", interview_guide: "Interview guides", survey: "Surveys & questionnaires" };
 const FAMILIARITY_LABELS: Record<string, string> = { yes: "Yes", no: "No", partially: "Partially" };
@@ -1722,6 +1730,105 @@ function CvSection({ applicationId, cvStoragePath, callEdgeFunction }: CvSection
 }
 
 // ---------- Send Tests controls (Phase D) ----------
+
+// Send ONE specific test for a chosen (domain × language pair) from the
+// applicant's declared combinations — vs the bulk "send all pending" flow.
+// Calls cvp-send-targeted-test (find-or-create the combo, then cvp-send-tests).
+function SendSpecificTest({
+  app, combinations, languages, callEdgeFunction, staffId, onAfterAction,
+}: {
+  app: Application;
+  combinations: TestCombination[];
+  languages: Record<string, string>;
+  callEdgeFunction: (fn: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  staffId?: string;
+  onAfterAction: () => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [domain, setDomain] = useState("");
+  const [pairKey, setPairKey] = useState(""); // "srcId|tgtId"
+  const [difficulty, setDifficulty] = useState<"beginner" | "intermediate" | "advanced">("intermediate");
+  const [busy, setBusy] = useState(false);
+
+  // Domains + language pairs the applicant actually has combos for (their
+  // declared scope). certified_official is staff-only (no test is ever sent).
+  const domains = Array.from(new Set(
+    combinations.map((c) => c.domain).filter((d): d is string => !!d && d !== "certified_official"),
+  )).sort((a, b) => (DOMAIN_LABELS[a] ?? a).localeCompare(DOMAIN_LABELS[b] ?? b));
+  const pairs = Array.from(new Map(
+    combinations.map((c) => [`${c.source_language_id}|${c.target_language_id}`,
+      { src: c.source_language_id, tgt: c.target_language_id }]),
+  ).values());
+
+  if (domains.length === 0 || pairs.length === 0) return null;
+
+  const handleSend = async () => {
+    if (!domain || !pairKey) { toast.error("Pick a domain and a language pair"); return; }
+    const [sourceLanguageId, targetLanguageId] = pairKey.split("|");
+    setBusy(true);
+    try {
+      await callEdgeFunction("cvp-send-targeted-test", {
+        applicationId: app.id, domain, sourceLanguageId, targetLanguageId, difficulty, staffId,
+      });
+      toast.success(`${DOMAIN_LABELS[domain] ?? domain} test sent — ${languages[sourceLanguageId] ?? "?"} → ${languages[targetLanguageId] ?? "?"}`);
+      setOpen(false); setDomain(""); setPairKey("");
+      await onAfterAction();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-teal-300 text-teal-700 hover:bg-teal-50 text-xs font-medium rounded-md"
+      >
+        <Mail className="w-3.5 h-3.5" /> Send a specific test…
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 p-3 border-2 border-teal-200 rounded-lg bg-teal-50/30 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-gray-900">Send a specific test</span>
+        <button type="button" onClick={() => setOpen(false)} disabled={busy} className="text-xs text-gray-400 hover:text-gray-700">Close</button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <select value={domain} onChange={(e) => setDomain(e.target.value)} className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700">
+          <option value="">Domain…</option>
+          {domains.map((d) => <option key={d} value={d}>{DOMAIN_LABELS[d] ?? d}</option>)}
+        </select>
+        <select value={pairKey} onChange={(e) => setPairKey(e.target.value)} className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700">
+          <option value="">Language pair…</option>
+          {pairs.map((p) => (
+            <option key={`${p.src}|${p.tgt}`} value={`${p.src}|${p.tgt}`}>
+              {languages[p.src] ?? "?"} → {languages[p.tgt] ?? "?"}
+            </option>
+          ))}
+        </select>
+        <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as "beginner" | "intermediate" | "advanced")} className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-700">
+          <option value="beginner">Beginner</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="advanced">Advanced</option>
+        </select>
+      </div>
+      <button
+        type="button"
+        onClick={handleSend}
+        disabled={busy || !domain || !pairKey}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-medium rounded-md"
+      >
+        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+        Send test
+      </button>
+    </div>
+  );
+}
 
 interface SendTestsControlsProps {
   app: Application;
@@ -6776,6 +6883,14 @@ export default function RecruitmentDetail() {
           {/* Test Combinations */}
           <Section title={`Test Combinations (${combinations.length})`} defaultOpen={combinations.length > 0}>
             <SendTestsControls
+              app={app}
+              combinations={combinations}
+              languages={languages}
+              callEdgeFunction={callEdgeFunction}
+              staffId={session?.staffId}
+              onAfterAction={fetchData}
+            />
+            <SendSpecificTest
               app={app}
               combinations={combinations}
               languages={languages}
