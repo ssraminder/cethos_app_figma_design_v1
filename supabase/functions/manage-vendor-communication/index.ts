@@ -101,9 +101,41 @@ serve(async (req: Request) => {
   try { body = await req.json(); } catch { return json({ success: false, error: "invalid_json" }, 400); }
 
   const action = body.action ?? "send";
-  if (!body.vendorId) return json({ success: false, error: "vendorId_required" }, 400);
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+
+  // ---- inbox: recent messages across ALL vendors (no vendorId needed) ----
+  if (action === "inbox") {
+    const [ob, ib] = await Promise.all([
+      supabase.from("cvp_outbound_messages")
+        .select("id, vendor_id, sent_at, subject, body_text")
+        .not("vendor_id", "is", null).order("sent_at", { ascending: false }).limit(80),
+      supabase.from("cvp_inbound_emails")
+        .select("id, matched_vendor_id, received_at, subject, stripped_text, from_email, acknowledged_at")
+        .not("matched_vendor_id", "is", null).order("received_at", { ascending: false }).limit(80),
+    ]);
+    const vids = Array.from(new Set([
+      ...(ob.data ?? []).map((r) => r.vendor_id as string),
+      ...(ib.data ?? []).map((r) => r.matched_vendor_id as string),
+    ].filter(Boolean)));
+    const vmap = new Map<string, { business_name: string | null; full_name: string | null; email: string | null }>();
+    if (vids.length) {
+      const { data: vs } = await supabase.from("vendors").select("id, full_name, business_name, email").in("id", vids);
+      for (const v of (vs ?? []) as Array<{ id: string; full_name: string | null; business_name: string | null; email: string | null }>) {
+        vmap.set(v.id, { business_name: v.business_name, full_name: v.full_name, email: v.email });
+      }
+    }
+    const label = (id: string) => { const v = vmap.get(id); return v ? (v.business_name || v.full_name || "(unknown vendor)") : "(unknown vendor)"; };
+    const items = [
+      ...(ob.data ?? []).map((r) => ({ kind: "outbound", id: r.id as string, vendorId: r.vendor_id as string, at: r.sent_at as string, subject: r.subject as string | null, snippet: String(r.body_text ?? "").slice(0, 160), unread: false, from: null as string | null })),
+      ...(ib.data ?? []).map((r) => ({ kind: "inbound", id: r.id as string, vendorId: r.matched_vendor_id as string, at: r.received_at as string, subject: r.subject as string | null, snippet: String(r.stripped_text ?? "").slice(0, 160), unread: !r.acknowledged_at, from: r.from_email as string | null })),
+    ].map((it) => ({ ...it, vendorName: label(it.vendorId), vendorEmail: vmap.get(it.vendorId)?.email ?? null }))
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .slice(0, 120);
+    return json({ success: true, data: { inbox: items } });
+  }
+
+  if (!body.vendorId) return json({ success: false, error: "vendorId_required" }, 400);
 
   const { data: vendor, error: vErr } = await supabase
     .from("vendors").select("id, full_name, business_name, email").eq("id", body.vendorId).maybeSingle();
