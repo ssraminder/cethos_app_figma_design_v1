@@ -23,15 +23,47 @@ interface QueueRow {
   approval_route: string | null;
   refs_received: number | null;
   real_passed_combos: number | null;
+  degree_doc: { title?: string | null; type?: string | null; confidence?: string | null; storage_path?: string | null; verified?: boolean | null } | null;
+  has_translation_degree: boolean | null;
+  has_other_degree: boolean | null;
+  has_experience_doc: boolean | null;
 }
 
 type Tab = "ready" | "needInfo";
 
 const ROUTE_HINT: Record<string, string> = {
-  "References (5+ yrs)": "Open References → confirm the letter documents 5+ yrs → Approve",
-  "Degree (verified)": "Degree verified in QMS → Approve if a translation degree",
-  "Degree (verify)": "Open Supporting Documents → verify the uploaded degree → Approve",
+  "References (5+ yrs)": "Open the reference → confirm it documents 5+ yrs → Skip-to-Approve, basis (c). No test needed.",
+  "Degree (verified)": "Degree already verified in QMS → Approve (confirm it's a translation degree).",
+  "Degree — translation (route a)": "Open the degree → confirm it's a genuine translation degree → Skip-to-Approve, basis (a). No test or reference needed.",
+  "Degree — other field (route b · +2yr exp)": "Non-translation degree → also confirm 2 yrs documented translation experience → Skip-to-Approve, basis (b).",
 };
+
+// Opens an applicant's AI-screened degree document (vendor-certifications bucket)
+// in a new tab via a short-lived signed URL — so reviewers verify the degree
+// straight from the queue instead of digging into each profile.
+function DegreeOpenButton({ doc }: { doc: QueueRow["degree_doc"] }) {
+  const [opening, setOpening] = useState(false);
+  if (!doc?.storage_path) return null;
+  const conf = doc.confidence != null ? Number(doc.confidence) : null;
+  const handleOpen = async () => {
+    setOpening(true);
+    const { data } = await supabase.storage.from("vendor-certifications").createSignedUrl(doc.storage_path!, 3600);
+    setOpening(false);
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+  };
+  return (
+    <button
+      onClick={handleOpen}
+      disabled={opening}
+      title={doc.title ?? "Open degree document"}
+      className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 disabled:opacity-50 max-w-full"
+    >
+      {opening ? <Loader2 className="h-3 w-3 animate-spin shrink-0" /> : <ExternalLink className="h-3 w-3 shrink-0" />}
+      <span className="truncate max-w-[240px]">{doc.title ?? "Open degree"}</span>
+      {conf != null && <span className="text-blue-400 shrink-0">· AI {conf}%</span>}
+    </button>
+  );
+}
 
 export default function RecruitmentApprovalQueue() {
   const [ready, setReady] = useState<QueueRow[]>([]);
@@ -42,7 +74,7 @@ export default function RecruitmentApprovalQueue() {
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [tab, setTab] = useState<Tab>("ready");
   const [search, setSearch] = useState("");
-  const [coaOnly, setCoaOnly] = useState(false);
+  const [coaOnly, setCoaOnly] = useState(true); // COA/clinical first (IQVIA scope) — toggle off to see all
   const [noNdaOnly, setNoNdaOnly] = useState(false);
 
   const load = useCallback(async () => {
@@ -104,9 +136,15 @@ export default function RecruitmentApprovalQueue() {
           </button>
         </div>
       </div>
-      <p className="text-sm text-gray-500 mb-4">
-        Always-current list straight from the portal — no spreadsheet to regenerate. Click any applicant to verify and approve.
+      <p className="text-sm text-gray-500 mb-1">
+        Always-current list straight from the portal — no spreadsheet to regenerate. Open the degree from the row to verify, then approve. <span className="text-gray-400">COA/clinical shown first (IQVIA scope) — untick the filter to see all.</span>
       </p>
+      {tab === "ready" && (counts.routeA != null || counts.routeB != null) && (
+        <p className="text-xs text-gray-500 mb-4">
+          <span className="font-medium text-cyan-700">{counts.routeA ?? 0}</span> translation degree (route a — verify &amp; approve now) ·{" "}
+          <span className="font-medium text-amber-700">{counts.routeB ?? 0}</span> other-field degree (route b — also needs 2-yr experience)
+        </p>
+      )}
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-gray-200 mb-4">
@@ -196,6 +234,14 @@ export default function RecruitmentApprovalQueue() {
                       <>
                         <span className="inline-block text-xs font-medium bg-cyan-50 text-cyan-700 rounded px-2 py-0.5 mb-0.5">{r.approval_route}</span>
                         <div className="text-xs text-gray-500">{r.approval_route ? ROUTE_HINT[r.approval_route] : ""}</div>
+                        <DegreeOpenButton doc={r.degree_doc} />
+                        {r.has_other_degree && !r.has_translation_degree && (
+                          <div className="text-[11px] mt-0.5 text-amber-700">
+                            {r.has_experience_doc
+                              ? "Experience doc on file — confirm it documents ≥2 yrs."
+                              : "⚠ No experience doc yet — route (b) needs 2 yrs (request references)."}
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div className="text-xs text-gray-500">

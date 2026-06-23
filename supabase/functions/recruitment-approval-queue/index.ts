@@ -32,6 +32,10 @@ interface Row {
   refs_received: number | null;
   real_passed_combos: number | null;
   has_verified_degree_doc: boolean | null;
+  degree_doc: { title?: string | null; type?: string | null; confidence?: string | null; storage_path?: string | null; verified?: boolean | null } | null;
+  has_translation_degree: boolean | null;
+  has_other_degree: boolean | null;
+  has_experience_doc: boolean | null;
 }
 
 serve(async (req) => {
@@ -78,6 +82,8 @@ serve(async (req) => {
         readyCoa: ready.filter((r) => r.clinical).length,
         readyNoNda: ready.filter((r) => !r.has_nda).length,
         needInfoCoa: needInfo.filter((r) => r.clinical).length,
+        routeA: ready.filter((r) => r.approval_route === "Degree — translation (route a)").length,
+        routeB: ready.filter((r) => r.approval_route === "Degree — other field (route b · +2yr exp)").length,
       },
       ready,
       needInfo,
