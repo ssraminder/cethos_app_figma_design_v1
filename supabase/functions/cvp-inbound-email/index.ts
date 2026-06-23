@@ -446,6 +446,27 @@ serve(async (req: Request) => {
     if (data) matchedApplicationId = (data as { id: string }).id;
   }
 
+  // ---- Vendor Communication reply capture (Phase 1: capture + notify) ----
+  // Our vendor-comm outbound stamps a [#VC-<token>] tag in the subject; a reply
+  // carrying it is a vendor message (not an applicant one) — capture it against
+  // the vendor and return, skipping the applicant front-desk processing.
+  {
+    const vc = String(fields.subject ?? "").match(/\[#VC-([a-z0-9]{6,})\]/i);
+    if (vc) {
+      const shortTok = vc[1].toLowerCase();
+      const { data: vcOut } = await supabase
+        .from("cvp_outbound_messages")
+        .select("vendor_id")
+        .ilike("message_id", `${shortTok}%`)
+        .not("vendor_id", "is", null)
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const vId = (vcOut as { vendor_id: string | null } | null)?.vendor_id ?? null;
+      if (vId) return await handleVendorReply(supabase, fields, vId);
+    }
+  }
+
   const regexHit = UNSUBSCRIBE_REGEX.test(
     `${fields.subject}\n${fields.bodyPlain || fields.strippedText}`,
   );
@@ -681,6 +702,74 @@ serve(async (req: Request) => {
     },
   });
 });
+
+// ---------- Vendor Communication: Phase 1 reply capture ----------
+// A vendor replied to a send-from-vm@ Vendor Communication email. Phase 1:
+// capture the reply against the vendor + a light AI summary, notify the team,
+// and surface it on the vendor's Communication thread. No auto-actions yet
+// (Phase 2 will add full auto-triage after testing).
+async function handleVendorReply(
+  supabase: ReturnType<typeof createClient>,
+  fields: InboundFields,
+  vendorId: string,
+): Promise<Response> {
+  let analysis: Record<string, unknown> | null = null;
+  try {
+    analysis = await analyzeThreadedReply({
+      inbound: fields,
+      outboundSubject: "",
+      outboundBody: "",
+      outboundTag: "vendor-communication",
+      regexHit: false,
+    });
+  } catch (_e) { /* non-fatal — capture without a summary */ }
+  const summary = analysis ? String(analysis.summary ?? "") : "";
+
+  await supabase.from("cvp_inbound_emails").insert({
+    from_email: fields.fromEmail,
+    from_name: fields.fromName,
+    to_email: fields.toEmail,
+    subject: fields.subject,
+    body_plain: fields.bodyPlain,
+    body_html: fields.bodyHtml,
+    stripped_text: fields.strippedText,
+    message_id: fields.messageId,
+    in_reply_to: fields.inReplyTo,
+    references_header: fields.referencesHeader,
+    matched_vendor_id: vendorId,
+    classified_intent: "vendor_communication",
+    ai_classification: {
+      summary,
+      sentiment: analysis?.sentiment ?? null,
+      language: analysis?.language ?? "en",
+      source: "vendor_communication",
+    },
+    ai_reply_analysis: analysis,
+    action_taken: "vendor_reply_captured",
+    raw_payload: fields.raw,
+  });
+
+  // Phase 1 "notify": tell the team a vendor replied (no auto-action).
+  const notifyTo = Deno.env.get("CVP_ESCALATION_EMAIL") ?? "office@cethos.com";
+  try {
+    await sendReply({
+      to: { email: notifyTo },
+      replyTo: fields.fromEmail,
+      subject: `Vendor reply: ${fields.fromName || fields.fromEmail}`,
+      html: `<p>A vendor replied to a Cethos Vendor Management email.</p>
+<p><strong>From:</strong> ${escapeHtml(fields.fromName ? fields.fromName + " " : "")}&lt;${escapeHtml(fields.fromEmail)}&gt;<br>
+<strong>Subject:</strong> ${escapeHtml(fields.subject || "(none)")}</p>
+<p><strong>Summary:</strong> ${escapeHtml(summary || "(open the portal to read)")}</p>
+<p>Open the vendor&#39;s <strong>Communication</strong> tab in the admin portal to read and reply.</p>`,
+      tags: ["vendor-reply-notify"],
+    });
+  } catch (_e) { /* non-fatal */ }
+
+  return jsonResponse({
+    success: true,
+    data: { intent: "vendor_communication", action: "vendor_reply_captured", matchedVendor: vendorId },
+  });
+}
 
 // ---------- Opus-powered threaded-reply analysis ----------
 

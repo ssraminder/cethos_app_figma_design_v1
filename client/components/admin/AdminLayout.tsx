@@ -166,6 +166,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Vendors",
   },
   {
+    label: "Vendor Communication",
+    path: "/admin/vendors/communication",
+    icon: MessageSquare,
+    section: "Vendors",
+  },
+  {
     label: "Employment Applications",
     path: "/admin/employment-applications",
     icon: Briefcase,

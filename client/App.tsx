@@ -117,6 +117,7 @@ import AdminVendorsList from "./pages/admin/AdminVendorsList";
 import AdminIsoQuizzes from "./pages/admin/AdminIsoQuizzes";
 import AdminVendorDetail from "./pages/admin/AdminVendorDetail";
 import AdminVendorNew from "./pages/admin/AdminVendorNew";
+import AdminVendorCommunication from "./pages/admin/AdminVendorCommunication";
 import FastQuoteCreate from "./pages/admin/FastQuoteCreate";
 import AdminKioskDevices from "./pages/admin/AdminKioskDevices";
 import KioskPairing from "./pages/kiosk/KioskPairing";
@@ -444,6 +445,7 @@ const App = () => (
                     <Route path="pdf-manager" element={<PdfManager />} />
                     <Route path="vendors" element={<AdminVendorsList />} />
                     <Route path="vendors/new" element={<AdminVendorNew />} />
+                    <Route path="vendors/communication" element={<AdminVendorCommunication />} />
                     <Route path="vendors/:vendorId" element={<AdminVendorDetail />} />
                     <Route path="iso-quizzes" element={<AdminIsoQuizzes />} />
                     <Route path="sops" element={<AdminSops />} />
