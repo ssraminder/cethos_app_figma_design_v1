@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { REFERENCE_MCQS, referenceAnswerLabel, referenceDomainLabel, WOULD_WORK_AGAIN_LABEL } from "@/lib/referenceQuestions";
+import { REFERENCE_MCQS, referenceAnswerLabel, referenceDomainLabel, WOULD_WORK_AGAIN_LABEL, EMPLOYMENT_TYPE_LABEL, ANNUAL_VOLUME_LABEL, RELATIONSHIP_TYPE_LABEL } from "@/lib/referenceQuestions";
 import { useAdminAuthContext } from "../../context/AdminAuthContext";
 import { toast } from "sonner";
 import {
@@ -3129,6 +3129,15 @@ interface ReferenceRow {
   applicant_stated_domains: string[] | null;
   reference_confirmed_domains: string[] | null;
   domain_verification: string | null;
+  referee_employment_type: string | null;
+  referee_annual_volume: string | null;
+  reference_confirmed_end_year: number | null;
+  reference_relationship_ongoing: boolean | null;
+  referee_independent: boolean | null;
+  referee_independence_note: string | null;
+  referee_relationship_type: string | null;
+  referee_role_title: string | null;
+  referee_relationship_other: string | null;
 }
 
 interface ReassessmentOutput {
@@ -3187,7 +3196,7 @@ function ReferencesSection({
             .order("created_at", { ascending: false }),
           supabase
             .from("cvp_application_references")
-            .select("id, request_id, reference_name, reference_email, reference_company, reference_relationship, feedback_token, feedback_token_expires_at, status, feedback_text, feedback_rating, feedback_received_at, declined_at, decline_reason, ai_analysis, ai_analysis_error, created_at, competence_responses, applicant_stated_start_year, reference_confirmed_start_year, year_verification, applicant_stated_domains, reference_confirmed_domains, domain_verification")
+            .select("id, request_id, reference_name, reference_email, reference_company, reference_relationship, feedback_token, feedback_token_expires_at, status, feedback_text, feedback_rating, feedback_received_at, declined_at, decline_reason, ai_analysis, ai_analysis_error, created_at, competence_responses, applicant_stated_start_year, reference_confirmed_start_year, year_verification, applicant_stated_domains, reference_confirmed_domains, domain_verification, referee_employment_type, referee_annual_volume, reference_confirmed_end_year, reference_relationship_ongoing, referee_independent, referee_independence_note, referee_relationship_type, referee_role_title, referee_relationship_other")
             .eq("application_id", applicationId)
             .order("created_at", { ascending: false }),
           supabase
@@ -3610,6 +3619,40 @@ function ReferencesSection({
                           <span className="text-gray-500">Domains confirmed:</span>{" "}
                           {r.reference_confirmed_domains.map(referenceDomainLabel).join(", ")}
                           {r.domain_verification ? ` (${r.domain_verification})` : ""}
+                        </div>
+                      )}
+                      {(r.referee_relationship_type || r.referee_role_title || r.referee_employment_type || r.referee_annual_volume || r.reference_relationship_ongoing || r.reference_confirmed_end_year != null || r.referee_independent != null) && (
+                        <div className="mb-1.5 space-y-0.5">
+                          {(r.referee_relationship_type || r.referee_role_title) && (
+                            <div>
+                              <span className="text-gray-500">Referee role:</span>{" "}
+                              {r.referee_role_title || ""}
+                              {r.referee_role_title && r.referee_relationship_type ? " · " : ""}
+                              {r.referee_relationship_type === "other"
+                                ? (r.referee_relationship_other || "Other")
+                                : (RELATIONSHIP_TYPE_LABEL[r.referee_relationship_type ?? ""] ?? r.referee_relationship_type ?? "")}
+                            </div>
+                          )}
+                          {r.referee_employment_type && (
+                            <div>
+                              <span className="text-gray-500">Worked as:</span>{" "}
+                              {EMPLOYMENT_TYPE_LABEL[r.referee_employment_type] ?? r.referee_employment_type}
+                              {r.referee_annual_volume ? ` · ${ANNUAL_VOLUME_LABEL[r.referee_annual_volume] ?? r.referee_annual_volume}` : ""}
+                            </div>
+                          )}
+                          {(r.reference_relationship_ongoing || r.reference_confirmed_end_year != null) && (
+                            <div>
+                              <span className="text-gray-500">Period:</span>{" "}
+                              {r.reference_confirmed_start_year ?? r.applicant_stated_start_year ?? "?"} –{" "}
+                              {r.reference_relationship_ongoing ? "present (ongoing)" : (r.reference_confirmed_end_year ?? "?")}
+                            </div>
+                          )}
+                          {r.referee_independent != null && (
+                            <div className={r.referee_independent ? "" : "text-red-700 font-medium"}>
+                              <span className="text-gray-500">Independent:</span>{" "}
+                              {r.referee_independent ? "Yes" : `⚠ No${r.referee_independence_note ? ` — ${r.referee_independence_note}` : ""}`}
+                            </div>
+                          )}
                         </div>
                       )}
                       <div className="space-y-1.5">
