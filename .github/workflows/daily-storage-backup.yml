@@ -26,4 +26,14 @@ jobs:
       - name: Replicate Supabase Storage to AWS S3
         run: |
           rclone copy supabase: awsbackup:cethos-translation-app-storage-backup \
-            --s3-no-check-bucket --fast-list --transfers 8 --checkers 16 --log-level INFO --stats-one-line
+            --s3-no-check-bucket \
+            --size-only \
+            --fast-list \
+            --transfers 4 \
+            --checkers 8 \
+            --retries 5 \
+            --low-level-retries 20 \
+            --retries-sleep 10s \
+            --log-level INFO \
+            --stats 30s \
+            --stats-one-line
