@@ -198,6 +198,7 @@ serve(async (req: Request) => {
     editedSubject?: string;
     editedBody?: string;
     dryRun?: boolean;
+    replyTo?: string;
   };
   try {
     body = await req.json();
@@ -335,6 +336,7 @@ serve(async (req: Request) => {
     html: rendered.html,
     text: rendered.text,
     respectDoNotContactFor: String(app.email),
+    replyTo: body.replyTo || undefined,
     tags: [templateTag, String(body.applicationId)],
     inReplyTo,
     references,

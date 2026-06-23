@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-23 — COA "Need More Info" outreach batch (44/44) + cvp-staff-reply reply-to override
+- **What:** Messaged all **44 COA/clinical "Need More Info"** applicants (engaged — passed a test or sent refs — but no qualifying basis) with an AI-drafted request to provide a translation/linguistics degree OR references confirming 5+ yrs, to offload the team. Sent via the Message-applicant feature (`cvp-staff-reply`, `useAIDraft`) driven from the browser with the staff session. **44/44 sent, 0 failures.** Proof shown to the user first (Omole Daniel) before the batch.
+- **Reply routing:** Reply-To overridden to **vm@cethos.com** per user (forwarding is configured → a copy stays in vm@ AND it forwards into the `recruiting@vendors.cethos.com` webhook, which is live-monitored + auto-triaging — verified replies being `auto_triaged`/`frontdesk_escalated` in real time). Added optional `body.replyTo` passthrough to `cvp-staff-reply` (→ mailgun `h:Reply-To`); default behavior unchanged.
+- **Mechanics (reusable):** Opus drafts ~6s each → a 14-send wave hit the `javascript_tool` 45s CDP cap (sends still completed in the background). Fix: a **self-driving in-page background loop** (sequential, 600ms throttle) that survives the tool timeout; poll `window.__br` for progress. Dedup via a `window.Set` keyed by application id, added **only on success** so a re-run retries failures. Confirmed against `cvp_outbound_messages` (subject "A message regarding your Cethos application").
+- **Scope:** COA-first per user. **~40 NON-COA need_info applicants NOT yet messaged.**
+- **Status:** complete (COA). Affects: `supabase/functions/cvp-staff-reply/index.ts` (replyTo passthrough, deployed).
+
 ### 2026-06-23 — Live "Recruitment Approval Queue" report + NULL-safe need_info classification
 - **Decision:** Added an always-current admin report at `/admin/recruitment/approval-queue` (nav: Vendors › Approval Queue, child of Recruitment) showing **Ready to Approve** (317) and **Need More Info** (83), as the team's live working surface in place of the static `Linguist-Approval-Worklist.xlsx` / Google-Sheet snapshots. Backed by view `public.cvp_approval_queue`, read only via the `recruitment-approval-queue` edge fn (requireStaff); the view is `REVOKE`'d from anon/authenticated so it stays staff-gated. Page auto-refreshes every 2 min; each row links to the applicant detail to verify + approve. COA rows highlighted, missing-NDA flagged.
 - **Rationale:** User wanted a list that stays current without regeneration; the Google-Drive connector can create a Sheet but not update it in place, so a portal report is the durable answer.
