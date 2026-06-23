@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import ManageReceivableModal from "./ManageReceivableModal";
+import { useStaffAuth } from "@/context/StaffAuthContext";
 
 // ── Types ──
 
@@ -381,6 +382,8 @@ function EditableReceivablesBreakdown({
     client_project_number: "",
   });
   const [saving, setSaving] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+  const { staffUser } = useStaffAuth();
 
   const load = async () => {
     setLoading(true);
@@ -583,6 +586,49 @@ function EditableReceivablesBreakdown({
 
   const fmt = (n: number) => formatCurrency(n, currency);
 
+  // Receivables-first invoicing: turn the draft receivable lines into a
+  // customer invoice (+ lines), open the AR ledger row, and lock the
+  // receivables — all atomically in create_invoice_from_receivables (called
+  // via the service-role manage-receivables edge fn), then render the PDF.
+  const handleGenerateInvoice = async () => {
+    if (rows.length === 0) return;
+    const sum = rows.reduce((a, r) => a + Number(r.line_total || 0), 0);
+    if (
+      !window.confirm(
+        `Generate a customer invoice from ${rows.length} receivable line(s) totalling ${fmt(sum)}?\n\nThis issues the invoice, opens the AR ledger, and locks these receivables.`,
+      )
+    )
+      return;
+    setIssuing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-receivables", {
+        body: { action: "issue_invoice", order_id: orderId, staff_id: staffUser?.id ?? null },
+      });
+      if (error) {
+        let msg = "Failed to generate invoice";
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.error) msg = body.error;
+        } catch {
+          /* keep generic */
+        }
+        toast.error(msg);
+        return;
+      }
+      if (!data?.success) {
+        toast.error(data?.error || "Failed to generate invoice");
+        return;
+      }
+      toast.success(`Invoice ${data.invoice_number} generated from receivables`);
+      onRefresh?.();
+      load();
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to generate invoice");
+    } finally {
+      setIssuing(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -591,6 +637,16 @@ function EditableReceivablesBreakdown({
         </h3>
         {!hasIssuedInvoice && !adding && !editId && (
           <div className="flex items-center gap-2">
+            {rows.length > 0 && (
+              <button
+                onClick={handleGenerateInvoice}
+                disabled={issuing}
+                className="text-xs px-3 py-1 bg-[#0C2340] text-white rounded hover:bg-[#13325c] disabled:opacity-50"
+                title="Issue a customer invoice from these receivable lines (creates the invoice + AR ledger and locks the receivables)"
+              >
+                {issuing ? "Generating…" : "Generate invoice"}
+              </button>
+            )}
             <button
               onClick={() => setCatModalOpen(true)}
               className="text-xs px-3 py-1 border border-teal-500 text-teal-700 rounded hover:bg-teal-50"
