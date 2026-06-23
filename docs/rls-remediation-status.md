@@ -52,12 +52,12 @@ Legend: ✅ done & verified · 🔄 in progress · ⬜ pending · 🚫 blocked
 | 7 | `training_modules` | B (legacy/dead) | service_role only (0 rows; no reader) | `…_service_role_all` | ✅ rls_on, 1 pol | empty ✅ | ✅ | ✅ `20260623_rls_training_modules.sql` |
 | 8 | `training_slides` | B (legacy/dead) | service_role only (0 rows; no reader) | `…_service_role_all` | ✅ rls_on, 1 pol | empty ✅ | ✅ | ✅ `20260623_rls_training_slides.sql` |
 | 9 | `training_quiz_questions` | B (legacy/dead) | service_role only (0 rows; no reader) | `…_service_role_all` | ✅ rls_on, 1 pol | empty ✅ | ✅ | ✅ `20260623_rls_training_quiz_questions.sql` |
-| 10 | `services` | B (reference) | public read; service_role write | — | ⬜ | — | ⬜ | ⬜ |
-| 11 | `currencies` | B (reference) | public read; service_role write | — | ⬜ | — | ⬜ | ⬜ |
-| 12 | `cethosweb_countries` | B (reference) | public read (marketing site) | — | ⬜ | — | ⬜ | ⬜ |
-| 13 | `cethosweb_languages` | B (reference) | public read | — | ⬜ | — | ⬜ | ⬜ |
-| 14 | `cethosweb_locales` | B (reference) | public read | — | ⬜ | — | ⬜ | ⬜ |
-| 15 | `cethosweb_settings` | B (reference) | ⚠️ inspect contents — public read vs sensitive | — | ⬜ | — | ⬜ | ⬜ |
+| 10 | `services` | B (reference) | anon+auth SELECT + **staff_manage write** + service_role | `…_public_read`, `…_staff_manage`, `…_service_role_all` | ✅ read 50 all roles; staff INSERT ok, anon INSERT blocked | 50 stays 50 (anon) ✅; anon POST→401 ✅ | ✅ | ✅ `20260623_rls_services.sql` |
+| 11 | `currencies` | B (reference) | anon+auth SELECT (lock_*_cad triggers read it) + service_role | `…_public_read`, `…_service_role_all` | ✅ read 78 all roles | 78 stays 78 ✅ | ✅ | ✅ `20260623_rls_currencies.sql` |
+| 12 | `cethosweb_countries` | B (reference) | anon+auth SELECT (marketing) + service_role | `…_public_read`, `…_service_role_all` | ✅ read 91 all roles | 91 stays 91 ✅ | ✅ | ✅ `20260623_rls_cethosweb_countries.sql` |
+| 13 | `cethosweb_languages` | B (reference) | anon+auth SELECT (marketing) + service_role | `…_public_read`, `…_service_role_all` | ✅ read 75 all roles | 75 stays 75 ✅ | ✅ | ✅ `20260623_rls_cethosweb_languages.sql` |
+| 14 | `cethosweb_locales` | B (reference) | anon+auth SELECT (marketing) + service_role | `…_public_read`, `…_service_role_all` | ✅ read 77 all roles | 77 stays 77 ✅ | ✅ | ✅ `20260623_rls_cethosweb_locales.sql` |
+| 15 | `cethosweb_settings` | B (reference) | ✅ NOT sensitive (ga4/gtm/ads public IDs) → anon+auth SELECT + service_role | `…_public_read`, `…_service_role_all` | ✅ read 3 all roles | 3 stays 3 ✅ | ✅ | ✅ `20260623_rls_cethosweb_settings.sql` |
 | 16 | `service_terms` | B (vendor read) | authenticated (+anon?) read; admin write | — | ⬜ | — | ⬜ | ⬜ |
 | 17 | `app_settings` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
 | 18 | `certification_types` | A | existing: public SELECT + staff_manage | enable only | ⬜ | — | ⬜ | ⬜ |
@@ -117,3 +117,26 @@ Legend: ✅ done & verified · 🔄 in progress · ⬜ pending · 🚫 blocked
   empty — but RLS now prevents any future inserted row from leaking to anon.)
 - Related open bug "Can't access to training" (jahstranslations, 06-22) is about the **live
   `cvp_training_*` LMS**, not these dead tables — unaffected.
+
+### 10–15. Public reference tables — ✅ done (2026-06-23)
+
+- **Usage map (admin + vendor + edge fns + DB triggers):**
+  - `services` (50): anon (public recruitment site `useServices.ts`), authenticated (admin pages),
+    service_role (many edge fns). **Written by admin staff** (`settings/ServicesSettings.tsx`).
+  - `currencies` (78): read by SECURITY INVOKER triggers `lock_quote/order/payment/refund_cad_amounts`
+    (fire on insert in the *caller's* role — incl. anon quote creation) + admin reads + edge fns.
+    No authenticated writer (exchange rates refresh via service_role).
+  - `cethosweb_countries/languages/locales/settings` (91/75/77/3): **no admin/vendor refs** — read by
+    the public marketing site (anon). `cethosweb_settings` holds ga4/gtm/google_ads **public** tracking
+    IDs (client-side, not secrets) → public read is correct.
+- **Decisions:** all 6 → `public_read` (SELECT to anon+authenticated) + `service_role_all`.
+  `services` additionally gets `staff_manage` (is_active_staff) for admin writes.
+- **Dry-run (rolled back):** anon=auth=service = full count for all 6 (50/78/91/75/77/3); on `services`
+  a simulated staff INSERT passed RLS (failed only on a NOT-NULL column = 23502), a simulated anon
+  INSERT was blocked (42501).
+- **Applied:** 6 migrations via MCP (`20260623_rls_{services,currencies,cethosweb_countries,
+  cethosweb_languages,cethosweb_locales,cethosweb_settings}.sql`).
+- **Post-commit verify:** anon REST probe → rows still served for all 6 (50/78/91/75/77/3 — public
+  read intact); anon `POST /services` → HTTP 401 (write blocked); catalog confirms policies + RLS on.
+- **Live-UI smoke test** (public quote form dropdowns + admin ServicesSettings edit) → consolidated
+  pass at finalize.
