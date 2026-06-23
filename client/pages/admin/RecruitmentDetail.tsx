@@ -4975,6 +4975,10 @@ interface IsoEvidence {
   has_cv: boolean;
   refs_received: number;
   approved_combos: number;
+  real_passed_combos: number;
+  skip_review_combos: number;
+  declared_domain_list: string | null;
+  has_verified_degree_doc: boolean;
   tested_domains: string | null;
   declared_domains: number;
   quiz_score: number | null;
@@ -4997,7 +5001,7 @@ interface IsoEvidence {
 
 // Domains where a general translation test is NOT sufficient — domain-specific
 // evidence (degree in the field, certification, or documented experience) is required.
-const HIGH_RISK_DOMAINS = new Set(["medical", "life_sciences", "pharmaceutical", "legal", "financial", "insurance"]);
+const HIGH_RISK_DOMAINS = new Set(["medical", "life_sciences", "pharmaceutical", "legal", "financial", "insurance", "coa_linguistic_validation", "certified_official", "immigration"]);
 
 const DOMAIN_DISPLAY: Record<string, string> = {
   legal: "Legal", medical: "Medical", life_sciences: "Life Sciences",
@@ -5024,8 +5028,9 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
   const expItems = items.filter((it) => it.type === "documented_translation_experience");
   const hasDegreeTranslation = items.some((it) => it.type === "degree_translation");
 
-  // Declared domain list from the view's tested_domains string
-  const declaredList = (ev.tested_domains ?? "")
+  // Risk-classify ALL declared domains (domains_offered), not just those that
+  // happen to have a combo — otherwise high-risk domains with no test slip through.
+  const declaredList = (ev.declared_domain_list ?? ev.tested_domains ?? "")
     .split(",").map((d) => d.trim()).filter(Boolean);
   const highRiskDeclared = declaredList.filter((d) => HIGH_RISK_DOMAINS.has(d));
   const safeDeclared = declaredList.filter((d) => !HIGH_RISK_DOMAINS.has(d));
@@ -5038,11 +5043,16 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
   );
   const highRiskNoEvidence = highRiskDeclared.filter((d) => !highRiskWithEvidence.includes(d));
 
-  // 1. Competence
-  if (ev.approved_combos > 0) {
-    steps.push({ state: "done", text: `Competence: translation test passed (${ev.approved_combos} combo${ev.approved_combos > 1 ? "s" : ""}). See Test Combinations below.` });
+  // 1. Competence — a genuinely PASSED test (status 'approved') or a passed quiz.
+  // skip_manual_review combos are NOT a test pass: the test was BYPASSED and the
+  // combo routed to credential review. They do not, on their own, demonstrate
+  // competence — that must rest on a VERIFIED §3.1.4 basis.
+  if (ev.real_passed_combos > 0) {
+    steps.push({ state: "done", text: `Competence: translation test passed (${ev.real_passed_combos} combo${ev.real_passed_combos > 1 ? "s" : ""}). See Test Combinations below.` });
   } else if (ev.quiz_score != null) {
     steps.push({ state: "done", text: `Competence: quiz passed (${ev.quiz_score}%). See Quiz Results below.` });
+  } else if (ev.skip_review_combos > 0) {
+    steps.push({ state: "check", text: `Competence: ${ev.skip_review_combos} combo${ev.skip_review_combos > 1 ? "s" : ""} routed to manual credential review — the test was BYPASSED, not passed. This is not a completed competence assessment; competence must rest on a verified §3.1.4 basis (below) or a passed test/quiz.` });
   } else {
     steps.push({ state: "todo", text: "Competence: no test/quiz on file — do not approve until competence is demonstrated." });
   }
@@ -5107,14 +5117,22 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
     steps.push({ state: "todo", text: "§3.1.4 basis: not established — no degree, no experience docs, no reference confirmation. Needs route (a), (b), or (c) evidence before approving." });
   }
 
-  // 3. References
+  // 3. References — positive isn't enough; flag when the corroborated experience
+  // falls materially short of the self-declared figure (the reference, not the
+  // form, is the evidence for route (c)).
   if (ev.refs_received > 0) {
     const allPositive = ev.ref_positive_count > 0 && ev.ref_positive_count === ev.refs_received;
-    const refState: Step["state"] = allPositive ? "done" : "check";
+    const claimed = ev.years_experience ?? null;
+    const corrob = ev.ref_documented_years ?? null;
+    const yearsShortfall = claimed != null && corrob != null && corrob + 2 < claimed;
+    const refState: Step["state"] = (allPositive && !yearsShortfall) ? "done" : "check";
     const positiveNote = ev.ref_positive_count < ev.refs_received
       ? ` (${ev.refs_received - ev.ref_positive_count} non-positive — read those carefully)`
       : "";
-    steps.push({ state: refState, text: `References: ${ev.refs_received} received, ${ev.ref_positive_count} positive${positiveNote}${ev.ref_documented_years ? `, documenting ~${ev.ref_documented_years} yrs experience` : ""}. Read the verbatim responses below — confirm they corroborate the claimed experience and language pairs.` });
+    const shortfallNote = yearsShortfall
+      ? ` ⚠ references corroborate only ~${corrob} yr${corrob === 1 ? "" : "s"} vs ${claimed} self-declared — do NOT rely on the form figure for route (c).`
+      : "";
+    steps.push({ state: refState, text: `References: ${ev.refs_received} received, ${ev.ref_positive_count} positive${positiveNote}${corrob ? `, documenting ~${corrob} yrs experience` : ""}.${shortfallNote} Read the verbatim responses below — confirm they corroborate the claimed experience and language pairs.` });
   } else {
     steps.push({ state: "todo", text: "References: none received yet — request/await at least one good reference before approving." });
   }
@@ -5124,7 +5142,11 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
     steps.push({ state: "todo", text: "Domains (§6.1.6): no declared domains found — cannot approve without at least one domain." });
   } else if (highRiskDeclared.length === 0) {
     const domainStr = safeDeclared.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
-    steps.push({ state: "done", text: `Domains (§6.1.6): ${ev.declared_domains} declared, none are high-risk. General test pass confirms professional linguistic competence across all non-specialist domains. Safe to approve all: ${domainStr}.` });
+    const hasRealCompetence = ev.real_passed_combos > 0 || ev.quiz_score != null;
+    const compNote = hasRealCompetence
+      ? "A passed general test/quiz covers these non-specialist domains."
+      : "⚠ No passed test/quiz yet — confirm general competence (a passed test/quiz or a verified §3.1.4 basis) before approving these.";
+    steps.push({ state: hasRealCompetence ? "done" : "check", text: `Domains (§6.1.6): ${ev.declared_domains} declared, none flagged high-risk. ${compNote} Domains: ${domainStr}.` });
   } else {
     const safeStr = safeDeclared.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ") || "none";
     const evidencedHighRiskStr = highRiskWithEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
@@ -5149,19 +5171,28 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
     steps.push({ state: "check", text: "NDA: not yet signed. Presented as in-portal clickwrap when the vendor logs in after approval — no action needed now, but confirm before marking active." });
   }
 
-  // Bottom line
-  const competenceOk = ev.approved_combos > 0 || ev.quiz_score != null;
-  const basisOk = ev.has_degree_doc || (ev.ref_documented_years ?? 0) >= 5;
+  // Bottom line — ordered hard gates. Competence = a passed test/quiz (NOT
+  // skip_manual_review). Basis = VERIFIED degree or references confirming ≥5 yrs
+  // (route c) — an unverified doc on file is not enough. NDA must be on file.
+  const competenceOk = ev.real_passed_combos > 0 || ev.quiz_score != null;
+  const basisOk = ev.has_verified_degree_doc || (ev.ref_documented_years ?? 0) >= 5;
+  const ndaOk = !!ndaSignedAt;
   let bottom: { tone: string; text: string };
   if (ev.flag_no_cv) {
     bottom = { tone: "text-red-700", text: "→ HOLD: no CV on file — can't verify identity or basis. Request the CV first." };
-  } else if (competenceOk && basisOk && ev.refs_received > 0 && highRiskNoEvidence.length > 0) {
+  } else if (!competenceOk) {
+    bottom = { tone: "text-amber-700", text: `→ Not yet — competence not demonstrated.${ev.skip_review_combos > 0 ? " Skip-review combos are not a test pass." : ""} Send/await a passed test or quiz, or establish a verified §3.1.4 basis.` };
+  } else if (!basisOk) {
+    bottom = { tone: "text-amber-700", text: "→ Not yet — §3.1.4 basis not established by VERIFIED evidence. Verify the degree (route a/b) or confirm ≥5 yrs via references (route c) before approving." };
+  } else if (ev.refs_received === 0) {
+    bottom = { tone: "text-amber-700", text: "→ Not yet — await at least one good reference." };
+  } else if (!ndaOk) {
+    bottom = { tone: "text-amber-700", text: "→ Not yet — no confidentiality agreement (NDA) on file for this application. Confirm a signed, current NDA before approving." };
+  } else if (highRiskNoEvidence.length > 0) {
     const removeStr = highRiskNoEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
-    bottom = { tone: "text-amber-700", text: `→ Approvable with edits: remove ${removeStr} from the domain list (no specific evidence), record the §3.1.4 basis, then approve.` };
-  } else if (competenceOk && basisOk && ev.refs_received > 0) {
-    bottom = { tone: "text-green-700", text: `→ Approvable. Record the §3.1.4 basis${(ev.ref_documented_years ?? 0) >= 5 && !ev.has_degree_doc ? " = route (c)" : ""} and approve.` };
+    bottom = { tone: "text-amber-700", text: `→ Approvable with edits: remove ${removeStr} from the domain list (no specific evidence), record the §3.1.4 basis, then approve only the evidenced domains.` };
   } else {
-    bottom = { tone: "text-amber-700", text: "→ Not yet — resolve the steps marked ⚠ / ◻ above." };
+    bottom = { tone: "text-green-700", text: `→ Approvable. Record the §3.1.4 basis${(ev.ref_documented_years ?? 0) >= 5 && !ev.has_verified_degree_doc ? " = route (c)" : ""} and approve.` };
   }
 
   const ICON: Record<Step["state"], string> = { done: "✓", check: "⚠", todo: "◻" };
@@ -5242,9 +5273,10 @@ function IsoEvidencePanel({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence | null
     </div>
   );
 
-  const competence = ev.approved_combos > 0
-    ? `Test passed (${ev.approved_combos} combo${ev.approved_combos > 1 ? "s" : ""})`
-    : ev.quiz_score != null ? `Quiz ${ev.quiz_score}%` : "—";
+  const competence = ev.real_passed_combos > 0
+    ? `Test passed (${ev.real_passed_combos} combo${ev.real_passed_combos > 1 ? "s" : ""})`
+    : ev.quiz_score != null ? `Quiz ${ev.quiz_score}%`
+    : ev.skip_review_combos > 0 ? `${ev.skip_review_combos} in credential review (not tested)` : "—";
   const basis = `${ev.education_level ? ev.education_level + " (self-declared)" : "no degree declared"}${ev.years_experience != null ? ` · ${ev.years_experience}y exp (self-declared)` : ""}`;
   const docCount = ev.uploaded_docs_count || 0;
   const docsValue = ev.has_cv
@@ -5272,11 +5304,11 @@ function IsoEvidencePanel({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence | null
         )}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Item label="Competence" value={competence} ok={ev.approved_combos > 0 || ev.quiz_score != null} />
+        <Item label="Competence" value={competence} ok={ev.real_passed_combos > 0 || ev.quiz_score != null} />
         <Item label="§3.1.4 basis — self-declared" value={basis} />
         <Item label="Documents on file" value={docsValue} ok={ev.has_cv || docCount > 0} />
         <Item label="References in" value={`${ev.refs_received} received`} ok={ev.refs_received >= 1} />
-        <Item label="Domains" value={`${ev.declared_domains} declared${ev.tested_domains ? ` · tested: ${ev.tested_domains}` : ""}`} />
+        <Item label="Domains" value={`${ev.declared_domains} declared${ev.tested_domains ? ` · combos: ${ev.tested_domains}` : ""}`} />
       </div>
       {ev.screened_items && ev.screened_items.length > 0 ? (
         <div className="mt-3">
