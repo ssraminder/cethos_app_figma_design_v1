@@ -13,6 +13,7 @@ import { Loader2, Plus, BookOpen, X as XIcon } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { toast } from "sonner";
+import { SopExportButton } from "@/components/admin/SopExportButton";
 
 interface SopVersionSummary {
   id: string;
@@ -165,6 +166,7 @@ export default function AdminSops() {
                     <th className="px-4 py-2.5 w-44">ISO reference</th>
                     <th className="px-4 py-2.5 w-36">Status</th>
                     <th className="px-4 py-2.5 w-32">Effective</th>
+                    <th className="px-4 py-2.5 w-28 text-right">Export</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -184,6 +186,15 @@ export default function AdminSops() {
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-500">
                           {s.current_version?.effective_date ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <SopExportButton
+                            sopId={s.id}
+                            sopNumber={s.sop_number}
+                            title={s.title}
+                            versionId={s.current_version?.id}
+                            compact
+                          />
                         </td>
                       </tr>
                     ))}
