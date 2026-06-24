@@ -15,6 +15,7 @@ import { buildV11ApprovedWelcome } from "../_shared/email-templates.ts";
 import {
   claudeRewrite,
   logDecision,
+  sanitizeApplicantMessage,
   APPROVE_NOTE_SYSTEM_PROMPT,
 } from "../_shared/decision-ai.ts";
 import { requireStaff } from "../_shared/require-staff.ts";
@@ -325,8 +326,10 @@ serve(async (req: Request) => {
       aiPreviewError = ai.ok ? null : ai.error;
     }
     const editedWelcomeMessagePreview = (body.editedWelcomeMessage ?? "").trim();
-    const staffMessagePreview = editedWelcomeMessagePreview ||
+    const rawStaffMessagePreview = editedWelcomeMessagePreview ||
       (aiPreviewOutput && aiPreviewOutput.trim().length > 0 ? aiPreviewOutput : null);
+    // Same leak guard as the send path, so Preview shows exactly what would ship.
+    const staffMessagePreview = sanitizeApplicantMessage(rawStaffMessagePreview, app.application_number).clean;
 
     const vendorPortalUrlPreview = Deno.env.get("VENDOR_PORTAL_URL") ?? "https://vendor.cethos.com";
     const approvedCombinationsListHtmlPreview = approveIds.length > 0
@@ -703,6 +706,19 @@ serve(async (req: Request) => {
   if (editedWelcomeMessage) {
     staffMessageForEmail = editedWelcomeMessage;
   }
+
+  // Defence-in-depth: never inject a welcome line that echoes the prompt or
+  // references another applicant. A batch-approval misalignment has shipped a
+  // different applicant's name/app#/internal notes inside an approval email;
+  // this drops any such line and falls back to the template's default copy.
+  const sanitizedMsg = sanitizeApplicantMessage(staffMessageForEmail, app.application_number);
+  if (sanitizedMsg.leaked) {
+    console.error(
+      `cvp-approve-application: dropped leaked welcome line for ${app.application_number} (reason=${sanitizedMsg.reason})`,
+    );
+    aiError = `welcome_line_dropped:${sanitizedMsg.reason}`;
+  }
+  staffMessageForEmail = sanitizedMsg.clean;
 
   const vendorPortalUrl = Deno.env.get("VENDOR_PORTAL_URL") ?? "https://vendor.cethos.com";
   const approvedCombinationsListHtml = `<ul>${approvedCombos
