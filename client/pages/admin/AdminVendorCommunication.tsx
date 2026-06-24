@@ -68,6 +68,7 @@ const TYPE_BADGE: Record<SenderType, { label: string; cls: string }> = {
 export default function AdminVendorCommunication() {
   const navigate = useNavigate();
   const [inbox, setInbox] = useState<InboxItem[]>([]);
+  const [counts, setCounts] = useState<Record<FilterKey, number>>({ all: 0, vendor: 0, applicant: 0, other: 0 });
   const [loadingInbox, setLoadingInbox] = useState(true);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -82,9 +83,11 @@ export default function AdminVendorCommunication() {
 
   const loadInbox = useCallback(async () => {
     try {
-      const { data, error } = await supabase.functions.invoke("manage-vendor-communication", { body: { action: "inbox" } });
+      const { data, error } = await supabase.functions.invoke("manage-vendor-communication", { body: { action: "inbox", filter } });
       if (error) throw new Error(error.message);
-      setInbox((((data as { data?: { inbox?: InboxItem[] } })?.data?.inbox) ?? []) as InboxItem[]);
+      const payload = (data as { data?: { inbox?: InboxItem[]; counts?: Record<FilterKey, number> } })?.data;
+      setInbox((payload?.inbox ?? []) as InboxItem[]);
+      if (payload?.counts) setCounts(payload.counts);
       setLastRefreshed(new Date());
       setRefreshFailed(false);
     } catch {
@@ -93,9 +96,9 @@ export default function AdminVendorCommunication() {
     } finally {
       setLoadingInbox(false);
     }
-  }, []);
+  }, [filter]);
 
-  // Load on mount + auto-refresh every 2 minutes.
+  // Load on mount, on filter change, + auto-refresh every 2 minutes.
   useEffect(() => {
     loadInbox();
     const t = setInterval(loadInbox, 120000);
@@ -169,13 +172,8 @@ export default function AdminVendorCommunication() {
     );
   }
 
-  const counts = {
-    all: inbox.length,
-    vendor: inbox.filter((i) => i.senderType === "vendor").length,
-    applicant: inbox.filter((i) => i.senderType === "applicant").length,
-    other: inbox.filter((i) => i.senderType === "other").length,
-  };
-  const visible = filter === "all" ? inbox : inbox.filter((i) => i.senderType === filter);
+  // Server-side filtering: `inbox` already holds the active filter's rows.
+  const visible = inbox;
   const chips: { key: FilterKey; label: string }[] = [
     { key: "all", label: `All (${counts.all})` },
     { key: "vendor", label: `Vendors (${counts.vendor})` },
