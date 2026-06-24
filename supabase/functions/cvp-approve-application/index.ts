@@ -200,6 +200,28 @@ serve(async (req: Request) => {
         if (!seen.has(c.id as string)) combos.push(c);
       }
     }
+    // References can establish domain competence (policy 2026-06-23): also qualify
+    // the applicant's declared combos whose domain a received reference confirmed.
+    const { data: recvRefs } = await supabase
+      .from("cvp_application_references")
+      .select("reference_confirmed_domains")
+      .eq("application_id", body.applicationId)
+      .eq("status", "received");
+    const refDomains = new Set<string>();
+    for (const rr of (recvRefs ?? []) as Array<{ reference_confirmed_domains: string[] | null }>) {
+      for (const d of rr.reference_confirmed_domains ?? []) refDomains.add(d);
+    }
+    if (refDomains.size > 0) {
+      const { data: refCombos } = await supabase
+        .from("cvp_test_combinations")
+        .select("id, source_language_id, target_language_id, domain, service_type, approved_rate, status, test_submission_id, ai_score")
+        .eq("application_id", body.applicationId)
+        .in("domain", Array.from(refDomains));
+      const seenRef = new Set(combos.map((c) => c.id as string));
+      for (const c of (refCombos ?? []) as Array<Record<string, unknown>>) {
+        if (!seenRef.has(c.id as string)) combos.push(c);
+      }
+    }
   }
   if (comboErr) return json({ success: false, error: "combination_lookup_failed", detail: comboErr.message }, 500);
 
