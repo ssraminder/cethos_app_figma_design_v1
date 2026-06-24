@@ -1017,46 +1017,57 @@ async function maybeSendReceivedAck(args: {
   const { supabase, fields } = args;
   const to = fields.fromEmail;
   if (!to) return null;
-  if (!(await receivedAckEnabled(supabase))) return null;
+  // Best-effort courtesy: it must NEVER throw and break inbound processing.
+  try {
+    if (!(await receivedAckEnabled(supabase))) return null;
 
-  // Never auto-reply to automated senders or our own addresses (loop guard).
-  if (AUTOMATED_SENDER.test(to) || OUR_DOMAINS.test(to)) return null;
+    // Never auto-reply to automated senders or our own addresses (loop guard).
+    if (AUTOMATED_SENDER.test(to) || OUR_DOMAINS.test(to)) return null;
 
-  // Respect an applicant's do-not-contact (sendReply's Brevo path doesn't gate
-  // on it). Vendors have no suppression flag today.
-  if (args.applicationId) {
-    const { data: app } = await supabase
-      .from("cvp_applications")
-      .select("do_not_contact")
-      .eq("id", args.applicationId)
-      .maybeSingle();
-    if ((app as { do_not_contact?: boolean | null } | null)?.do_not_contact) return null;
+    // Respect an applicant's do-not-contact (sendReply's Brevo path doesn't gate
+    // on it). Vendors have no suppression flag today.
+    if (args.applicationId) {
+      const { data: app } = await supabase
+        .from("cvp_applications")
+        .select("do_not_contact")
+        .eq("id", args.applicationId)
+        .maybeSingle();
+      if ((app as { do_not_contact?: boolean | null } | null)?.do_not_contact) return null;
+    }
+
+    // Dedup: skip if this sender already got any auto-reply or holding ack in the
+    // last 24h, so a rapid back-and-forth isn't acked on every message. If the
+    // query errors, fail SAFE — skip the ack rather than risk spamming.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: prior, error: dedupErr } = await supabase
+      .from("cvp_inbound_emails")
+      .select("id")
+      .eq("from_email", to)
+      .gte("received_at", since)
+      .or("auto_reply_sent_at.not.is.null,received_ack_sent_at.not.is.null")
+      .limit(1);
+    if (dedupErr) {
+      console.error("received-ack dedup query failed — skipping ack:", dedupErr.message);
+      return null;
+    }
+    if (prior && prior.length) return null;
+
+    const { subject, html } = buildReceivedAck(fields);
+    const refIds = (fields.referencesHeader.match(/<([^>]+)>/g) ?? []).map((s) => s.replace(/^<|>$/g, ""));
+    if (fields.messageId) refIds.push(fields.messageId.replace(/^<|>$/g, ""));
+    const sent = await sendReply({
+      to: { email: to, name: fields.fromName || undefined },
+      subject,
+      html,
+      tags: ["inbound-autoreply", "received-ack"],
+      inReplyTo: fields.messageId || undefined,
+      references: refIds.length ? refIds : undefined,
+    });
+    return sent.sent ? new Date().toISOString() : null;
+  } catch (err) {
+    console.error("maybeSendReceivedAck failed (non-fatal):", err);
+    return null;
   }
-
-  // Dedup: skip if this sender already got any auto-reply or holding ack in the
-  // last 24h, so a rapid back-and-forth isn't acked on every message.
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data: prior } = await supabase
-    .from("cvp_inbound_emails")
-    .select("id")
-    .eq("from_email", to)
-    .gte("received_at", since)
-    .or("auto_reply_sent_at.not.is.null,received_ack_sent_at.not.is.null")
-    .limit(1);
-  if (prior && prior.length) return null;
-
-  const { subject, html } = buildReceivedAck(fields);
-  const refIds = (fields.referencesHeader.match(/<([^>]+)>/g) ?? []).map((s) => s.replace(/^<|>$/g, ""));
-  if (fields.messageId) refIds.push(fields.messageId.replace(/^<|>$/g, ""));
-  const sent = await sendReply({
-    to: { email: to, name: fields.fromName || undefined },
-    subject,
-    html,
-    tags: ["inbound-autoreply", "received-ack"],
-    inReplyTo: fields.messageId || undefined,
-    references: refIds.length ? refIds : undefined,
-  });
-  return sent.sent ? new Date().toISOString() : null;
 }
 
 // ---------- AI auto-triage of inbound replies ----------
