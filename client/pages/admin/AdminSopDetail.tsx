@@ -25,6 +25,7 @@ import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { sopStatusChip } from "./AdminSops";
+import { SopExportButton } from "@/components/admin/SopExportButton";
 
 interface SopVersion {
   id: string;
@@ -196,6 +197,14 @@ export default function AdminSopDetail() {
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
+          {selected && (
+            <SopExportButton
+              sopId={sop.id}
+              sopNumber={sop.sop_number}
+              title={sop.title}
+              versionId={selected.id}
+            />
+          )}
           {!editing && selected && (
             <button
               onClick={startEdit}
