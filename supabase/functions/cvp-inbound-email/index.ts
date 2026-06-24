@@ -531,6 +531,7 @@ serve(async (req: Request) => {
     | "frontdesk_escalated"
     | "frontdesk_dropped" = "noop";
   let autoReplySentAt: string | null = null;
+  let receivedAckSentAt: string | null = null;
   let triageOutcome: TriageOutcome | null = null;
   let frontDeskOutcome: FrontDeskOutcome | null = null;
 
@@ -578,6 +579,9 @@ serve(async (req: Request) => {
       if (triageOutcome.sentReplyAt) autoReplySentAt = triageOutcome.sentReplyAt;
     } else {
       actionTaken = "threaded_received";
+      // Not auto-resolved → reassure the sender we received it (gated). The row
+      // still stays threaded_received / NEEDS REVIEW for staff.
+      receivedAckSentAt = await maybeSendReceivedAck({ supabase, fields, applicationId: matchedApplicationId });
     }
   } else if (!isThreadedReply && !isUnsubscribe) {
     // Non-threaded cold email. When the AI front desk is enabled it classifies
@@ -683,6 +687,7 @@ serve(async (req: Request) => {
     ai_reply_analysis: replyAnalysis,
     action_taken: actionTaken,
     auto_reply_sent_at: autoReplySentAt,
+    received_ack_sent_at: receivedAckSentAt,
     raw_payload: fields.raw,
   });
   if (logErr) console.error("Failed to log inbound email:", logErr.message);
@@ -725,6 +730,9 @@ async function handleVendorReply(
   } catch (_e) { /* non-fatal — capture without a summary */ }
   const summary = analysis ? String(analysis.summary ?? "") : "";
 
+  // A vendor reply always needs a human → send a holding ack (gated, deduped).
+  const receivedAckSentAt = await maybeSendReceivedAck({ supabase, fields });
+
   await supabase.from("cvp_inbound_emails").insert({
     from_email: fields.fromEmail,
     from_name: fields.fromName,
@@ -746,6 +754,7 @@ async function handleVendorReply(
     },
     ai_reply_analysis: analysis,
     action_taken: "vendor_reply_captured",
+    received_ack_sent_at: receivedAckSentAt,
     raw_payload: fields.raw,
   });
 
@@ -958,6 +967,96 @@ function buildPortalUploadRedirect(
 <p style="margin:0;">The Cethos Recruitment Team</p>
 </div>`;
   return { replySubject, replyHtml };
+}
+
+// ---------- "We received your request" autoresponder ----------
+//
+// For inbound we did NOT auto-resolve — a threaded reply left as NEEDS REVIEW,
+// or a vendor-communication reply — send the sender a short holding ack so they
+// know it arrived. It reassures the sender WITHOUT changing action_taken (the
+// row still shows NEEDS REVIEW) or acknowledged_at (staff still see it as
+// needing attention). Default OFF + fail-closed; loop-guarded; do_not_contact-
+// aware; deduped to one ack per sender per 24h.
+
+function buildReceivedAck(fields: InboundFields): { subject: string; html: string } {
+  const fn = escapeHtml((fields.fromName || "").trim().split(/\s+/)[0] || "there");
+  const subject = fields.subject
+    ? (/^re:/i.test(fields.subject.trim()) ? fields.subject : `Re: ${fields.subject}`)
+    : "We've received your message";
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1f2937;line-height:1.55;max-width:560px;">
+<p style="margin:0 0 14px;">Hi ${fn},</p>
+<p style="margin:0 0 14px;">Thank you for your message — we've received it and a member of our vendor management team will get back to you shortly.</p>
+<p style="margin:0 0 4px;">Thank you,</p>
+<p style="margin:0;">The Cethos Vendor Management Team</p>
+</div>`;
+  return { subject, html };
+}
+
+// Kill-switch (default OFF, fail-closed). Set
+// cvp_system_config.inbound_received_ack = {"enabled": true} to turn on.
+async function receivedAckEnabled(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("cvp_system_config")
+      .select("value")
+      .eq("key", "inbound_received_ack")
+      .maybeSingle();
+    const v = (data as { value?: Record<string, unknown> } | null)?.value;
+    if (v && typeof v === "object") return Boolean((v as { enabled?: unknown }).enabled);
+  } catch (err) {
+    console.error("receivedAckEnabled check failed — defaulting OFF:", err);
+  }
+  return false; // fail-closed
+}
+
+async function maybeSendReceivedAck(args: {
+  supabase: SupabaseClient;
+  fields: InboundFields;
+  applicationId?: string | null;
+}): Promise<string | null> {
+  const { supabase, fields } = args;
+  const to = fields.fromEmail;
+  if (!to) return null;
+  if (!(await receivedAckEnabled(supabase))) return null;
+
+  // Never auto-reply to automated senders or our own addresses (loop guard).
+  if (AUTOMATED_SENDER.test(to) || OUR_DOMAINS.test(to)) return null;
+
+  // Respect an applicant's do-not-contact (sendReply's Brevo path doesn't gate
+  // on it). Vendors have no suppression flag today.
+  if (args.applicationId) {
+    const { data: app } = await supabase
+      .from("cvp_applications")
+      .select("do_not_contact")
+      .eq("id", args.applicationId)
+      .maybeSingle();
+    if ((app as { do_not_contact?: boolean | null } | null)?.do_not_contact) return null;
+  }
+
+  // Dedup: skip if this sender already got any auto-reply or holding ack in the
+  // last 24h, so a rapid back-and-forth isn't acked on every message.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: prior } = await supabase
+    .from("cvp_inbound_emails")
+    .select("id")
+    .eq("from_email", to)
+    .gte("received_at", since)
+    .or("auto_reply_sent_at.not.is.null,received_ack_sent_at.not.is.null")
+    .limit(1);
+  if (prior && prior.length) return null;
+
+  const { subject, html } = buildReceivedAck(fields);
+  const refIds = (fields.referencesHeader.match(/<([^>]+)>/g) ?? []).map((s) => s.replace(/^<|>$/g, ""));
+  if (fields.messageId) refIds.push(fields.messageId.replace(/^<|>$/g, ""));
+  const sent = await sendReply({
+    to: { email: to, name: fields.fromName || undefined },
+    subject,
+    html,
+    tags: ["inbound-autoreply", "received-ack"],
+    inReplyTo: fields.messageId || undefined,
+    references: refIds.length ? refIds : undefined,
+  });
+  return sent.sent ? new Date().toISOString() : null;
 }
 
 // ---------- AI auto-triage of inbound replies ----------
