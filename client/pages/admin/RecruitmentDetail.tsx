@@ -5051,6 +5051,7 @@ interface IsoEvidence {
   ref_min_confirmed_year: number | null;
   ref_documented_years: number | null;
   ref_positive_count: number;
+  ref_confirmed_domains: string[] | null;
 }
 
 // Domains where a general translation test is NOT sufficient — domain-specific
@@ -5064,6 +5065,7 @@ const DOMAIN_DISPLAY: Record<string, string> = {
   general: "General", academic_scientific: "Academic / Scientific",
   business_corporate: "Business / Corporate", marketing_advertising: "Marketing",
   immigration: "Immigration", certified_official: "Certified / Official",
+  coa_linguistic_validation: "COA / Linguistic Validation",
   literary_publishing: "Literary", tourism_hospitality: "Tourism",
   government_public: "Government", gaming_entertainment: "Gaming",
   media_journalism: "Media", automotive_engineering: "Automotive",
@@ -5118,9 +5120,15 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
     coaQuiz.score_pct != null && Number(coaQuiz.score_pct) >= 90;
   const CLINICAL_DOMAINS = new Set(["medical", "life_sciences", "pharmaceutical", "coa_linguistic_validation"]);
   const domainEvidencedByTest = (d: string) => passedDomains.includes(d) || (coaQuizPassed && CLINICAL_DOMAINS.has(d));
+  // References can establish domain competence for ANY declared domain incl. COA
+  // (policy 2026-06-23): a received reference that confirmed the domain counts as
+  // §6.1.6 evidence. The quiz/test remains corroboration (stronger) but isn't required.
+  const refConfirmedDomains = ev.ref_confirmed_domains ?? [];
+  const domainEvidencedByReference = (d: string) => refConfirmedDomains.includes(d);
   const highRiskTested = highRiskDeclared.filter(domainEvidencedByTest);
   const highRiskWithEvidence = highRiskDeclared.filter((d) =>
     domainEvidencedByTest(d) ||
+    domainEvidencedByReference(d) ||
     certItems.some((it) => it.title.toLowerCase().includes(d.replace("_", " "))) ||
     expItems.some((it) => it.title.toLowerCase().includes(d.replace("_", " ")))
   );
@@ -5151,10 +5159,17 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
   const hasCOADomain = declaredList.includes("coa_linguistic_validation");
   if (hasCOADomain || coaQuiz) {
     if (!coaQuiz || coaQuiz.status !== "submitted") {
-      steps.push({
-        state: "todo",
-        text: `COA quiz: not yet submitted${coaQuiz ? ` (status: ${coaQuiz.status})` : " — send via Assessment Path panel below"}. Required before approving COA Linguistic Validation.`,
-      });
+      if (domainEvidencedByReference("coa_linguistic_validation")) {
+        steps.push({
+          state: "done",
+          text: "COA: confirmed by a professional reference — per policy (2026-06-23) references can establish domain competence, so the COA quiz is corroboration, not required. Sending the quiz would add stronger evidence.",
+        });
+      } else {
+        steps.push({
+          state: "todo",
+          text: `COA quiz: not yet submitted${coaQuiz ? ` (status: ${coaQuiz.status})` : " — send via Assessment Path panel below"}. Required before approving COA Linguistic Validation, unless a reference confirms the COA domain.`,
+        });
+      }
     } else {
       const scoreNum = coaQuiz.score_pct !== null && coaQuiz.score_pct !== undefined ? Number(coaQuiz.score_pct) : null;
       const score = scoreNum !== null ? `${scoreNum.toFixed(0)}%` : "?%";
@@ -5238,18 +5253,23 @@ function IsoReviewerGuide({ ev, ndaSignedAt, coaQuiz }: { ev: IsoEvidence; ndaSi
   } else {
     const safeStr = safeDeclared.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ") || "none";
     const testedStr = highRiskTested.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
-    const certOnly = highRiskWithEvidence.filter((d) => !highRiskTested.includes(d));
+    const refConfirmedHR = highRiskDeclared.filter((d) => !highRiskTested.includes(d) && domainEvidencedByReference(d));
+    const refStr = refConfirmedHR.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
+    const certOnly = highRiskWithEvidence.filter((d) => !highRiskTested.includes(d) && !domainEvidencedByReference(d));
     const certStr = certOnly.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
     const unevidencedStr = highRiskNoEvidence.map((d) => DOMAIN_DISPLAY[d] ?? d).join(", ");
     let text = `Domains (§6.1.6): ${ev.declared_domains} declared.`;
     if (highRiskTested.length > 0) {
       text += ` Qualified by a passed domain test / COA quiz: ${testedStr}.`;
     }
+    if (refConfirmedHR.length > 0) {
+      text += ` Confirmed by a reference: ${refStr}.`;
+    }
     if (certOnly.length > 0) {
       text += ` Cert/doc evidence (confirm it covers the domain): ${certStr}.`;
     }
     if (highRiskNoEvidence.length > 0) {
-      text += ` NO test pass or cert for: ${unevidencedStr} — remove these (or send the domain test) before approving.`;
+      text += ` NO test pass, reference, or cert for: ${unevidencedStr} — remove these (or send the domain test) before approving.`;
     }
     if (safeStr !== "none") {
       text += ` Safe (general competence covers these): ${safeStr}.`;
