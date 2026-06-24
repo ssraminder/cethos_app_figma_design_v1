@@ -106,17 +106,32 @@ serve(async (req: Request) => {
 
   // ---- inbox: EVERY message received at the vm@ mailbox (any sender, whether
   // or not they're a registered vendor/applicant) + vendor-communication
-  // outbound. Each row carries routing fields so the UI can open the vendor
+  // outbound. Filtering is SERVER-SIDE (filter=all|vendor|applicant|other) so a
+  // sparse category (e.g. vendor mail) isn't drowned by the applicant flood in a
+  // capped page. Each row carries routing fields so the UI can open the vendor
   // thread, jump to the recruitment record, or show an inline read view. ----
   if (action === "inbox") {
+    const filter = (body as { filter?: string }).filter ?? "all";
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    let ibq = supabase.from("cvp_inbound_emails")
+      .select("id, matched_vendor_id, matched_application_id, received_at, subject, stripped_text, body_plain, from_email, from_name, acknowledged_at, classified_intent, action_taken")
+      .gte("received_at", since).order("received_at", { ascending: false }).limit(200);
+    if (filter === "vendor") ibq = ibq.not("matched_vendor_id", "is", null);
+    else if (filter === "applicant") ibq = ibq.not("matched_application_id", "is", null);
+    else if (filter === "other") ibq = ibq.is("matched_vendor_id", null).is("matched_application_id", null);
+
+    // Outbound here is always vendor-communication, so only include it in the
+    // All and Vendors views.
+    const includeOutbound = filter === "all" || filter === "vendor";
+
     const [ob, ib] = await Promise.all([
-      supabase.from("cvp_outbound_messages")
-        .select("id, vendor_id, sent_at, subject, body_text")
-        .not("vendor_id", "is", null).order("sent_at", { ascending: false }).limit(80),
-      supabase.from("cvp_inbound_emails")
-        .select("id, matched_vendor_id, matched_application_id, received_at, subject, stripped_text, body_plain, from_email, from_name, acknowledged_at, classified_intent, action_taken")
-        .gte("received_at", since).order("received_at", { ascending: false }).limit(200),
+      includeOutbound
+        ? supabase.from("cvp_outbound_messages")
+            .select("id, vendor_id, sent_at, subject, body_text")
+            .not("vendor_id", "is", null).order("sent_at", { ascending: false }).limit(80)
+        : Promise.resolve({ data: [] as Array<{ id: string; vendor_id: string; sent_at: string; subject: string | null; body_text: string | null }> }),
+      ibq,
     ]);
 
     const outbound = (ob.data ?? []) as Array<{ id: string; vendor_id: string; sent_at: string; subject: string | null; body_text: string | null }>;
@@ -181,7 +196,22 @@ serve(async (req: Request) => {
     const items = [...outItems, ...inItems]
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
       .slice(0, 250);
-    return json({ success: true, data: { inbox: items } });
+
+    // Chip counts (inbound by type, last 30 days) — independent of the active
+    // filter so every chip shows its true size.
+    const [cAll, cVendor, cApplicant, cOther] = await Promise.all([
+      supabase.from("cvp_inbound_emails").select("id", { count: "exact", head: true }).gte("received_at", since),
+      supabase.from("cvp_inbound_emails").select("id", { count: "exact", head: true }).gte("received_at", since).not("matched_vendor_id", "is", null),
+      supabase.from("cvp_inbound_emails").select("id", { count: "exact", head: true }).gte("received_at", since).not("matched_application_id", "is", null),
+      supabase.from("cvp_inbound_emails").select("id", { count: "exact", head: true }).gte("received_at", since).is("matched_vendor_id", null).is("matched_application_id", null),
+    ]);
+    const counts = {
+      all: cAll.count ?? 0,
+      vendor: cVendor.count ?? 0,
+      applicant: cApplicant.count ?? 0,
+      other: cOther.count ?? 0,
+    };
+    return json({ success: true, data: { inbox: items, counts } });
   }
 
   // ---- message: full body of one inbound email (for the read-only viewer the
