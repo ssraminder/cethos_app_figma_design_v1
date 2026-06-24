@@ -1,13 +1,18 @@
 // AdminVendorCommunication — standalone /admin/vendors/communication page.
-// An INBOX of all vendor messages (sent + received, across every vendor),
-// auto-refreshing every 2 minutes. Click a row to open that vendor's full
-// thread (the shared VendorCommunicationTab). "New message" searches a vendor
-// to start a conversation.
+// A unified INBOX of every message received at the vm@ mailbox (any sender,
+// registered or not) plus the vendor-communication mail staff send from here,
+// auto-refreshing every 2 minutes. Rows route by sender type: a vendor opens
+// that vendor's full thread (the shared VendorCommunicationTab); an applicant
+// jumps to their recruitment record; an unregistered sender opens an inline
+// read view. "New message" searches a vendor to start a conversation.
 
 import { useState, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { Search, Loader2, ArrowLeft, MessageSquare, RefreshCw, ArrowRight, Mail, Plus } from "lucide-react";
+import { Search, Loader2, ArrowLeft, MessageSquare, RefreshCw, ArrowRight, Mail, Plus, X, ExternalLink } from "lucide-react";
 import VendorCommunicationTab from "./vendor-detail/VendorCommunicationTab";
+
+type SenderType = "vendor" | "applicant" | "other";
 
 interface VendorLite {
   id: string;
@@ -19,14 +24,32 @@ interface VendorLite {
 interface InboxItem {
   kind: "outbound" | "inbound";
   id: string;
-  vendorId: string;
-  vendorName: string;
-  vendorEmail: string | null;
   at: string;
   subject: string | null;
   snippet: string;
+  from: string | null;
   unread: boolean;
+  vendorId: string | null;
+  applicationId: string | null;
+  senderType: SenderType;
+  name: string;
+  email: string | null;
+  intent: string | null;
+  action: string | null;
 }
+interface ReadMessage {
+  id: string;
+  from: string | null;
+  subject: string | null;
+  at: string;
+  body: string;
+  intent: string | null;
+  action: string | null;
+  vendorId: string | null;
+  applicationId: string | null;
+}
+
+type FilterKey = "all" | SenderType;
 
 function fmt(at: string): string {
   try {
@@ -36,15 +59,26 @@ function fmt(at: string): string {
   }
 }
 
+const TYPE_BADGE: Record<SenderType, { label: string; cls: string }> = {
+  vendor: { label: "Vendor", cls: "bg-cyan-100 text-cyan-700" },
+  applicant: { label: "Applicant", cls: "bg-violet-100 text-violet-700" },
+  other: { label: "Other", cls: "bg-gray-100 text-gray-600" },
+};
+
 export default function AdminVendorCommunication() {
+  const navigate = useNavigate();
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [loadingInbox, setLoadingInbox] = useState(true);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<VendorLite[]>([]);
   const [searching, setSearching] = useState(false);
   const [composing, setComposing] = useState(false);
   const [selected, setSelected] = useState<VendorLite | null>(null);
+  const [reading, setReading] = useState<ReadMessage | null>(null);
+  const [readingLoading, setReadingLoading] = useState(false);
 
   const loadInbox = useCallback(async () => {
     try {
@@ -52,8 +86,10 @@ export default function AdminVendorCommunication() {
       if (error) throw new Error(error.message);
       setInbox((((data as { data?: { inbox?: InboxItem[] } })?.data?.inbox) ?? []) as InboxItem[]);
       setLastRefreshed(new Date());
+      setRefreshFailed(false);
     } catch {
-      // Stay quiet on auto-refresh failures; the existing list remains visible.
+      // Keep the existing list visible, but surface that the refresh failed.
+      setRefreshFailed(true);
     } finally {
       setLoadingInbox(false);
     }
@@ -83,9 +119,34 @@ export default function AdminVendorCommunication() {
     setSearching(false);
   }, []);
 
-  const openThread = (v: VendorLite) => {
+  const openVendorThread = (v: VendorLite) => {
     setSelected(v);
     setComposing(false);
+  };
+
+  const openMessage = useCallback(async (inboundId: string) => {
+    setReadingLoading(true);
+    setReading(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-vendor-communication", { body: { action: "message", inboundId } });
+      if (error) throw new Error(error.message);
+      const msg = (data as { data?: { message?: ReadMessage } })?.data?.message ?? null;
+      setReading(msg);
+    } catch {
+      setReading(null);
+    } finally {
+      setReadingLoading(false);
+    }
+  }, []);
+
+  const openRow = (it: InboxItem) => {
+    if (it.senderType === "vendor" && it.vendorId) {
+      openVendorThread({ id: it.vendorId, full_name: it.name, business_name: null, email: it.email });
+    } else if (it.senderType === "applicant" && it.applicationId) {
+      navigate(`/admin/recruitment/${it.applicationId}`);
+    } else {
+      openMessage(it.id);
+    }
   };
 
   if (selected) {
@@ -108,16 +169,34 @@ export default function AdminVendorCommunication() {
     );
   }
 
+  const counts = {
+    all: inbox.length,
+    vendor: inbox.filter((i) => i.senderType === "vendor").length,
+    applicant: inbox.filter((i) => i.senderType === "applicant").length,
+    other: inbox.filter((i) => i.senderType === "other").length,
+  };
+  const visible = filter === "all" ? inbox : inbox.filter((i) => i.senderType === filter);
+  const chips: { key: FilterKey; label: string }[] = [
+    { key: "all", label: `All (${counts.all})` },
+    { key: "vendor", label: `Vendors (${counts.vendor})` },
+    { key: "applicant", label: `Applicants (${counts.applicant})` },
+    { key: "other", label: `Other (${counts.other})` },
+  ];
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <MessageSquare className="h-5 w-5 text-cyan-600" />
-          <h1 className="text-xl font-semibold text-gray-900">Vendor Communication</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Inbox</h1>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400">
-            {lastRefreshed ? `Updated ${lastRefreshed.toLocaleTimeString()}` : ""} · auto every 2 min
+            {refreshFailed ? (
+              <span className="text-amber-600">couldn’t refresh — showing last load</span>
+            ) : (
+              <>{lastRefreshed ? `Updated ${lastRefreshed.toLocaleTimeString()}` : ""} · auto every 2 min</>
+            )}
           </span>
           <button
             onClick={loadInbox}
@@ -156,7 +235,7 @@ export default function AdminVendorCommunication() {
               {results.map((v) => (
                 <li key={v.id}>
                   <button
-                    onClick={() => openThread(v)}
+                    onClick={() => openVendorThread(v)}
                     className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center justify-between gap-3"
                   >
                     <div>
@@ -172,20 +251,36 @@ export default function AdminVendorCommunication() {
         </div>
       )}
 
+      {/* Filter chips */}
+      <div className="flex items-center gap-2 mb-3">
+        {chips.map((c) => (
+          <button
+            key={c.key}
+            onClick={() => setFilter(c.key)}
+            className={`text-xs rounded-full px-3 py-1 border ${filter === c.key ? "bg-cyan-600 text-white border-cyan-600" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
       {loadingInbox && inbox.length === 0 ? (
         <div className="flex items-center gap-2 text-sm text-gray-500 py-8 justify-center">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading inbox…
         </div>
-      ) : inbox.length === 0 ? (
-        <p className="text-sm text-gray-400 py-8 text-center">No messages yet. Use “New message” to start one.</p>
+      ) : visible.length === 0 ? (
+        <p className="text-sm text-gray-400 py-8 text-center">
+          {inbox.length === 0 ? "No messages yet. Use “New message” to start one." : "No messages in this view."}
+        </p>
       ) : (
         <ul className="border border-gray-200 rounded-lg divide-y divide-gray-100 bg-white">
-          {inbox.map((it) => {
+          {visible.map((it) => {
             const outbound = it.kind === "outbound";
+            const badge = TYPE_BADGE[it.senderType];
             return (
               <li key={`${it.kind}-${it.id}`}>
                 <button
-                  onClick={() => openThread({ id: it.vendorId, full_name: it.vendorName, business_name: null, email: it.vendorEmail })}
+                  onClick={() => openRow(it)}
                   className={`w-full text-left px-4 py-3 hover:bg-gray-50 flex items-start gap-3 ${it.unread ? "bg-amber-50/60" : ""}`}
                 >
                   <span className={`mt-0.5 inline-flex items-center justify-center h-6 w-6 rounded-full ${outbound ? "bg-cyan-100 text-cyan-700" : "bg-amber-100 text-amber-700"}`}>
@@ -193,11 +288,13 @@ export default function AdminVendorCommunication() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900 truncate">{it.vendorName}</span>
+                      <span className="text-sm font-medium text-gray-900 truncate">{it.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
                       {it.unread && <span className="h-2 w-2 rounded-full bg-amber-500" />}
                       <span className="ml-auto text-xs text-gray-400 whitespace-nowrap">{fmt(it.at)}</span>
                     </div>
                     <div className="text-xs text-gray-700 truncate">{outbound ? "→ " : "← "}{it.subject || "(no subject)"}</div>
+                    {it.from && !outbound && <div className="text-[11px] text-gray-400 truncate">{it.from}</div>}
                     {it.snippet && <div className="text-xs text-gray-400 truncate">{it.snippet}</div>}
                   </div>
                 </button>
@@ -205,6 +302,51 @@ export default function AdminVendorCommunication() {
             );
           })}
         </ul>
+      )}
+
+      {/* Read-only viewer for messages from unregistered senders */}
+      {(reading || readingLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { setReading(null); setReadingLoading(false); }}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-gray-200">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900 truncate">{reading?.subject || "(no subject)"}</div>
+                {reading?.from && <div className="text-xs text-gray-500 truncate">{reading.from}</div>}
+                {reading?.at && <div className="text-[11px] text-gray-400">{fmt(reading.at)}</div>}
+              </div>
+              <button onClick={() => { setReading(null); setReadingLoading(false); }} className="text-gray-400 hover:text-gray-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-5 py-4 overflow-y-auto">
+              {readingLoading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500 py-8 justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading message…
+                </div>
+              ) : reading ? (
+                <>
+                  {(reading.intent || reading.action) && (
+                    <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+                      {reading.intent && <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">intent: {reading.intent}</span>}
+                      {reading.action && <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">action: {reading.action}</span>}
+                    </div>
+                  )}
+                  <pre className="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 leading-relaxed">{reading.body || "(no body)"}</pre>
+                  {reading.applicationId && (
+                    <button
+                      onClick={() => { const id = reading.applicationId; setReading(null); if (id) navigate(`/admin/recruitment/${id}`); }}
+                      className="mt-4 inline-flex items-center gap-1.5 text-xs text-cyan-700 hover:text-cyan-900"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Open recruitment record
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-gray-400 py-8 text-center">Couldn’t load this message.</p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
