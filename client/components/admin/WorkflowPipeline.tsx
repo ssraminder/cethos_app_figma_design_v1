@@ -1305,6 +1305,15 @@ function WorkflowPipeline({
                         <span className="italic text-gray-400">Not assigned</span>
                       ))}
                   </span>
+                  {step.latest_delivery?.roster_handle && (
+                    <span
+                      className="text-teal-700 font-mono bg-teal-100 px-1.5 py-0.5 rounded text-[10px] inline-flex items-center gap-1"
+                      title={`Agency roster linguist (blinded handle) who performed this step${step.latest_delivery.roster_competence ? ` — ${step.latest_delivery.roster_competence}` : ""}${step.latest_delivery.roster_iso_attested ? " · ISO-attested" : ""}`}
+                    >
+                      linguist: {step.latest_delivery.roster_handle}
+                      {step.latest_delivery.roster_iso_attested && <span title="ISO competence attested">✓</span>}
+                    </span>
+                  )}
                   {step.vendor_id && (
                     <>
                       <button

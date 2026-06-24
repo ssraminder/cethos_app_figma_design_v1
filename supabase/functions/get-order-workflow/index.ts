@@ -261,18 +261,27 @@ serve(async (req: Request) => {
         .order("version", { ascending: false });
 
       // Resolve blinded roster handles for agency deliveries (staff see only
-      // the opaque handle — never the linguist's real name).
+      // the opaque handle + ISO competence — never the linguist's real name).
       const rosterIds = [...new Set((deliveries ?? []).map((d: any) => d.roster_linguist_id).filter(Boolean))];
-      let rosterHandleMap: Record<string, string> = {};
+      let rosterMap: Record<string, { handle: string; competence: string | null; iso_attested: boolean }> = {};
       if (rosterIds.length) {
         const { data: rl } = await supabase
-          .from("vendor_roster_linguists").select("id, handle").in("id", rosterIds);
-        rosterHandleMap = Object.fromEntries((rl ?? []).map((r: any) => [r.id, r.handle]));
+          .from("vendor_roster_linguists_safe")
+          .select("id, handle, competence_label, iso_attested")
+          .in("id", rosterIds);
+        rosterMap = Object.fromEntries(
+          (rl ?? []).map((r: any) => [r.id, { handle: r.handle, competence: r.competence_label ?? null, iso_attested: !!r.iso_attested }]),
+        );
       }
-      const enrichedDeliveries = (deliveries ?? []).map((d: any) => ({
-        ...d,
-        roster_handle: d.roster_linguist_id ? (rosterHandleMap[d.roster_linguist_id] ?? null) : null,
-      }));
+      const enrichedDeliveries = (deliveries ?? []).map((d: any) => {
+        const r = d.roster_linguist_id ? rosterMap[d.roster_linguist_id] : null;
+        return {
+          ...d,
+          roster_handle: r?.handle ?? null,
+          roster_competence: r?.competence ?? null,
+          roster_iso_attested: r?.iso_attested ?? false,
+        };
+      });
 
       // Fetch payable for this step
       const { data: payable } = await supabase
