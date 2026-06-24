@@ -104,35 +104,119 @@ serve(async (req: Request) => {
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
-  // ---- inbox: recent messages across ALL vendors (no vendorId needed) ----
+  // ---- inbox: EVERY message received at the vm@ mailbox (any sender, whether
+  // or not they're a registered vendor/applicant) + vendor-communication
+  // outbound. Each row carries routing fields so the UI can open the vendor
+  // thread, jump to the recruitment record, or show an inline read view. ----
   if (action === "inbox") {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const [ob, ib] = await Promise.all([
       supabase.from("cvp_outbound_messages")
         .select("id, vendor_id, sent_at, subject, body_text")
         .not("vendor_id", "is", null).order("sent_at", { ascending: false }).limit(80),
       supabase.from("cvp_inbound_emails")
-        .select("id, matched_vendor_id, received_at, subject, stripped_text, from_email, acknowledged_at")
-        .not("matched_vendor_id", "is", null).order("received_at", { ascending: false }).limit(80),
+        .select("id, matched_vendor_id, matched_application_id, received_at, subject, stripped_text, body_plain, from_email, from_name, acknowledged_at, classified_intent, action_taken")
+        .gte("received_at", since).order("received_at", { ascending: false }).limit(200),
     ]);
+
+    const outbound = (ob.data ?? []) as Array<{ id: string; vendor_id: string; sent_at: string; subject: string | null; body_text: string | null }>;
+    const inbound = (ib.data ?? []) as Array<{
+      id: string; matched_vendor_id: string | null; matched_application_id: string | null;
+      received_at: string; subject: string | null; stripped_text: string | null; body_plain: string | null;
+      from_email: string | null; from_name: string | null; acknowledged_at: string | null;
+      classified_intent: string | null; action_taken: string | null;
+    }>;
+
+    // Batch-resolve vendor + applicant display names.
     const vids = Array.from(new Set([
-      ...(ob.data ?? []).map((r) => r.vendor_id as string),
-      ...(ib.data ?? []).map((r) => r.matched_vendor_id as string),
-    ].filter(Boolean)));
-    const vmap = new Map<string, { business_name: string | null; full_name: string | null; email: string | null }>();
+      ...outbound.map((r) => r.vendor_id),
+      ...inbound.map((r) => r.matched_vendor_id),
+    ].filter(Boolean))) as string[];
+    const aids = Array.from(new Set(inbound.map((r) => r.matched_application_id).filter(Boolean))) as string[];
+
+    const vmap = new Map<string, { name: string; email: string | null }>();
     if (vids.length) {
       const { data: vs } = await supabase.from("vendors").select("id, full_name, business_name, email").in("id", vids);
       for (const v of (vs ?? []) as Array<{ id: string; full_name: string | null; business_name: string | null; email: string | null }>) {
-        vmap.set(v.id, { business_name: v.business_name, full_name: v.full_name, email: v.email });
+        vmap.set(v.id, { name: v.business_name || v.full_name || "(unknown vendor)", email: v.email });
       }
     }
-    const label = (id: string) => { const v = vmap.get(id); return v ? (v.business_name || v.full_name || "(unknown vendor)") : "(unknown vendor)"; };
-    const items = [
-      ...(ob.data ?? []).map((r) => ({ kind: "outbound", id: r.id as string, vendorId: r.vendor_id as string, at: r.sent_at as string, subject: r.subject as string | null, snippet: String(r.body_text ?? "").slice(0, 160), unread: false, from: null as string | null })),
-      ...(ib.data ?? []).map((r) => ({ kind: "inbound", id: r.id as string, vendorId: r.matched_vendor_id as string, at: r.received_at as string, subject: r.subject as string | null, snippet: String(r.stripped_text ?? "").slice(0, 160), unread: !r.acknowledged_at, from: r.from_email as string | null })),
-    ].map((it) => ({ ...it, vendorName: label(it.vendorId), vendorEmail: vmap.get(it.vendorId)?.email ?? null }))
+    const amap = new Map<string, string>();
+    if (aids.length) {
+      const { data: apps } = await supabase.from("cvp_applications").select("id, full_name, application_number").in("id", aids);
+      for (const a of (apps ?? []) as Array<{ id: string; full_name: string | null; application_number: string | null }>) {
+        amap.set(a.id, a.full_name || a.application_number || "(applicant)");
+      }
+    }
+
+    const outItems = outbound.map((r) => ({
+      kind: "outbound" as const, id: r.id, at: r.sent_at,
+      subject: r.subject, snippet: String(r.body_text ?? "").slice(0, 160),
+      from: null as string | null, unread: false,
+      vendorId: r.vendor_id, applicationId: null as string | null,
+      senderType: "vendor" as const,
+      name: vmap.get(r.vendor_id)?.name ?? "(unknown vendor)",
+      email: vmap.get(r.vendor_id)?.email ?? null,
+      intent: null as string | null, action: null as string | null,
+    }));
+    const inItems = inbound.map((r) => {
+      const senderType: "vendor" | "applicant" | "other" =
+        r.matched_application_id ? "applicant" : r.matched_vendor_id ? "vendor" : "other";
+      const name =
+        senderType === "applicant"
+          ? (amap.get(r.matched_application_id as string) ?? r.from_name ?? r.from_email ?? "(applicant)")
+          : senderType === "vendor"
+          ? (vmap.get(r.matched_vendor_id as string)?.name ?? r.from_name ?? r.from_email ?? "(vendor)")
+          : (r.from_name || r.from_email || "(unknown sender)");
+      return {
+        kind: "inbound" as const, id: r.id, at: r.received_at,
+        subject: r.subject, snippet: String(r.stripped_text ?? r.body_plain ?? "").slice(0, 160),
+        from: r.from_email, unread: !r.acknowledged_at,
+        vendorId: r.matched_vendor_id, applicationId: r.matched_application_id,
+        senderType, name, email: r.from_email,
+        intent: r.classified_intent, action: r.action_taken,
+      };
+    });
+
+    const items = [...outItems, ...inItems]
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-      .slice(0, 120);
+      .slice(0, 250);
     return json({ success: true, data: { inbox: items } });
+  }
+
+  // ---- message: full body of one inbound email (for the read-only viewer the
+  // inbox opens on rows from unregistered senders). No vendorId needed. ----
+  if (action === "message") {
+    const inboundId = (body as { inboundId?: string }).inboundId;
+    if (!inboundId) return json({ success: false, error: "inboundId_required" }, 400);
+    const { data: row, error: mErr } = await supabase
+      .from("cvp_inbound_emails")
+      .select("id, from_email, from_name, subject, body_plain, stripped_text, received_at, classified_intent, action_taken, matched_vendor_id, matched_application_id")
+      .eq("id", inboundId)
+      .maybeSingle();
+    if (mErr || !row) return json({ success: false, error: "message_not_found" }, 404);
+    const r = row as {
+      id: string; from_email: string | null; from_name: string | null; subject: string | null;
+      body_plain: string | null; stripped_text: string | null; received_at: string;
+      classified_intent: string | null; action_taken: string | null;
+      matched_vendor_id: string | null; matched_application_id: string | null;
+    };
+    return json({
+      success: true,
+      data: {
+        message: {
+          id: r.id,
+          from: r.from_name ? `${r.from_name} <${r.from_email}>` : r.from_email,
+          subject: r.subject,
+          at: r.received_at,
+          body: r.body_plain ?? r.stripped_text ?? "",
+          intent: r.classified_intent,
+          action: r.action_taken,
+          vendorId: r.matched_vendor_id,
+          applicationId: r.matched_application_id,
+        },
+      },
+    });
   }
 
   if (!body.vendorId) return json({ success: false, error: "vendorId_required" }, 400);
