@@ -120,6 +120,8 @@ export interface StepDelivery {
   vendor_identifier?: string | null;
   roster_linguist_id?: string | null;
   roster_handle?: string | null;
+  roster_competence?: string | null;
+  roster_iso_attested?: boolean;
   review_status: 'pending_review' | 'approved' | 'revision_requested';
   reviewed_by: string | null;
   reviewed_at: string | null;
