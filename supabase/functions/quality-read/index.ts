@@ -10,6 +10,7 @@
 //   list_complaints           { status? }
 //   list_nonconformities      { status? }
 //   get_nonconformity         { id }
+//   list_for_order            { order_id }  -> { complaints, nonconformities }
 //   linguist_performance      { vendor_id }
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -65,6 +66,10 @@ serve(async (req: Request) => {
       case "get_nonconformity":
         rpc = "qms_get_nonconformity";
         args = { p_id: body.id };
+        break;
+      case "list_for_order":
+        rpc = "qms_list_for_order";
+        args = { p_order_id: body.order_id };
         break;
       case "linguist_performance":
         rpc = "qms_linguist_performance";
