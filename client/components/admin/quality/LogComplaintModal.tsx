@@ -43,6 +43,11 @@ export default function LogComplaintModal({ open, onClose, onCreated, prefill }:
   const [vendorResults, setVendorResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
 
+  const [orderId, setOrderId] = useState<string | null>(prefill?.order_id ?? null);
+  const [orderLabel, setOrderLabel] = useState<string | null>(prefill?.order_number ?? null);
+  const [orderQuery, setOrderQuery] = useState("");
+  const [orderResults, setOrderResults] = useState<any[]>([]);
+
   if (!open) return null;
 
   const searchVendors = async () => {
@@ -60,6 +65,17 @@ export default function LogComplaintModal({ open, onClose, onCreated, prefill }:
     }
   };
 
+  const searchOrders = async () => {
+    if (!orderQuery.trim()) return;
+    const { data } = await supabase
+      .from("orders")
+      .select("id, order_number, client_project_number")
+      .or(`order_number.ilike.%${orderQuery}%,client_project_number.ilike.%${orderQuery}%`)
+      .order("created_at", { ascending: false })
+      .limit(8);
+    setOrderResults(data ?? []);
+  };
+
   const submit = async () => {
     if (!summary.trim()) {
       toast.error("Summary is required.");
@@ -73,7 +89,7 @@ export default function LogComplaintModal({ open, onClose, onCreated, prefill }:
         complainant_name: complainantName || null,
         complainant_email: complainantEmail || null,
         vendor_id: vendorId,
-        order_id: prefill?.order_id ?? null,
+        order_id: orderId,
       };
       const { data, error } = await supabase.functions.invoke("manage-quality", {
         body: { action: "create_complaint", payload },
@@ -150,6 +166,37 @@ export default function LogComplaintModal({ open, onClose, onCreated, prefill }:
               <input value={complainantEmail} onChange={(e) => setComplainantEmail(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Linked order / project (optional)</label>
+            {orderId ? (
+              <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <span>{orderLabel || orderId}</span>
+                {!prefill?.order_id && (
+                  <button onClick={() => { setOrderId(null); setOrderLabel(null); }} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+                )}
+              </div>
+            ) : (
+              <div>
+                <div className="flex gap-2">
+                  <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && searchOrders()}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Search order # or client project number" />
+                  <button onClick={searchOrders} className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"><Search className="w-4 h-4" /></button>
+                </div>
+                {orderResults.length > 0 && (
+                  <div className="mt-1 border border-gray-200 rounded-lg divide-y">
+                    {orderResults.map((o) => (
+                      <button key={o.id} onClick={() => { setOrderId(o.id); setOrderLabel(o.order_number + (o.client_project_number ? ` · ${o.client_project_number}` : "")); setOrderResults([]); }}
+                        className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
+                        {o.order_number} {o.client_project_number && <span className="text-gray-400">· {o.client_project_number}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div>

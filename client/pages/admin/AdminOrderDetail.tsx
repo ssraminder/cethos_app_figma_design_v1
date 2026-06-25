@@ -74,6 +74,7 @@ import OrderFinanceSection from "@/components/admin/OrderFinanceSection";
 import OrderFinanceTab from "@/components/admin/OrderFinanceTab";
 import OrderInvoiceCard from "@/components/admin/OrderInvoiceCard";
 import OrderCommunicationsTab from "@/components/admin/OrderCommunicationsTab";
+import OrderQualityTrail from "@/components/admin/OrderQualityTrail";
 import StaffNotesPanel from "@/components/admin/StaffNotesPanel";
 
 interface OrderDetail {
@@ -2973,6 +2974,9 @@ export default function AdminOrderDetail() {
               )}
             </div>
           </div>
+
+          {/* Quality — complaints & CAPA linked to this order */}
+          {id && <OrderQualityTrail orderId={id} />}
 
           {/* Translation Details */}
           <div className="bg-white rounded-lg border p-6">
