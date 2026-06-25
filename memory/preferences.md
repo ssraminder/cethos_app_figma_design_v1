@@ -43,6 +43,10 @@ How the user wants you to approach work in this project. Add any time the user c
 - **Terse direction; execute on green light** — user gives short answers like "B deploy them in batch" or "1. do recommended" (answering numbered open questions). Don't re-plan after that — execute.
 - **Pivot quickly mid-conversation** — user iterates on design. When they clarify intent (e.g. "target = deferred, not flat-amount"), implement the correction in the same session as a follow-up PR, not a long discussion.
 - **PR-per-feature workflow** — each phase or fix lands as its own PR. Open + merge in the same session unless the user pauses.
+- **Recommend first on big work, then execute; "decide for me" = use judgment** — for substantial builds the user wants your recommended approach up front ("how do you think we should proceed?") plus at most one or two real decisions, then expects you to *proceed* without repeated check-ins. When they say "decide for me, whatever is better," pick the better option and act. Don't keep re-confirming after a green light — repeated deferral/checkpointing frustrates them.
+- **Spoon-feed staff-facing docs** — SOPs, guides, and validation scripts are for colleagues new to *both* the task and the system, so write them "like spoonfeeding a baby": every exact click, what to type, and what they should see — simple yet extensive — with **annotated real screenshots** (not mockups). The bar is "a brand-new person can replicate it unaided."
+- **Interactive, assignable, signed-off training > download-only docs (keep both)** — staff training should live in the portal: assignable to a person, completion-tracked, signed-off, with an audit log of who completed it. Keep the controlled `.docx` too, as the printable / audit-binder copy.
+- **Comprehensive handovers + live memory** — for long or multi-session work, write a standalone handover (current state, ordered next steps, all IDs, machinery, hard rules) and keep the project memory current so a fresh session continues seamlessly.
 
 ## Tooling & workflow
 
@@ -51,6 +55,19 @@ How the user wants you to approach work in this project. Add any time the user c
 - **Cron via pg_cron + pg_net** — both extensions enabled. Schedule recurring tasks with `cron.schedule(...)` calling `net.http_post(...)` to an edge function URL. Idempotent: `cron.unschedule()` first if re-running.
 - **Migrations: apply + commit** — `mcp__supabase__apply_migration` for prod, then write the same SQL to `supabase/migrations/<timestamp>_<name>.sql` for the repo. The migration applies first, the file lands second so the repo reflects what's already in prod.
 - **PR review-and-merge in one shot** — user often says "merge" right after a PR opens. Auto mode encourages this. Don't wait for explicit review unless something risky landed.
+
+## Client onboarding, QMS & audit-readiness
+
+- **Back-enter existing client work via SQL, not admin-create-order** — when bringing a client's already-done or in-flight orders into the portal in bulk (e.g. Welocalize, RWS), build them via SQL (dry-run → prove one → bulk), NOT the admin create-order flow. Orders are **un-delivered shells** (status `in_production` / work `pending` / invoice `unbilled`) unless a deliverable already exists (then replicate it → QA → complete). PM is chosen **per-project**, not per-client.
+  - **Why:** admin-create-order emails the customer; back-entry must be silent.
+  - **How to apply:** use the SQL clone/build helpers; verify on the live portal afterwards.
+- **Never write "cloned from" (or any copy-paste lineage) on a record** — order notes, step instructions, etc. must read as bespoke work.
+  - **Why:** IQVIA-sensitive — lineage text implies copied, non-original deliverables.
+- **Cethos is ISO 17100-ALIGNED, not certified** — never claim or imply certification anywhere, internal or outward (Stage 2 target ~Dec 2026). Use "conforms to / aligned with."
+  - **Why:** a false certification claim is audit + legal exposure.
+- **Validate a new SOP/process against the live system before calling it "done"** — write a dummy-data, step-by-step validation script; have an **independent colleague replicate every step and mark pass/fail + notes**; only sign off when all steps pass. Use clearly-marked dummy data (**ZZ-TEST** prefix) and clean it up (cancel the test order) afterwards.
+  - **Why:** proves the written SOP matches the system; the signed pass/fail script is documented audit evidence (UAT/PQ).
+  - **How to apply:** never qualify a test/trial vendor (qualification is irreversible); orders are cancellable, so dummy orders are safe to create and delete.
 
 ## Things to avoid
 
