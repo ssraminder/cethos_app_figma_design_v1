@@ -440,6 +440,10 @@ export default function AdminVendorsList() {
       query = query.is("vendor_type", null);
     } else if (vendorTypeFilter === "cd_all") {
       query = query.in("vendor_type", ["cognitive_debriefing", "cd_clinician_consultant"]);
+    } else if (vendorTypeFilter === "external") {
+      // External contractors have no dedicated column — the agreed marker is
+      // their @ext.cethos.com email address.
+      query = query.ilike("email", "%@ext.cethos.com");
     } else if (vendorTypeFilter) {
       query = query.eq("vendor_type", vendorTypeFilter);
     }
@@ -788,6 +792,7 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
               <option value="cd_clinician_consultant">Cognitive Debriefing — Consultant</option>
               <option value="cd_all">Cognitive Debriefing — all</option>
               <option value="agency">Agency</option>
+              <option value="external">External Contractors (@ext.cethos.com)</option>
               <option value="unassigned">Unassigned</option>
             </select>
           </div>
