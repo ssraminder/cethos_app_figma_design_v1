@@ -438,6 +438,8 @@ export default function AdminVendorsList() {
       query = query.eq("availability_status", availabilityFilter);
     if (vendorTypeFilter === "unassigned") {
       query = query.is("vendor_type", null);
+    } else if (vendorTypeFilter === "cd_all") {
+      query = query.in("vendor_type", ["cognitive_debriefing", "cd_clinician_consultant"]);
     } else if (vendorTypeFilter) {
       query = query.eq("vendor_type", vendorTypeFilter);
     }
@@ -782,8 +784,10 @@ ${meta.html || "<p><em>No HTML snapshot stored — open the vendor's NDA tab for
             >
               <option value="">All Types</option>
               <option value="translator">Translator</option>
-              <option value="reviewer">Reviewer</option>
-              <option value="both">Both</option>
+              <option value="cognitive_debriefing">Cognitive Debriefing — Interviewer</option>
+              <option value="cd_clinician_consultant">Cognitive Debriefing — Consultant</option>
+              <option value="cd_all">Cognitive Debriefing — all</option>
+              <option value="agency">Agency</option>
               <option value="unassigned">Unassigned</option>
             </select>
           </div>

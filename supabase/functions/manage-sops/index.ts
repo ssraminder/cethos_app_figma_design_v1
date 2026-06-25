@@ -9,7 +9,7 @@
 // Actions:
 //   list                                            → all SOPs + current-version summary
 //   get           { sop_id | slug }                 → SOP + full version history
-//   create_sop    { title, category?, iso_clause_reference?, content_md, staff_id }
+//   create_sop    { title, category?, iso_clause_reference?, content_md, staff_id, sop_number? }
 //   save_draft    { sop_id, content_md, change_summary?, staff_id }
 //   activate      { version_id, staff_id, effective_date? }
 //   update_meta   { sop_id, title?, category?, iso_clause_reference? }
@@ -88,10 +88,22 @@ serve(async (req) => {
       const { data: staff } = await sb.from("staff_users").select("full_name").eq("id", staff_id).maybeSingle();
       const staffName = staff?.full_name ?? null;
 
-      // Next SOP number from the existing max — internal tool, low write volume.
-      const { data: existing } = await sb.from("sops").select("sop_number").order("sop_number", { ascending: false }).limit(1);
-      const maxN = existing?.[0]?.sop_number?.match(/(\d+)$/)?.[1];
-      const sopNumber = `SOP-${String((maxN ? parseInt(maxN, 10) : 0) + 1).padStart(3, "0")}`;
+      // SOP number: explicit if provided (e.g. a lettered series like SOP-PR-002),
+      // else the next integer after the highest trailing number across ALL SOPs.
+      // (Ordering by sop_number text sorted lettered prefixes like SOP-VM-001 last
+      // and regenerated SOP-002 — a duplicate-key collision; take the max numerically.)
+      let sopNumber = (body.sop_number as string | undefined)?.trim();
+      if (sopNumber) {
+        const { data: clash } = await sb.from("sops").select("id").eq("sop_number", sopNumber).maybeSingle();
+        if (clash) return json({ success: false, error: `SOP number ${sopNumber} already exists` }, 409);
+      } else {
+        const { data: allNums } = await sb.from("sops").select("sop_number");
+        const maxN = (allNums ?? []).reduce((m, r) => {
+          const n = parseInt(r.sop_number?.match(/(\d+)$/)?.[1] ?? "0", 10) || 0;
+          return n > m ? n : m;
+        }, 0);
+        sopNumber = `SOP-${String(maxN + 1).padStart(3, "0")}`;
+      }
 
       let slug = slugify(title);
       const { data: slugTaken } = await sb.from("sops").select("id").eq("slug", slug).maybeSingle();
