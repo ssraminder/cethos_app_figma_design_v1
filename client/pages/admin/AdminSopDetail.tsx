@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Loader2,
   ArrowLeft,
@@ -273,7 +274,7 @@ export default function AdminSopDetail() {
             </div>
           ) : selected ? (
             <article className="prose prose-slate max-w-none p-6 prose-headings:scroll-mt-4">
-              <ReactMarkdown>{selected.content_md}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{selected.content_md}</ReactMarkdown>
             </article>
           ) : (
             <div className="p-6 text-slate-500">No versions.</div>
