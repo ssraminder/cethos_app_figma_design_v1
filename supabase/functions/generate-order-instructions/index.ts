@@ -43,12 +43,20 @@ serve(async (req: Request) => {
       .select(
         `id, order_number, client_project_number, currency, is_rush,
          estimated_delivery_date, delivery_option,
-         customer:customers(id, full_name, email, company_name),
+         customer:customers(id, full_name, email, company_name, ai_processing_enabled),
          certification_type:certification_types(id, name)`,
       )
       .eq("id", order_id)
       .single();
     if (orderErr || !order) throw new Error(`Order not found: ${orderErr?.message}`);
+
+    // Audit guard: never run AI for clients with AI processing disabled
+    // (sensitive-domain / COA / IQVIA). The vendor brief must be written manually.
+    if (order.customer?.ai_processing_enabled === false) {
+      throw new Error(
+        `AI processing is disabled for this client${order.customer?.company_name ? ` (${order.customer.company_name})` : ""}. Vendor job-instructions must be written manually for this client's orders.`,
+      );
+    }
 
     // ── 2. Load all communications (chronological) ──
     const { data: comms, error: commsErr } = await supabase

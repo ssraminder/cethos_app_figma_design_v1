@@ -28,6 +28,8 @@ import { useAdminAuthContext } from "@/context/AdminAuthContext";
 interface Props {
   orderId: string;
   orderNumber: string;
+  /** When false, this client has AI processing disabled (sensitive-domain / COA) — hide the AI brief. */
+  aiEnabled?: boolean;
 }
 
 interface Attachment {
@@ -78,7 +80,7 @@ interface InstructionsRow {
 
 const STORAGE_BUCKET = "quote-files";
 
-export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) {
+export default function OrderCommunicationsTab({ orderId, orderNumber, aiEnabled }: Props) {
   const { session: staff } = useAdminAuthContext();
 
   const [comms, setComms] = useState<Communication[]>([]);
@@ -320,7 +322,14 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
 
   return (
     <div className="space-y-6">
-      {/* AI INSTRUCTIONS CARD */}
+      {/* AI INSTRUCTIONS CARD — hidden when AI is disabled for this client (e.g. COA / IQVIA) */}
+      {aiEnabled === false && (
+        <div className="bg-white rounded-lg border p-4 flex items-center gap-2 text-xs text-gray-500">
+          <Sparkles className="w-4 h-4 text-gray-300 shrink-0" />
+          AI-assisted job instructions are disabled for this client. Write the vendor brief manually.
+        </div>
+      )}
+      {aiEnabled !== false && (
       <div className="bg-white rounded-lg border overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-teal-50/50 to-transparent">
           <div className="flex items-center gap-2.5">
@@ -530,6 +539,7 @@ export default function OrderCommunicationsTab({ orderId, orderNumber }: Props) 
           </div>
         )}
       </div>
+      )}
 
       {/* COMMUNICATIONS CARD */}
       <div className="bg-white rounded-lg border overflow-hidden">

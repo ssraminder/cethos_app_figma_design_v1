@@ -56,6 +56,7 @@ const UPDATABLE_FIELDS = new Set([
   "requires_po", "requires_po_mode", "requires_client_project_number",
   "default_tax_rate_id",
   "is_tax_exempt",
+  "ai_processing_enabled",
 ]);
 
 function jsonResponse(data: Record<string, unknown>, status = 200) {

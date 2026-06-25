@@ -73,6 +73,10 @@ How the user wants you to approach work in this project. Add any time the user c
   - **Why:** proves the written SOP matches the system; the signed pass/fail script is documented audit evidence (UAT/PQ).
   - **How to apply:** never qualify a test/trial vendor (qualification is irreversible); orders are cancellable, so dummy orders are safe to create and delete.
 
+- **Sensitive-domain clients must not hit AI — per-client `customers.ai_processing_enabled` toggle (default ON, OFF for COA clients)** — Welocalize, RWS, TransPerfect set OFF (migration 20260625). Enforced **server-side** (`generate-order-instructions` refuses for AI-disabled customers, fail-loud, before any Anthropic call) AND the "AI-generated job instructions / Generate" panel is hidden on their orders (`OrderCommunicationsTab` gets `aiEnabled` from `AdminOrderDetail`). Toggle lives on the client profile (`CustomerDetail` → save via `admin-manage-customer` whitelist).
+  - **Why:** IQVIA audit attestation that COA/sensitive-domain jobs don't go through AI. The AI brief sends the client communications + attachments to Claude, so it WAS hitting AI on COA orders.
+  - **Integrity rule:** never doctor/crop screenshots to hide a live AI feature for an audit — disable the feature for real (per-client), then recapture clean screenshots. **PENDING:** the COA guide (TRN-COA-001 HTML, unpublished), its markdown source, **TRN-RWS-001 (published)**, and the Welocalize handover still reference/show the AI "Generate vendor brief" step and MUST be scrubbed + screenshots recaptured before publishing.
+
 ## Things to avoid
 
 - **Bulk deploys without explicit authorization** — sandbox blocks mass deploys of many functions at once. Either deploy one at a time, or get a "deploy them in batch" green light. (Resolved per-session, but worth remembering when scope creeps.)
