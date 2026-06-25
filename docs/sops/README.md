@@ -44,6 +44,30 @@ QMS binder). Update **both** when an SOP is added, retired, or renumbered.
 | **SOP-PR-001** | **Cognitive debriefing (standalone COA validation service)** | Production | `.md` + `.docx` | [SOP-PR-001-cognitive-debriefing.md](SOP-PR-001-cognitive-debriefing.md) |
 | **SOP-PR-002** | **Clinician review (standalone COA validation service)** | Production | `.md` + `.docx` | [SOP-PR-002-clinician-review.md](SOP-PR-002-clinician-review.md) |
 
+### Production / service-workflow SOPs
+
+These document how each orderable workflow is executed. **The portal `/admin/sops` library is the
+controlled system of record** and numbers SOPs in a flat `SOP-0NN` sequence (the category — e.g.
+*Production* — is a separate field, not encoded in the number). Repo Markdown here is the working copy.
+
+| ID | Title | Workflow template | Format | Source |
+|---|---|---|---|---|
+| **SOP-022** | **Standard TEP (Translation · Editing · Proofreading)** | `standard_tep` | `.md` + portal | [SOP-022-standard-tep.md](SOP-022-standard-tep.md) |
+| **SOP-023** | **Translation and Review** | `translation_review` | `.md` + portal | [SOP-023-translation-and-review.md](SOP-023-translation-and-review.md) |
+| **SOP-024** | **Certified Translation** | `certified_translation` | `.md` + portal | [SOP-024-certified-translation.md](SOP-024-certified-translation.md) |
+| **SOP-025** | **Transcription and Translation** | `transcription_translation` | `.md` + portal | [SOP-025-transcription-and-translation.md](SOP-025-transcription-and-translation.md) |
+
+Also published in the portal (flat scheme): **SOP-008** Cognitive Debriefing (working copy
+[SOP-PR-001](SOP-PR-001-cognitive-debriefing.md)) and **SOP-009** Clinician Reviews (working copy
+[SOP-PR-002](SOP-PR-002-clinician-review.md)).
+
+> **Numbering note.** Two schemes currently coexist: the **portal flat `SOP-0NN`** scheme (controlled,
+> auditor-facing — e.g. cognitive debriefing = `SOP-008`) and the repo **`SOP-PR-*` / `SOP-LV-*`**
+> working drafts (the LV standalone-step set — SOP-PR-001…011 + SOP-LV-001 — most **not yet published**
+> to the portal). New workflow SOPs are numbered in the portal flat sequence (next after `SOP-021` →
+> `SOP-022`, `SOP-023`). Reconciling the `SOP-PR-*` drafts onto the portal scheme and publishing them
+> is a tracked follow-up.
+
 ### How the qualification SOPs relate
 
 `SOP-001` / `SOP-003` / `SOP-006` define **what** qualification requires (policy).
