@@ -188,25 +188,39 @@ serve(async (req) => {
       return json({ success: true, document: doc });
     }
 
-    if (action === "download_url") {
+    // download_url (forced attachment) and view_url (inline, browser renders it
+    // in a tab — used for HTML guides / PDFs). Both resolve the same file.
+    if (action === "download_url" || action === "view_url") {
       const staff = await requireStaff(body.staff_id ?? null);
       if (!staff) return json({ success: false, error: "invalid_or_inactive_staff" }, 401);
       let storagePath: string | null = null;
       let fileName: string | null = null;
+      let mimeType: string | null = null;
       if (body.file_id) {
-        const { data: f } = await sb.from("portal_document_files").select("storage_path, file_name").eq("id", body.file_id).maybeSingle();
-        storagePath = f?.storage_path ?? null; fileName = f?.file_name ?? null;
+        const { data: f } = await sb.from("portal_document_files").select("storage_path, file_name, mime_type").eq("id", body.file_id).maybeSingle();
+        storagePath = f?.storage_path ?? null; fileName = f?.file_name ?? null; mimeType = f?.mime_type ?? null;
       } else if (body.document_id) {
         const { data: d } = await sb.from("portal_documents").select("current_file_id").eq("id", body.document_id).maybeSingle();
         if (d?.current_file_id) {
-          const { data: f } = await sb.from("portal_document_files").select("storage_path, file_name").eq("id", d.current_file_id).maybeSingle();
-          storagePath = f?.storage_path ?? null; fileName = f?.file_name ?? null;
+          const { data: f } = await sb.from("portal_document_files").select("storage_path, file_name, mime_type").eq("id", d.current_file_id).maybeSingle();
+          storagePath = f?.storage_path ?? null; fileName = f?.file_name ?? null; mimeType = f?.mime_type ?? null;
         }
       }
       if (!storagePath) return json({ success: false, error: "file_not_found" }, 404);
-      const { data: signed, error } = await sb.storage.from(BUCKET).createSignedUrl(storagePath, 120, { download: fileName ?? undefined });
+      const signOpts = action === "download_url" ? { download: fileName ?? undefined } : undefined;
+      const ttl = action === "view_url" ? 600 : 120;
+      const { data: signed, error } = await sb.storage.from(BUCKET).createSignedUrl(storagePath, ttl, signOpts);
       if (error || !signed) return json({ success: false, error: error?.message ?? "sign_failed" }, 400);
-      return json({ success: true, url: signed.signedUrl, file_name: fileName });
+      // For inline viewing of HTML guides we return the file content directly:
+      // Storage serves HTML as text/plain + nosniff (anti-XSS), so a signed URL
+      // would render as raw source. The UI renders this content in a sandboxed
+      // <iframe srcdoc> instead. (PDFs / images render fine from the signed URL.)
+      let content: string | null = null;
+      if (action === "view_url" && mimeType === "text/html") {
+        const { data: blob } = await sb.storage.from(BUCKET).download(storagePath);
+        if (blob) content = await blob.text();
+      }
+      return json({ success: true, url: signed.signedUrl, file_name: fileName, mime_type: mimeType, content });
     }
 
     return json({ success: false, error: `Unknown action: ${action}` }, 400);

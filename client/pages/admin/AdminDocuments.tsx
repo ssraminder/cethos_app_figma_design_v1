@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Loader2, Plus, Files, X as XIcon, Download, Upload, History,
-  Pencil, Archive, ChevronDown, ChevronRight,
+  Pencil, Archive, ChevronDown, ChevronRight, Eye,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
@@ -54,6 +54,10 @@ function when(iso: string): string {
   catch { return iso; }
 }
 
+// Files browsers render in a tab (so we can offer "View" instead of download).
+const isViewable = (mime: string | null | undefined): boolean =>
+  !!mime && (mime === "text/html" || mime === "application/pdf" || mime.startsWith("image/"));
+
 const audienceChip = (a: string) => {
   const cls = a === "vendor" ? "bg-teal-50 text-teal-700 border-teal-200"
     : a === "customer" ? "bg-indigo-50 text-indigo-700 border-indigo-200"
@@ -75,6 +79,7 @@ export default function AdminDocuments() {
   const [showCreate, setShowCreate] = useState(false);
   const [editDoc, setEditDoc] = useState<PortalDoc | null>(null);
   const [versionDoc, setVersionDoc] = useState<PortalDoc | null>(null);
+  const [viewing, setViewing] = useState<{ title: string; html: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -96,6 +101,16 @@ export default function AdminDocuments() {
     const { data, error } = await supabase.functions.invoke("manage-portal-documents", { body: { action: "download_url", staff_id: staffId, ...opts } });
     if (error || !data?.success) { toast.error(data?.error ?? "Could not get download link"); return; }
     window.open(data.url, "_blank", "noopener,noreferrer");
+  };
+
+  // View a renderable file. HTML guides come back as `content` and render in a
+  // sandboxed in-portal iframe; PDFs / images open in a new tab from the URL.
+  const view = async (opts: { file_id?: string; document_id?: string }, title: string) => {
+    const { data, error } = await supabase.functions.invoke("manage-portal-documents", { body: { action: "view_url", staff_id: staffId, ...opts } });
+    if (error || !data?.success) { toast.error(data?.error ?? "Could not open document"); return; }
+    if (data.content) setViewing({ title, html: data.content });
+    else if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
+    else toast.error("Nothing to view");
   };
 
   const togglePublish = async (d: PortalDoc) => {
@@ -167,6 +182,9 @@ export default function AdminDocuments() {
                         Published
                       </label>
                       <div className="flex items-center gap-1">
+                        {isViewable(d.current_file?.mime_type) && (
+                          <button onClick={() => view({ document_id: d.id }, d.title)} disabled={!d.current_file_id} className="p-1.5 text-gray-400 hover:text-teal-600 disabled:opacity-30" title="View"><Eye className="w-4 h-4" /></button>
+                        )}
                         <button onClick={() => download({ document_id: d.id })} disabled={!d.current_file_id} className="p-1.5 text-gray-400 hover:text-teal-600 disabled:opacity-30" title="Download current"><Download className="w-4 h-4" /></button>
                         <button onClick={() => setVersionDoc(d)} className="p-1.5 text-gray-400 hover:text-teal-600" title="Upload new version"><Upload className="w-4 h-4" /></button>
                         <button onClick={() => setEditDoc(d)} className="p-1.5 text-gray-400 hover:text-teal-600" title="Edit details"><Pencil className="w-4 h-4" /></button>
@@ -181,7 +199,12 @@ export default function AdminDocuments() {
                             {history[d.id].map((f) => (
                               <div key={f.id} className="flex items-center justify-between text-xs text-gray-600 border border-gray-100 rounded px-2 py-1">
                                 <span><span className="font-medium">v{f.version}</span> — {f.file_name} · {bytes(f.file_size)} · {when(f.created_at)}{f.created_by_name ? ` · ${f.created_by_name}` : ""}{f.change_summary ? ` · ${f.change_summary}` : ""}</span>
-                                <button onClick={() => download({ file_id: f.id })} className="inline-flex items-center gap-1 text-teal-600 hover:underline shrink-0"><Download className="w-3 h-3" /> Download</button>
+                                <span className="flex items-center gap-2 shrink-0">
+                                  {isViewable(f.mime_type) && (
+                                    <button onClick={() => view({ file_id: f.id }, `${d.title} (v${f.version})`)} className="inline-flex items-center gap-1 text-teal-600 hover:underline"><Eye className="w-3 h-3" /> View</button>
+                                  )}
+                                  <button onClick={() => download({ file_id: f.id })} className="inline-flex items-center gap-1 text-teal-600 hover:underline"><Download className="w-3 h-3" /> Download</button>
+                                </span>
                               </div>
                             ))}
                           </div>
@@ -199,6 +222,28 @@ export default function AdminDocuments() {
       {showCreate && <CreateModal staffId={staffId} onClose={() => setShowCreate(false)} onDone={() => { setShowCreate(false); load(); }} />}
       {editDoc && <EditModal doc={editDoc} staffId={staffId} onClose={() => setEditDoc(null)} onDone={() => { setEditDoc(null); load(); }} />}
       {versionDoc && <VersionModal doc={versionDoc} staffId={staffId} onClose={() => setVersionDoc(null)} onDone={() => { setVersionDoc(null); setHistory((h) => { const c = { ...h }; delete c[versionDoc.id]; return c; }); load(); }} />}
+      {viewing && <ViewerModal title={viewing.title} html={viewing.html} onClose={() => setViewing(null)} />}
+    </div>
+  );
+}
+
+// In-portal viewer for HTML guides. The content is rendered in a fully
+// sandboxed iframe (no scripts) so a guide can be read without downloading.
+function ViewerModal({ title, html, onClose }: { title: string; html: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" onClick={onClose}>
+      <div className="bg-white rounded-xl w-[94vw] h-[94vh] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 shrink-0">
+          <h3 className="text-sm font-semibold text-gray-900 truncate">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" title="Close (Esc)"><XIcon className="w-5 h-5" /></button>
+        </div>
+        <iframe title={title} srcDoc={html} sandbox="" className="flex-1 w-full border-0 bg-white" />
+      </div>
     </div>
   );
 }
