@@ -81,6 +81,7 @@ interface Customer {
   credit_limit: number | null;
   ar_notes: string | null;
   auto_invoice_reminders_enabled: boolean;
+  ai_processing_enabled: boolean;
   // Enriched objects from edge function
   invoicing_branch?: Branch | null;
   preferred_payment_method?: PaymentMethodOption | null;
@@ -765,6 +766,7 @@ export default function CustomerDetail() {
         "requires_po", "requires_po_mode", "requires_client_project_number",
         "default_tax_rate_id",
         "is_tax_exempt",
+        "ai_processing_enabled",
       ] as const;
 
       const changes: Record<string, unknown> = {};
@@ -1679,6 +1681,46 @@ export default function CustomerDetail() {
                             ) : (
                               <span className="inline-flex px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
                                 Disabled
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="md:col-span-2 border-t border-gray-100 pt-4">
+                        {editing ? (
+                          <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData.ai_processing_enabled !== false}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  ai_processing_enabled: e.target.checked,
+                                }))
+                              }
+                              className="mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-gray-700">
+                                AI-assisted processing
+                              </span>
+                              <span className="block text-xs text-gray-500 mt-0.5">
+                                When ON, AI features (e.g. auto-generated vendor job-instructions) may run on
+                                this client's orders. Turn OFF for clients whose work must not be processed by
+                                AI (e.g. COA / IQVIA sensitive-domain clients). Default ON.
+                              </span>
+                            </span>
+                          </label>
+                        ) : (
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-gray-600">AI-assisted processing:</span>
+                            {customer.ai_processing_enabled !== false ? (
+                              <span className="inline-flex px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+                                Enabled
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
+                                Disabled (no AI)
                               </span>
                             )}
                           </div>

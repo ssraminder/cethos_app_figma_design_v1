@@ -118,6 +118,7 @@ interface OrderDetail {
     phone: string;
     customer_type: string;
     company_name: string;
+    ai_processing_enabled?: boolean;
   };
   quote?: {
     quote_number: string;
@@ -3768,7 +3769,7 @@ export default function AdminOrderDetail() {
 
           {/* Tab Content: Client Communications */}
           {activeMainTab === "communications" && id && order && (
-            <OrderCommunicationsTab orderId={id} orderNumber={order.order_number} />
+            <OrderCommunicationsTab orderId={id} orderNumber={order.order_number} aiEnabled={order.customer?.ai_processing_enabled !== false} />
           )}
 
           {/* Tab Content: Workflow (also renders when other tabs are active but hidden, to keep data loaded) */}
