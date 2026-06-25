@@ -210,7 +210,7 @@ const NAV_ITEMS: NavItem[] = [
     section: "Quality",
   },
   {
-    label: "Qualification Approvals",
+    label: "QMS Approvals (first-party)",
     path: "/admin/qms/approvals",
     icon: ShieldCheck,
     section: "Quality",
