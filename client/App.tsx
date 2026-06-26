@@ -137,6 +137,7 @@ import TrainingOverview from "./pages/admin/trainings/TrainingOverview";
 import TrainingLesson from "./pages/admin/trainings/TrainingLesson";
 import TrainingAssign from "./pages/admin/trainings/TrainingAssign";
 import BulkAssignTrainings from "./pages/admin/trainings/BulkAssignTrainings";
+import VendorAssign from "./pages/admin/trainings/VendorAssign";
 import ExchangeRates from "./pages/admin/ExchangeRates";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
@@ -470,6 +471,7 @@ const App = () => (
                     <Route path="trainings/bulk-assign" element={<BulkAssignTrainings />} />
                     <Route path="trainings/:slug" element={<TrainingOverview />} />
                     <Route path="trainings/:slug/assign" element={<TrainingAssign />} />
+                    <Route path="trainings/:slug/assign-vendors" element={<VendorAssign />} />
                     <Route path="trainings/:slug/:lessonSlug" element={<TrainingLesson />} />
                     <Route path="quick-payment" element={<AdminQuickPayment />} />
                     <Route path="quick-payment/history" element={<AdminPaymentHistory />} />
