@@ -1,0 +1,27 @@
+export default {
+  key: "sop029",
+  sopNumber: "SOP-029",
+  title: "Linguistic Validation — Standalone Services (Master Framework)",
+  docCode: "CTH-VRF-029",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Clinical Validation / Operations",
+  isoRef: "ISO 17100:2015 §5.3, §6.2; ISO 9001; ISPOR COA good practices",
+  where: "Portal → QUALITY → SOPs (open SOP-029)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-029 is the shared framework for every standalone LV step — single-step + an independent internal QA gate before release.",
+    "SOP-029 is the master framework: each LV step is one independent workflow with an independent internal QA gate; translation-type steps carry a §5.3.3 second-linguist revision, validation/review steps a §5.3.6 verification. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-029 and read the control block",
+      url: "/admin/sops/0022c99c-654c-4d59-92e5-0ad080e07b5a",
+      ring: "Approved versions are frozen",
+      caption: "SOP-029 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-029 — Linguistic Validation — Standalone Services (Master Framework)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/0022c99c-654c-4d59-92e5-0ad080e07b5a",
+      ring: "not certified",
+      caption: "LV conformance basis — translation steps = §5.3.3 revision; validation steps = §5.3.6 verification; aligned, not certified",
+      say: "Read the procedure body. Confirm the shared framework for every standalone LV step — single-step + an independent internal QA gate before release." },
+  ],
+};

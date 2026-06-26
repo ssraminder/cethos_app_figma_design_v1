@@ -1,0 +1,27 @@
+export default {
+  key: "sop033",
+  sopNumber: "SOP-033",
+  title: "Back-translation (Standalone LV Step)",
+  docCode: "CTH-VRF-033",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.2, §5.3.3, §5.3.6; ISPOR COA good practices",
+  where: "Portal → QUALITY → SOPs (open SOP-033)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-033 is an independent back-translation (blind to the source) delivered with a §5.3.3 revision.",
+    "SOP-033 back-translates the target instrument into English without sight of the original source, then an independent second linguist performs the §5.3.3 revision before release. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-033 and read the control block",
+      url: "/admin/sops/68bd4993-f5b8-4349-b0f0-7676dd019882",
+      ring: "Approved versions are frozen",
+      caption: "SOP-033 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-033 — Back-translation (Standalone LV Step)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/68bd4993-f5b8-4349-b0f0-7676dd019882",
+      ring: "5.3.3",
+      caption: "Back-translation (blind to source) + independent §5.3.3 revision",
+      say: "Read the procedure body. Confirm an independent back-translation (blind to the source) delivered with a §5.3.3 revision." },
+  ],
+};

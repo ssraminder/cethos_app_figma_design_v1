@@ -1,0 +1,27 @@
+export default {
+  key: "sop032",
+  sopNumber: "SOP-032",
+  title: "Reconciliation (Standalone LV Step)",
+  docCode: "CTH-VRF-032",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.6; ISO 9001; ISPOR COA good practices",
+  where: "Portal → QUALITY → SOPs (open SOP-032)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-032 is a reconciliation of two forward translations, verified by an independent §5.3.6 review.",
+    "SOP-032 merges two forward translations item-by-item with documented rationale, then an independent reviewer performs a §5.3.6 verification — a validation step under the QMS + ISPOR, not a translation service. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-032 and read the control block",
+      url: "/admin/sops/d2edc8f4-17c9-40c6-99db-33686606dfad",
+      ring: "Approved versions are frozen",
+      caption: "SOP-032 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-032 — Reconciliation (Standalone LV Step)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/d2edc8f4-17c9-40c6-99db-33686606dfad",
+      ring: "5.3.6",
+      caption: "Reconciliation + independent §5.3.6 verification (QMS + ISPOR; not a translation service)",
+      say: "Read the procedure body. Confirm a reconciliation of two forward translations, verified by an independent §5.3.6 review." },
+  ],
+};

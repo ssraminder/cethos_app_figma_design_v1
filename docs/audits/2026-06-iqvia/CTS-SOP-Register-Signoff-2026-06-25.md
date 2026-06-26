@@ -78,7 +78,7 @@ This document records the complete Cethos QMS Standard Operating Procedure regis
 
 ## SOP Register — Production (Linguistic Validation standalone-step set, published 2026-06-26)
 
-The master framework + the per-step recipe for every standalone COA linguistic-validation workflow. Published to the portal as flat `SOP-0NN` (active, immutable) on 26 June 2026; these reconcile and supersede the former `SOP-LV-001` / `SOP-PR-003…011` working drafts. Per-SOP verification guides (CTH-VRF-029…038) are pending; until issued, SOP-029 is the framework reference and each step maps 1:1 to a live portal workflow template (verifiable by running the matching order type).
+The master framework + the per-step recipe for every standalone COA linguistic-validation workflow. Published to the portal as flat `SOP-0NN` (active, immutable) on 26 June 2026; these reconcile and supersede the former `SOP-LV-001` / `SOP-PR-003…011` working drafts. Per-SOP verification guides **CTH-VRF-029…038 are issued** (in the reviewer folder, with live-portal screenshots); each step also maps 1:1 to a live portal workflow template.
 
 | SOP | Title | Version | Effective | ISO Ref | Workflow template | Sign-Off | Date |
 |---|---|---|---|---|---|---|---|
@@ -116,9 +116,9 @@ The master framework + the per-step recipe for every standalone COA linguistic-v
 | | Count |
 |---|---|
 | Total active SOPs in portal | **34** |
-| SOPs with verification guide | **23** |
-| SOPs pending guide | 11 (SOP-013 — management review record in progress; SOP-029–038 — LV set, covered by the SOP-029 master framework, per-SOP guides pending) |
-| Verification guides in Fayza folder | **23** |
+| SOPs with verification guide | **33** |
+| SOPs pending guide | 1 (SOP-013 — management review record in progress) |
+| Verification guides in Fayza folder | **33** (SOP-001…038 except SOP-013) |
 | New/updated SOPs since 24 June 2026 | 19 (SOP-002, SOP-004, SOP-008 v3, SOP-009 v3, SOP-019 v3, SOP-026, SOP-027, SOP-028 v2 + the 10 LV SOPs SOP-029–038 published 26 Jun — all cross-refs clean) |
 
 **Skipped number note:** SOP-005, SOP-006, SOP-007, SOP-010 are not in the active register.

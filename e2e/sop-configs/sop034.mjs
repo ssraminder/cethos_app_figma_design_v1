@@ -1,0 +1,27 @@
+export default {
+  key: "sop034",
+  sopNumber: "SOP-034",
+  title: "Back-translation Review (Standalone LV Step)",
+  docCode: "CTH-VRF-034",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.6; ISO 9001; ISPOR COA good practices",
+  where: "Portal → QUALITY → SOPs (open SOP-034)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-034 is a source-vs-back-translation discrepancy review, verified by an independent §5.3.6 review.",
+    "SOP-034 compares the back-translation against the source, classifies discrepancy severity and proposes resolutions, then an independent reviewer performs a §5.3.6 verification — a validation step. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-034 and read the control block",
+      url: "/admin/sops/4d291b7a-f964-4955-9d29-6cb2ed96c860",
+      ring: "Approved versions are frozen",
+      caption: "SOP-034 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-034 — Back-translation Review (Standalone LV Step)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/4d291b7a-f964-4955-9d29-6cb2ed96c860",
+      ring: "5.3.6",
+      caption: "BT review (source vs back-translation, severity-rated) + independent §5.3.6 verification",
+      say: "Read the procedure body. Confirm a source-vs-back-translation discrepancy review, verified by an independent §5.3.6 review." },
+  ],
+};
