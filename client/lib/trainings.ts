@@ -426,3 +426,85 @@ export async function updateTrainingAudience(
     .eq("id", trainingId);
   if (error) throw error;
 }
+
+export interface VendorLite {
+  id: string;
+  full_name: string | null;
+  business_name: string | null;
+  email: string | null;
+  country: string | null;
+  vendor_type: string | null;
+  status: string | null;
+  availability_status: string | null;
+}
+
+export interface VendorAssignFilters {
+  search?: string;
+  status?: string;
+  availability?: string;
+  vendorType?: string;
+  language?: string;
+  country?: string;
+}
+
+// Admin: list vendors matching the vendor-directory filters (to assign a vendor
+// training in bulk). Mirrors AdminVendorsList's core filters.
+export async function listVendorsForAssign(
+  f: VendorAssignFilters,
+): Promise<VendorLite[]> {
+  let q = supabase
+    .from("vendors")
+    .select(
+      "id, full_name, business_name, email, country, vendor_type, status, availability_status",
+    )
+    .order("full_name")
+    .limit(2000);
+  if (f.search) {
+    const s = f.search.replace(/[,%()]/g, " ").trim();
+    if (s)
+      q = q.or(
+        `full_name.ilike.%${s}%,business_name.ilike.%${s}%,email.ilike.%${s}%,country.ilike.%${s}%`,
+      );
+  }
+  if (f.status) q = q.eq("status", f.status);
+  if (f.availability) q = q.eq("availability_status", f.availability);
+  if (f.vendorType === "cd_all")
+    q = q.in("vendor_type", ["cognitive_debriefing", "cd_clinician_consultant"]);
+  else if (f.vendorType === "external") q = q.ilike("email", "%@ext.cethos.com");
+  else if (f.vendorType === "unassigned") q = q.is("vendor_type", null);
+  else if (f.vendorType) q = q.eq("vendor_type", f.vendorType);
+  if (f.language) q = q.contains("target_languages", [f.language.toUpperCase()]);
+  if (f.country) q = q.eq("country", f.country);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as VendorLite[];
+}
+
+// Admin: assign a vendor training to many vendors in one go. Idempotent (skips
+// vendors already assigned this training).
+export async function assignVendorsBulk(
+  trainingId: string,
+  vendorIds: string[],
+  dueAt: string | null,
+): Promise<number> {
+  if (!vendorIds.length) return 0;
+  const assignedBy = await currentStaffId();
+  const { data: existing } = await supabase
+    .from("cvp_training_assignments")
+    .select("vendor_id")
+    .eq("training_id", trainingId)
+    .not("vendor_id", "is", null);
+  const have = new Set((existing ?? []).map((r) => r.vendor_id as string));
+  const rows = vendorIds
+    .filter((v) => !have.has(v))
+    .map((v) => ({
+      training_id: trainingId,
+      vendor_id: v,
+      assigned_by: assignedBy,
+      due_at: dueAt,
+    }));
+  if (!rows.length) return 0;
+  const { error } = await supabase.from("cvp_training_assignments").insert(rows);
+  if (error) throw error;
+  return rows.length;
+}

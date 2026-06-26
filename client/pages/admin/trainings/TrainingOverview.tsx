@@ -150,13 +150,23 @@ export default function TrainingOverview() {
 
         {isAdmin && (
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Link
-              to={`/admin/trainings/${training.slug}/assign`}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700"
-            >
-              <UserPlus className="w-4 h-4" />
-              Assign to staff
-            </Link>
+            {(training as any).audience === "linguist" ? (
+              <Link
+                to={`/admin/trainings/${training.slug}/assign-vendors`}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700"
+              >
+                <UserPlus className="w-4 h-4" />
+                Assign to vendors
+              </Link>
+            ) : (
+              <Link
+                to={`/admin/trainings/${training.slug}/assign`}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700"
+              >
+                <UserPlus className="w-4 h-4" />
+                Assign to staff
+              </Link>
+            )}
             <label className="inline-flex items-center gap-2 text-sm text-gray-600">
               <span>Type:</span>
               <select
