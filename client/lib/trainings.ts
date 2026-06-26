@@ -371,6 +371,36 @@ export async function createAssignments(
   if (error) throw error;
 }
 
+/**
+ * Bulk-assign: assign every selected training to every selected staff member in
+ * one go (the cross-product). Idempotent — re-assigning an existing pair is a
+ * no-op. Returns the number of (training × staff) pairs written.
+ */
+export async function createAssignmentsBulk(
+  trainingIds: string[],
+  staffUserIds: string[],
+  dueAt: string | null,
+): Promise<number> {
+  if (trainingIds.length === 0 || staffUserIds.length === 0) return 0;
+  const assignedBy = await currentStaffId();
+  const rows = trainingIds.flatMap((trainingId) =>
+    staffUserIds.map((staffUserId) => ({
+      training_id: trainingId,
+      staff_user_id: staffUserId,
+      assigned_by: assignedBy,
+      due_at: dueAt,
+    })),
+  );
+  const { error } = await supabase
+    .from("cvp_training_assignments")
+    .upsert(rows, {
+      onConflict: "training_id,staff_user_id",
+      ignoreDuplicates: true,
+    });
+  if (error) throw error;
+  return rows.length;
+}
+
 export async function deleteAssignment(assignmentId: string): Promise<void> {
   const { error } = await supabase
     .from("cvp_training_assignments")
