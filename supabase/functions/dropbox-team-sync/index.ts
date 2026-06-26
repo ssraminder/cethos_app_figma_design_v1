@@ -68,10 +68,17 @@ const SHELL = {
   admin: "00_Admin",
   source: "01_Source",
   reference: "02_Reference",
+  client_review: "05_Client-Review",
   delivery: "90_Delivery",
   certification: "95_Certification",
   archive: "_Archive",
 };
+
+// Team-space members cannot write at the team-space ROOT (only admins can
+// create top-level folders there) -> path/no_write_permission. So the whole
+// project tree lives INSIDE the team folder. With Dropbox-API-Path-Root set to
+// the team-space root namespace, this name navigates into the team folder.
+const TEAM_ROOT = "/Cethos Team Folder";
 
 // Dropbox-reserved characters only; keep hyphens (order numbers, dates).
 const RESERVED = /[\\/:*?"<>|]/g;
@@ -304,10 +311,10 @@ async function resolveOrder(ctx: Ctx, orderId: string): Promise<OrderMeta | null
     const projectFolder = projectNumber
       ? `${projectNumber}${clientProjectCode ? " - " + seg(clientProjectCode) : ""}`
       : "_No-Project";
-    basePath = `/01_Clients/${client}/${seg(projectFolder)}/${seg(orderFolder)}`;
+    basePath = `${TEAM_ROOT}/01_Clients/${client}/${seg(projectFolder)}/${seg(orderFolder)}`;
   } else {
     const ind = `${order.order_number} - ${seg(fullName || "Individual")} - ${seg(tgtCode || "xx")} - ${orderDate}`;
-    basePath = `/02_Certified-Individuals/${seg(ind)}`;
+    basePath = `${TEAM_ROOT}/02_Certified-Individuals/${seg(ind)}`;
   }
 
   return {
@@ -322,23 +329,19 @@ interface StepFolder { step: any; folder: string | null; }
 /** Decide each step's folder. Final Deliverable -> 90_Delivery; create only when
  *  create_dropbox_folder=true OR (NULL AND file-bearing step). */
 function stepFolderFor(step: any): string | null {
-  const name = (step.name || "").trim();
-  if (name === "Final Deliverable") return SHELL.delivery;
-
-  const explicit = step.create_dropbox_folder;
-  let make: boolean;
-  if (explicit === true) make = true;
-  else if (explicit === false) make = false;
-  else make = step.actor_type === "external_vendor" || step.actor_type === "customer"; // derive
-
-  if (!make) return null; // e.g. internal QA review -> recorded in PROJECT-RECORD.md
-  const nn = String(Math.min(step.step_number * 10, 89)).padStart(2, "0");
-  return `${nn}_${stepSlug(name)}`;
+  // EVERY workflow step gets its own numbered folder; deliveries are versioned
+  // (v1, v2, ...) inside it, so the artifact at each stage (vendor output,
+  // QA-approved copy, released copy) is a retained, hashed record. The per-step
+  // create_dropbox_folder flag, only when explicitly false, opts out (a rare
+  // sign-off-only step you don't want a folder for).
+  if (step.create_dropbox_folder === false) return null;
+  const nn = String(step.step_number * 10).padStart(2, "0");
+  return `${nn}_${stepSlug((step.name || "").trim())}`;
 }
 
 async function loadSteps(ctx: Ctx, orderId: string): Promise<any[]> {
   const { data } = await ctx.supabase.from("order_workflow_steps")
-    .select("id, step_number, name, actor_type, status, vendor_id, assigned_staff_id, approved_at, delivered_at, reviewed_by, create_dropbox_folder, final_delivery_id")
+    .select("id, step_number, name, actor_type, status, vendor_id, assigned_staff_id, approved_at, delivered_at, create_dropbox_folder, final_delivery_id")
     .eq("order_id", orderId).neq("status", "cancelled").order("step_number");
   return data ?? [];
 }
@@ -351,10 +354,13 @@ function quoteFileBucket(categoryId: string | null, storagePath: string): string
   return "quote-files";
 }
 
-async function alreadySynced(ctx: Ctx, bucket: string, path: string, trigger: string): Promise<boolean> {
+async function alreadySynced(ctx: Ctx, dropboxPath: string): Promise<boolean> {
+  // Dedup by DESTINATION: the same source artifact legitimately appears in
+  // multiple stage folders (Cognitive Debriefing, QA Review, Final Deliverable),
+  // so "already synced" means this exact Dropbox path is already there.
   const { data } = await ctx.supabase.from("dropbox_file_syncs")
-    .select("id").eq("source_bucket", bucket).eq("source_path", path)
-    .eq("sync_trigger", trigger).eq("target", "team").eq("status", "synced").maybeSingle();
+    .select("id").eq("dropbox_path", dropboxPath)
+    .eq("target", "team").eq("status", "synced").maybeSingle();
   return !!data;
 }
 
@@ -364,7 +370,7 @@ async function syncOne(ctx: Ctx, args: {
 }): Promise<{ ok: boolean; skipped?: boolean; sha256?: string; size?: number; error?: string; dropbox_path: string }> {
   const { source_bucket, source_path, dropbox_path, sync_trigger } = args;
 
-  if (await alreadySynced(ctx, source_bucket, source_path, sync_trigger)) {
+  if (await alreadySynced(ctx, dropbox_path)) {
     return { ok: true, skipped: true, dropbox_path };
   }
 
@@ -403,14 +409,17 @@ async function backfillOrder(ctx: Ctx, body: { order_id: string }) {
   const steps = await loadSteps(ctx, body.order_id);
   const stepFolders: StepFolder[] = steps.map((s) => ({ step: s, folder: stepFolderFor(s) }));
 
-  // 1) Generic shell + per-step production folders.
+  // 1) Generic shell + a folder for every workflow step.
   await ensurePath(ctx, `${meta.basePath}/${SHELL.admin}`);
   await ensurePath(ctx, `${meta.basePath}/${SHELL.source}`);
   await ensurePath(ctx, `${meta.basePath}/${SHELL.reference}`);
-  await ensurePath(ctx, `${meta.basePath}/${SHELL.delivery}`);
   for (const sf of stepFolders) {
-    if (sf.folder && sf.folder !== SHELL.delivery) await ensurePath(ctx, `${meta.basePath}/${sf.folder}`);
+    if (sf.folder) await ensurePath(ctx, `${meta.basePath}/${sf.folder}`);
   }
+  // Quote-file finals/drafts (certified-style orders) route to the matching
+  // step folder when there is one; otherwise to source/reference.
+  const finalFolder = stepFolders.find((s) => s.folder && /final deliverable/i.test(s.step.name))?.folder ?? null;
+  const draftFolder = stepFolders.find((s) => s.folder && /customer/i.test(s.step.name))?.folder ?? null;
 
   const synced: any[] = [];
   const note = (r: any, folder: string, filename: string) => {
@@ -427,13 +436,13 @@ async function backfillOrder(ctx: Ctx, body: { order_id: string }) {
     const cat = qf.file_category_id;
     const isCert = /\/certified\//i.test(qf.storage_path);
     let folder: string, trigger: string;
-    if (isCert) { folder = SHELL.certification; trigger = "certified_final"; hasCert = true; }
-    else if (SOURCE_CATS.has(cat)) { folder = SHELL.source; trigger = "client_upload"; }
-    else if (REFERENCE_CATS.has(cat)) { folder = SHELL.reference; trigger = "reference_upload"; }
-    else if (FINAL_CATS.has(cat)) { folder = SHELL.delivery; trigger = "final_delivery"; }
-    else if (DRAFT_CATS.has(cat)) { folder = SHELL.delivery; trigger = "draft_promoted"; }
-    else { folder = SHELL.source; trigger = "client_upload"; } // default: treat as input
-    if (folder === SHELL.certification) await ensurePath(ctx, `${meta.basePath}/${SHELL.certification}`);
+    if (isCert) { folder = `${SHELL.certification}/v1`; trigger = "certified_final"; hasCert = true; }
+    else if (SOURCE_CATS.has(cat)) { folder = `${SHELL.source}/v1`; trigger = "client_upload"; }
+    else if (REFERENCE_CATS.has(cat)) { folder = `${SHELL.reference}/v1`; trigger = "reference_upload"; }
+    else if (FINAL_CATS.has(cat)) { folder = `${finalFolder ?? SHELL.source}/v1`; trigger = "final_delivery"; }
+    else if (DRAFT_CATS.has(cat)) { folder = `${draftFolder ?? SHELL.reference}/v1`; trigger = "draft_promoted"; }
+    else { folder = `${SHELL.source}/v1`; trigger = "client_upload"; } // default: treat as input
+    await ensurePath(ctx, `${meta.basePath}/${folder}`);
     const filename = seg(qf.original_filename || qf.storage_path.split("/").pop() || "file");
     const r = await syncOne(ctx, {
       source_bucket: quoteFileBucket(cat, qf.storage_path), source_path: qf.storage_path,
@@ -443,21 +452,23 @@ async function backfillOrder(ctx: Ctx, body: { order_id: string }) {
     note(r, folder, filename);
   }
 
-  // 3) Step deliveries (vendor work + finals) -> step folder / 90_Delivery, versioned.
+  // 3) Step deliveries -> {step folder}/v{version}/ for EVERY step. The same
+  //    artifact copied through QA review + final deliverable is retained at each
+  //    stage; a revision round becomes v2, v3, ...
   for (const sf of stepFolders) {
-    if (!sf.folder) continue; // QA / internal pass-through: recorded in the manifest, no folder
+    if (!sf.folder) continue; // explicit opt-out
     const { data: dels } = await ctx.supabase.from("step_deliveries")
       .select("id, version, file_paths").eq("step_id", sf.step.id).order("version");
     for (const d of dels ?? []) {
       const files = parseDeliveryFiles(d.file_paths);
-      const vsub = sf.folder === SHELL.delivery ? "" : `/v${d.version ?? 1}`;
+      const vsub = `/v${d.version ?? 1}`;
       for (const f of files) {
         if (!f.storage_path) continue;
         const filename = seg(f.original_filename || f.storage_path.split("/").pop() || "file");
         const r = await syncOne(ctx, {
           source_bucket: "vendor-deliveries", source_path: f.storage_path,
           dropbox_path: `${meta.basePath}/${sf.folder}${vsub}/${filename}`,
-          sync_trigger: sf.folder === SHELL.delivery ? "final_delivery" : "vendor_delivery",
+          sync_trigger: "step_delivery",
           order_id: meta.order.id, step_delivery_id: d.id,
         });
         note(r, `${sf.folder}${vsub}`, filename);
@@ -489,8 +500,44 @@ async function backfillOrder(ctx: Ctx, body: { order_id: string }) {
     note(r, SHELL.admin, filename);
   }
 
+  // 4.5) Post-delivery client review/feedback rounds -> 05_Client-Review/round-N/
+  //      (the client's feedback text as feedback.md + their markup attachments).
+  //      Each client_email communication is one round, in date order.
+  const { data: comms } = await ctx.supabase.from("order_communications")
+    .select("id, subject, body, email_date, created_at")
+    .eq("order_id", meta.order.id).eq("kind", "client_email")
+    .order("email_date", { ascending: true }).order("created_at", { ascending: true });
+  let clientRounds = 0;
+  for (const c of comms ?? []) {
+    clientRounds++;
+    const roundDir = `${SHELL.client_review}/round-${clientRounds}`;
+    await ensurePath(ctx, `${meta.basePath}/${roundDir}`);
+    const fb = [
+      `# Client Review - Round ${clientRounds}`, "",
+      `- **Order:** ${meta.order.order_number}`,
+      `- **Date:** ${c.email_date ?? c.created_at ?? "-"}`,
+      `- **Subject:** ${c.subject ?? "-"}`, "",
+      `## Feedback`, "", String(c.body ?? "").trim(), "",
+    ].join("\n");
+    try {
+      await dbxUpload(ctx, `${meta.basePath}/${roundDir}/feedback.md`, new TextEncoder().encode(fb));
+    } catch (e) { console.warn("feedback.md upload failed:", (e as Error).message); }
+    const { data: atts } = await ctx.supabase.from("order_communication_attachments")
+      .select("id, original_filename, storage_path").eq("communication_id", c.id);
+    for (const a of atts ?? []) {
+      if (!a.storage_path) continue;
+      const filename = seg(a.original_filename || a.storage_path.split("/").pop() || "file");
+      const r = await syncOne(ctx, {
+        source_bucket: "quote-files", source_path: a.storage_path,
+        dropbox_path: `${meta.basePath}/${roundDir}/${filename}`, sync_trigger: "client_feedback",
+        order_id: meta.order.id,
+      });
+      note(r, roundDir, filename);
+    }
+  }
+
   // 5) PROJECT-RECORD.md manifest (incl. QA sign-off as data) -> 00_Admin.
-  const manifest = buildManifest(meta, stepFolders, synced);
+  const manifest = buildManifest(meta, stepFolders, synced, clientRounds);
   try {
     await dbxUpload(ctx, `${meta.basePath}/${SHELL.admin}/PROJECT-RECORD.md`,
       new TextEncoder().encode(manifest));
@@ -518,7 +565,7 @@ function parseDeliveryFiles(file_paths: any): Array<{ storage_path: string; orig
   return out;
 }
 
-function buildManifest(meta: OrderMeta, stepFolders: StepFolder[], synced: any[]): string {
+function buildManifest(meta: OrderMeta, stepFolders: StepFolder[], synced: any[], clientRounds = 0): string {
   const L: string[] = [];
   L.push(`# Project Record - ${meta.order.order_number}`, "");
   L.push(`> Auto-generated by dropbox-team-sync. ISO 17100 sec 6.2 production record.`, "");
@@ -536,7 +583,8 @@ function buildManifest(meta: OrderMeta, stepFolders: StepFolder[], synced: any[]
     const s = sf.step;
     L.push(`| ${s.step_number} | ${s.name} | ${s.actor_type ?? ""} | ${s.status ?? ""} | ${s.delivered_at ?? "-"} | ${s.approved_at ?? "-"} | ${sf.folder ?? "(manifest)"} |`);
   }
-  L.push("", `> QA sign-off is recorded above (the QA Review step's approved-at + status); no separate QA file is produced.`, "");
+  L.push("", `> QA sign-off = the QA Review step's approved-at + status above; the QA-approved copy is retained in that step's folder (v-versioned).`, "");
+  if (clientRounds > 0) L.push(`**Post-delivery client review rounds:** ${clientRounds} (see \`05_Client-Review/\`; each revision round re-versions the affected step folders to v2, v3, ...).`, "");
   L.push(`## Files synced to Dropbox (${synced.length})`, "");
   if (synced.length) {
     L.push(`| Folder | File | SHA-256 | Bytes |`);
@@ -600,7 +648,7 @@ async function syncOrderFile(ctx: Ctx, body: {
     };
     folder = T[body.sync_trigger] ?? SHELL.source;
   }
-  const vsub = body.delivery_version && folder !== SHELL.delivery ? `/v${body.delivery_version}` : "";
+  const vsub = body.delivery_version ? `/v${body.delivery_version}` : "";
   await ensurePath(ctx, `${meta.basePath}/${folder}${vsub}`);
   const filename = seg(body.filename || body.source_path.split("/").pop() || "file");
   const r = await syncOne(ctx, {
