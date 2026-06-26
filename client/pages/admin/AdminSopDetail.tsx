@@ -58,7 +58,12 @@ interface Sop {
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    // Date-only values (effective_date = "YYYY-MM-DD") must be read as local time.
+    // `new Date("2026-06-24")` is parsed as UTC midnight and renders a day earlier
+    // in negative-offset timezones; appending a local time component avoids the shift.
+    // Full timestamps (approved_at, created_at) keep their own offset.
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`) : new Date(iso);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   } catch {
     return iso;
   }
