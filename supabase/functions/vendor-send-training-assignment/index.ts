@@ -174,19 +174,19 @@ function buildEmail(t: TrainingInfo, dueAt: string | null, portal: string, reply
     ["Due", due ? strong(esc(due)) : "No fixed deadline — please complete soon"],
   ];
   const body = [
-    eyebrow("Required training"),
+    eyebrow("Training assigned"),
     title("A new training has been assigned to you"),
     paragraph("Hi %recipient.first_name%,"),
     lead(
-      `As part of your work with Cethos, you've been assigned a required training: ${strong(esc(t.title))}.` +
-        (due ? ` Please complete it by ${strong(esc(due))}.` : " Please complete it at your earliest convenience."),
+      `As part of your work with Cethos, you've been assigned a training: ${strong(esc(t.title))}.` +
+        (due ? ` Please complete it by ${strong(esc(due))}.` : " Please complete it when you have a chance."),
     ),
     detailsTable(rows),
     t.description ? paragraph(esc(t.description)) : "",
     ctaButton("Start the training", `${portal}/trainings/${t.id}`),
     callout(
       "How to access it",
-      `The button above opens the training directly. If you're not signed in, the vendor portal will email you a one-time code first (no password needed). You can also find it any time under ${strong("Trainings")} — it's marked ${strong("Required")} and sorted to the top of your list.`,
+      `The button above opens the training directly. If you're not signed in, the vendor portal will email you a one-time code first (no password needed). You can also find it any time under ${strong("Trainings")}.`,
     ),
     hint(
       `Questions about this training? Just reply to this email — our vendor management team will help you out.`,
@@ -194,9 +194,9 @@ function buildEmail(t: TrainingInfo, dueAt: string | null, portal: string, reply
   ].join("");
 
   const subject = due
-    ? `Required training assigned: ${t.title} (due ${due})`
-    : `Required training assigned: ${t.title}`;
-  return { subject, html: emailShell(body, `A required training has been assigned to your Cethos vendor profile.`, replyTo) };
+    ? `Training assigned: ${t.title} (due ${due})`
+    : `Training assigned: ${t.title}`;
+  return { subject, html: emailShell(body, `A training has been assigned to your Cethos vendor profile.`, replyTo) };
 }
 
 // ───────────────────────── Mailgun batch transport ───────────────────────────
