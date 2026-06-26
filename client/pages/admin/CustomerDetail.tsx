@@ -75,6 +75,7 @@ interface Customer {
   default_tax_rate_id: string | null;
   is_tax_exempt: boolean;
   is_ar_customer: boolean;
+  is_transperfect_customer?: boolean;
   ar_contact_email: string | null;
   accounting_contact_name: string | null;
   accounting_contact_phone: string | null;
@@ -261,6 +262,11 @@ export default function CustomerDetail() {
   const [pmSaving, setPmSaving] = useState(false);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  // TransPerfect-tagged workflow steps (external_workflow_system='transperfect')
+  // across this customer's orders — drives the TransPerfect Integration panel.
+  const [tpSteps, setTpSteps] = useState<
+    { id: string; orderNumber: string; phase: string; status: string }[]
+  >([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [stats, setStats] = useState<CustomerStats>({
     totalOrders: 0,
@@ -476,6 +482,34 @@ export default function CustomerDetail() {
       setOrders(data || []);
     } catch (error) {
       console.error("Error fetching orders:", error);
+    }
+  };
+
+  // Fetch TransPerfect-tagged workflow steps for this customer's orders.
+  // These steps carry external_workflow_system='transperfect' and an
+  // external_phase_name following TransPerfect's portal nomenclature.
+  const fetchTpSteps = async () => {
+    if (!id) return;
+    try {
+      const { data, error } = await supabase
+        .from("order_workflow_steps")
+        .select(
+          "id, name, external_phase_name, status, step_number, orders!inner(order_number, customer_id)"
+        )
+        .eq("external_workflow_system", "transperfect")
+        .eq("orders.customer_id", id)
+        .order("step_number");
+      if (error) throw error;
+      setTpSteps(
+        (data || []).map((s: any) => ({
+          id: s.id,
+          orderNumber: s.orders?.order_number ?? "",
+          phase: s.external_phase_name || s.name || "",
+          status: s.status ?? "",
+        })),
+      );
+    } catch (error) {
+      console.error("Error fetching TransPerfect steps:", error);
     }
   };
 
@@ -720,6 +754,7 @@ export default function CustomerDetail() {
       fetchCustomer(),
       fetchQuotes(),
       fetchOrders(),
+      fetchTpSteps(),
       fetchInvoiceStats(),
       fetchPayments(),
       fetchBranches(),
@@ -1970,6 +2005,65 @@ export default function CustomerDetail() {
                       {xtrfSyncResult.length > 0
                         ? `Last synced fields: ${xtrfSyncResult.join(", ")}`
                         : "No new data found in XTRF"}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Section 5: TransPerfect Integration — standalone (no XTRF
+                  coupling). Workflow steps for this client follow TransPerfect's
+                  portal phase nomenclature and carry
+                  order_workflow_steps.external_workflow_system = 'transperfect'. */}
+              {(customer.is_transperfect_customer || tpSteps.length > 0) && (
+                <div className="bg-violet-50 rounded-lg border border-violet-200 p-6 shadow-sm">
+                  <h3 className="text-base font-semibold text-gray-800 mb-2">
+                    <Link2 className="w-4 h-4 inline mr-2" />
+                    TransPerfect Integration
+                    <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700">
+                      <CheckCircle className="w-3 h-3" /> Linked
+                    </span>
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Workflow steps for this client follow TransPerfect's portal
+                    phase nomenclature (e.g. PostEdit, Proof, QM, BackTransPE).
+                    {" "}
+                    {tpSteps.length} tagged step{tpSteps.length === 1 ? "" : "s"}.
+                  </p>
+                  {tpSteps.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs uppercase text-gray-500 border-b border-violet-200">
+                            <th className="py-2 pr-4 font-medium">Order</th>
+                            <th className="py-2 pr-4 font-medium">TP Phase</th>
+                            <th className="py-2 font-medium">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tpSteps.map((s) => (
+                            <tr
+                              key={s.id}
+                              className="border-b border-violet-100 last:border-0"
+                            >
+                              <td className="py-2 pr-4 font-mono text-gray-700">
+                                {s.orderNumber}
+                              </td>
+                              <td className="py-2 pr-4">
+                                <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700">
+                                  {s.phase}
+                                </span>
+                              </td>
+                              <td className="py-2 text-gray-600 capitalize">
+                                {s.status.replace(/_/g, " ")}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      No tagged workflow steps yet.
                     </p>
                   )}
                 </div>
