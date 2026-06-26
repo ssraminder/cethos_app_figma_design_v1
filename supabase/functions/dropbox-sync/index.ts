@@ -87,10 +87,15 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Check if Dropbox is connected
+    // Check if Dropbox is connected. Scope to the LEGACY slot — this old sync
+    // writes to the personal wordsmith.in account; the team account is handled
+    // by dropbox-team-sync. (Without this, once a 'team' connection row exists
+    // the unscoped limit(1) could grab it and write the old structure into the
+    // clean team folder.)
     const { data: connection } = await supabase
       .from("dropbox_connections")
       .select("id, access_token, refresh_token, token_expires_at")
+      .eq("purpose", "legacy")
       .limit(1)
       .maybeSingle();
 

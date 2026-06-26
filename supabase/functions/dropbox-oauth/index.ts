@@ -14,6 +14,15 @@ function jsonResponse(data: Record<string, unknown>, status = 200) {
   });
 }
 
+// Connection slots, keyed by `purpose` (migration
+// 20260625_team_dropbox_sync_foundation):
+//   legacy = the original personal Dropbox (raminder.shah@wordsmith.in) the old
+//            dropbox-sync writes to.
+//   team   = the Cethos team Dropbox that dropbox-team-sync writes to.
+function normalizePurpose(p: unknown): "legacy" | "team" {
+  return p === "team" ? "team" : "legacy";
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
@@ -38,11 +47,11 @@ serve(async (req: Request) => {
     }
 
     if (action === "status") {
-      return await handleStatus(supabase);
+      return await handleStatus(body, supabase);
     }
 
     if (action === "disconnect") {
-      return await handleDisconnect(supabase, DROPBOX_APP_KEY);
+      return await handleDisconnect(body, supabase, DROPBOX_APP_KEY);
     }
 
     return jsonResponse({ error: "Invalid action. Use: exchange, status, disconnect" }, 400);
@@ -53,12 +62,13 @@ serve(async (req: Request) => {
 });
 
 async function handleExchange(
-  body: { code: string; redirect_uri: string },
+  body: { code: string; redirect_uri: string; purpose?: string },
   supabase: any,
   appKey: string,
   appSecret: string,
 ) {
   const { code, redirect_uri } = body;
+  const purpose = normalizePurpose(body.purpose);
 
   if (!code || !redirect_uri) {
     return jsonResponse({ error: "code and redirect_uri are required" }, 400);
@@ -96,7 +106,8 @@ async function handleExchange(
 
   const tokens = await tokenRes.json();
 
-  // Fetch account info for display
+  // Fetch account info for display + the team-space root namespace (returned for
+  // info; dropbox-team-sync re-fetches it at runtime to set Dropbox-API-Path-Root).
   const accountRes = await fetch(
     "https://api.dropboxapi.com/2/users/get_current_account",
     {
@@ -107,40 +118,41 @@ async function handleExchange(
 
   let accountEmail = null;
   let accountId = null;
+  let rootNamespaceId = null;
   if (accountRes.ok) {
     const account = await accountRes.json();
     accountEmail = account.email;
     accountId = account.account_id;
+    rootNamespaceId = account?.root_info?.root_namespace_id ?? null;
   }
 
   const expiresAt = tokens.expires_in
     ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
     : null;
 
-  // Upsert — singleton row via the unique index on (true)
-  const { error: dbError } = await supabase.from("dropbox_connections").upsert(
-    {
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      account_id: accountId,
-      account_email: accountEmail,
-      token_expires_at: expiresAt,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "((true))" },
-  );
+  const row = {
+    purpose,
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    account_id: accountId,
+    account_email: accountEmail,
+    token_expires_at: expiresAt,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Upsert on `purpose` — one connection per slot. (Was a hard singleton.)
+  const { error: dbError } = await supabase
+    .from("dropbox_connections")
+    .upsert(row, { onConflict: "purpose" });
 
   if (dbError) {
     console.error("DB upsert error:", dbError);
-    // Fall back to delete + insert if the onConflict expression doesn't work
-    await supabase.from("dropbox_connections").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    const { error: insertError } = await supabase.from("dropbox_connections").insert({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      account_id: accountId,
-      account_email: accountEmail,
-      token_expires_at: expiresAt,
-    });
+    // Fallback: delete only the SAME-purpose row, then insert. Never touches
+    // the other slot.
+    await supabase.from("dropbox_connections").delete().eq("purpose", purpose);
+    const { error: insertError } = await supabase
+      .from("dropbox_connections")
+      .insert(row);
     if (insertError) {
       console.error("DB insert error:", insertError);
       return jsonResponse({ error: "Failed to save connection" }, 500);
@@ -149,36 +161,70 @@ async function handleExchange(
 
   return jsonResponse({
     success: true,
+    purpose,
     account_email: accountEmail,
     account_id: accountId,
+    root_namespace_id: rootNamespaceId,
   });
 }
 
-async function handleStatus(supabase: any) {
+async function handleStatus(body: { purpose?: string }, supabase: any) {
+  // Specific purpose -> just that slot. Otherwise return every slot (the new
+  // settings UI shows both) PLUS back-compat top-level fields for the legacy
+  // slot so the current UI keeps working until it's updated.
+  const wantPurpose = body?.purpose ? normalizePurpose(body.purpose) : null;
+
   const { data, error } = await supabase
     .from("dropbox_connections")
-    .select("account_email, account_id, token_expires_at, created_at, updated_at")
-    .limit(1)
-    .maybeSingle();
+    .select("purpose, account_email, account_id, token_expires_at, created_at, updated_at")
+    .order("purpose");
 
   if (error) {
     console.error("Status query error:", error);
     return jsonResponse({ error: "Failed to check status" }, 500);
   }
 
+  const connections = (data ?? []).map((c: any) => ({
+    purpose: c.purpose,
+    connected: true,
+    account_email: c.account_email ?? null,
+    account_id: c.account_id ?? null,
+    connected_at: c.created_at ?? null,
+  }));
+
+  if (wantPurpose) {
+    const one = connections.find((c: any) => c.purpose === wantPurpose) ?? null;
+    return jsonResponse({
+      connected: !!one,
+      purpose: wantPurpose,
+      account_email: one?.account_email ?? null,
+      account_id: one?.account_id ?? null,
+      connected_at: one?.connected_at ?? null,
+    });
+  }
+
+  // Back-compat: top-level reflects the legacy slot (what the current UI reads).
+  const legacy = connections.find((c: any) => c.purpose === "legacy") ?? null;
   return jsonResponse({
-    connected: !!data,
-    account_email: data?.account_email ?? null,
-    account_id: data?.account_id ?? null,
-    connected_at: data?.created_at ?? null,
+    connected: !!legacy,
+    account_email: legacy?.account_email ?? null,
+    account_id: legacy?.account_id ?? null,
+    connected_at: legacy?.connected_at ?? null,
+    connections,
   });
 }
 
-async function handleDisconnect(supabase: any, appKey: string) {
+async function handleDisconnect(
+  body: { purpose?: string },
+  supabase: any,
+  _appKey: string,
+) {
+  const purpose = normalizePurpose(body?.purpose);
+
   const { data } = await supabase
     .from("dropbox_connections")
     .select("access_token")
-    .limit(1)
+    .eq("purpose", purpose)
     .maybeSingle();
 
   // Revoke token at Dropbox
@@ -193,10 +239,7 @@ async function handleDisconnect(supabase: any, appKey: string) {
     }
   }
 
-  await supabase
-    .from("dropbox_connections")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000");
+  await supabase.from("dropbox_connections").delete().eq("purpose", purpose);
 
-  return jsonResponse({ success: true, connected: false });
+  return jsonResponse({ success: true, connected: false, purpose });
 }
