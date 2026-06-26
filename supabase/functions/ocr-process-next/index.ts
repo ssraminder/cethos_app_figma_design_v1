@@ -477,6 +477,25 @@ async function checkAndNotify(supabaseAdmin: any, batchId: string): Promise<void
       console.error("❌ Failed to send notification:", emailError.message);
     }
   }
+
+  // Advance the public/customer quote pricing pipeline. When a quote-linked
+  // batch finishes OCR, ping process-quote-documents so it runs AI analysis and
+  // applies the real price (or hands off to staff). Fire-and-forget; the target
+  // is idempotent + terminal-guarded, so duplicate pings are cheap no-ops.
+  if (batch.status === "completed" && batch.quote_id) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    fetch(`${supabaseUrl}/functions/v1/process-quote-documents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ quoteId: batch.quote_id }),
+    }).catch((e) =>
+      console.error("Failed to ping process-quote-documents:", e?.message ?? e),
+    );
+  }
 }
 
 async function sendNotificationEmail(supabaseAdmin: any, batch: any): Promise<void> {
