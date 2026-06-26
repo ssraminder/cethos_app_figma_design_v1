@@ -192,6 +192,12 @@ const NAV_ITEMS: NavItem[] = [
     section: "Vendors",
   },
   {
+    label: "QMS Hub",
+    path: "/admin/qms",
+    icon: ShieldCheck,
+    section: "Quality",
+  },
+  {
     label: "SOPs",
     path: "/admin/sops",
     icon: BookOpen,
