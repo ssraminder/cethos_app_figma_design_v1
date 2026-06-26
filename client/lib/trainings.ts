@@ -436,6 +436,9 @@ export interface VendorLite {
   vendor_type: string | null;
   status: string | null;
   availability_status: string | null;
+  // jsonb array of region-coded ISO codes, e.g. ["FR-CA"], ["EN","ES"]. Used for
+  // the (client-side, family-aware) language filter in listVendorsForAssign.
+  target_languages?: string[] | null;
 }
 
 export interface VendorAssignFilters {
@@ -452,32 +455,62 @@ export interface VendorAssignFilters {
 export async function listVendorsForAssign(
   f: VendorAssignFilters,
 ): Promise<VendorLite[]> {
-  let q = supabase
-    .from("vendors")
-    .select(
-      "id, full_name, business_name, email, country, vendor_type, status, availability_status",
-    )
-    .order("full_name")
-    .limit(2000);
-  if (f.search) {
-    const s = f.search.replace(/[,%()]/g, " ").trim();
-    if (s)
-      q = q.or(
-        `full_name.ilike.%${s}%,business_name.ilike.%${s}%,email.ilike.%${s}%,country.ilike.%${s}%`,
-      );
+  const PAGE = 1000; // PostgREST max-rows: any single response is capped at 1000.
+  const MAX_PAGES = 25; // safety ceiling (~25k vendors) against a runaway loop.
+  const langQuery = (f.language ?? "").trim().toUpperCase();
+
+  // Build a fresh filtered query each page (the supabase builder isn't reusable).
+  const build = () => {
+    let q = supabase
+      .from("vendors")
+      .select(
+        "id, full_name, business_name, email, country, vendor_type, status, availability_status, target_languages",
+      )
+      .order("full_name", { nullsFirst: false })
+      .order("id"); // unique tiebreaker so range paging can't skip/duplicate rows.
+    if (f.search) {
+      const s = f.search.replace(/[,%()]/g, " ").trim();
+      if (s)
+        q = q.or(
+          `full_name.ilike.%${s}%,business_name.ilike.%${s}%,email.ilike.%${s}%,country.ilike.%${s}%`,
+        );
+    }
+    if (f.status) q = q.eq("status", f.status);
+    if (f.availability) q = q.eq("availability_status", f.availability);
+    if (f.vendorType === "cd_all")
+      q = q.in("vendor_type", ["cognitive_debriefing", "cd_clinician_consultant"]);
+    else if (f.vendorType === "external") q = q.ilike("email", "%@ext.cethos.com");
+    else if (f.vendorType === "unassigned") q = q.is("vendor_type", null);
+    else if (f.vendorType) q = q.eq("vendor_type", f.vendorType);
+    if (f.country) q = q.eq("country", f.country);
+    return q;
+  };
+
+  // Page through in 1000-row windows until drained so the list — and therefore
+  // "select all" — covers EVERY matching vendor, not just the first 1000 that a
+  // single capped request returns.
+  const all: VendorLite[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const from = page * PAGE;
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as VendorLite[];
+    all.push(...rows);
+    if (rows.length < PAGE) break;
   }
-  if (f.status) q = q.eq("status", f.status);
-  if (f.availability) q = q.eq("availability_status", f.availability);
-  if (f.vendorType === "cd_all")
-    q = q.in("vendor_type", ["cognitive_debriefing", "cd_clinician_consultant"]);
-  else if (f.vendorType === "external") q = q.ilike("email", "%@ext.cethos.com");
-  else if (f.vendorType === "unassigned") q = q.is("vendor_type", null);
-  else if (f.vendorType) q = q.eq("vendor_type", f.vendorType);
-  if (f.language) q = q.contains("target_languages", [f.language.toUpperCase()]);
-  if (f.country) q = q.eq("country", f.country);
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []) as VendorLite[];
+
+  // Language is matched client-side by family: target_languages stores region
+  // codes (["FR-CA"], ["FR-FR"]), so a query of "FR" must also match those.
+  // PostgREST's contains() can only do an exact-element match, which silently
+  // missed every region-suffixed vendor.
+  if (!langQuery) return all;
+  return all.filter((v) => {
+    const langs = Array.isArray(v.target_languages) ? v.target_languages : [];
+    return langs.some((l) => {
+      const code = String(l).toUpperCase();
+      return code === langQuery || code.startsWith(langQuery + "-");
+    });
+  });
 }
 
 function slugify(s: string): string {
@@ -565,12 +598,27 @@ export async function assignVendorsBulk(
 ): Promise<number> {
   if (!vendorIds.length) return 0;
   const assignedBy = await currentStaffId();
-  const { data: existing } = await supabase
-    .from("cvp_training_assignments")
-    .select("vendor_id")
-    .eq("training_id", trainingId)
-    .not("vendor_id", "is", null);
-  const have = new Set((existing ?? []).map((r) => r.vendor_id as string));
+
+  // Load existing assignments for dedup, paging past the 1000-row cap. A training
+  // with >1000 prior vendor assignments would otherwise yield a partial set and we
+  // would re-insert duplicates, which the unique (training_id, vendor_id) index
+  // rejects — failing the whole assign.
+  const have = new Set<string>();
+  const PAGE = 1000;
+  for (let page = 0; page < 50; page++) {
+    const from = page * PAGE;
+    const { data, error } = await supabase
+      .from("cvp_training_assignments")
+      .select("vendor_id")
+      .eq("training_id", trainingId)
+      .not("vendor_id", "is", null)
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const rows = data ?? [];
+    for (const r of rows) have.add(r.vendor_id as string);
+    if (rows.length < PAGE) break;
+  }
+
   const rows = vendorIds
     .filter((v) => !have.has(v))
     .map((v) => ({
@@ -580,7 +628,17 @@ export async function assignVendorsBulk(
       due_at: dueAt,
     }));
   if (!rows.length) return 0;
-  const { error } = await supabase.from("cvp_training_assignments").insert(rows);
-  if (error) throw error;
-  return rows.length;
+
+  // Insert in chunks to stay under request payload limits on large bulk assigns.
+  const CHUNK = 500;
+  let inserted = 0;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const batch = rows.slice(i, i + CHUNK);
+    const { error } = await supabase
+      .from("cvp_training_assignments")
+      .insert(batch);
+    if (error) throw error;
+    inserted += batch.length;
+  }
+  return inserted;
 }

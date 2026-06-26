@@ -158,7 +158,7 @@ export default function VendorAssign() {
           <input
             value={filters.language}
             onChange={(e) => set("language", e.target.value)}
-            placeholder="Target language (e.g. ES)"
+            placeholder="Target language (e.g. FR matches FR-CA)"
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
           />
           <input
