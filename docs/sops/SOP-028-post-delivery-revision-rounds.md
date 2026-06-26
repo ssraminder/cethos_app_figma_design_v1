@@ -6,7 +6,8 @@
 | **Title** | Handling client review/changes after delivery — revision rounds, billing, and folders |
 | **Owner** | Project Management / Operations |
 | **Applies to** | Any PM whose delivered order is returned by the client with review/changes (all workflows) |
-| **Status** | Draft v0.2 (2026-06-26) — adds the *already-invoiced → new order under the same project* rule |
+| **Status** | Active · v1.0 (2026-06-26) |
+| **Category** | Production |
 | **Governing policy** | SOP-001 (Document Control & Records), SOP-007 (CAPA & complaint handling), the per-workflow production SOPs (SOP-022…025, SOP-PR-001…011) |
 | **Standard** | ISO 17100:2015 — §5.2 (project management & client communication); §5.3.3 (revision) / §5.3.6 (verification & release) applied to the revised work; §6.1 (feedback); §6.2 (records, ≥5 yr) |
 
