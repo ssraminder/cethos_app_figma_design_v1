@@ -116,7 +116,7 @@ Retain ≥5 years per ISO 17100 §6.2 and the data-protection policy. The per-cy
 
 ## 10. Related documents
 
-- **SOP-026** — Post-Delivery Client Review & Revision Rounds (client review/changes after delivery → controlled revision round on the revised version, billing, and the already-invoiced → new-order rule).
+- **SOP-028** — Post-Delivery Client Review & Revision Rounds (client review/changes after delivery → controlled revision round on the revised version, billing, and the already-invoiced → new-order rule).
 - **SOP-006** — COA linguistic validation qualification (who may perform clinician review).
 - **SOP-003** — Approval authority & quality oversight.
 - **SOP-007** — CAPA management & complaint handling (feedback/complaint route).

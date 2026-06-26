@@ -126,7 +126,7 @@ Cethos Team Folder/01_Clients/RWS/{PRJ-2026-NNNNN} - {client project code}/
 
 ## 11. Review rounds, revisions & post-delivery changes
 
-RWS work is iterative — developer/clinician feedback and query rounds are normal, and they often arrive **after** we've delivered. Handle every one as a **controlled revision round**, never a silent re-send. (Full process + ISO basis: **SOP-026 — Post-Delivery Client Review & Revision Rounds**.)
+RWS work is iterative — developer/clinician feedback and query rounds are normal, and they often arrive **after** we've delivered. Handle every one as a **controlled revision round**, never a silent re-send. (Full process + ISO basis: **SOP-028 — Post-Delivery Client Review & Revision Rounds**.)
 
 **a) Always log the client's return first (§6.1).** Paste each RWS email into the order's **Client Communications** tab — **append-only**, **back-date** it to RWS's send time, and **attach their markup/feedback files**. This is the ISO 17100 §6.1 record, and it is what **populates the `05_Client-Review/round-N/`** folder (a `feedback.md` of the request + the attachments). The portal can auto-generate the vendor brief from it.
 

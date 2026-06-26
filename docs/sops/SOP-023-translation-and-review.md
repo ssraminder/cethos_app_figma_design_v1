@@ -126,7 +126,7 @@ Retain ≥5 years per ISO 17100 §6.2 and the data-protection policy. Per-cycle 
 
 ## 10. Related documents
 
-- **SOP-026** — Post-Delivery Client Review & Revision Rounds (client review/changes after delivery → controlled revision round on the revised version, billing, and the already-invoiced → new-order rule).
+- **SOP-028** — Post-Delivery Client Review & Revision Rounds (client review/changes after delivery → controlled revision round on the revised version, billing, and the already-invoiced → new-order rule).
 - **SOP-022** — Standard TEP (adds an independent third-linguist proofreading step, §5.3.5).
 - **SOP-003** — Vendor Qualification and Management (who may translate / revise).
 - **SOP-001** — Document Control and Records Management (records & retention).

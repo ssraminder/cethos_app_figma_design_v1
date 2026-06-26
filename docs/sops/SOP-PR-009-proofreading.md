@@ -65,7 +65,7 @@ Per **SOP-LV-001 §8** (ISO 17100 §6.2 — retain **≥ 5 years**): order/PO re
 
 ## 7. Related documents
 
-- **SOP-026** — Post-Delivery Client Review & Revision Rounds (client review/changes after delivery → controlled revision round on the revised version, billing, and the already-invoiced → new-order rule).
+- **SOP-028** — Post-Delivery Client Review & Revision Rounds (client review/changes after delivery → controlled revision round on the revised version, billing, and the already-invoiced → new-order rule).
 - **SOP-LV-001** — master LV framework (intake, assignment, QA gate, delivery, records, conformance basis).
 - **LV-standalone-workflow-set-design.md** — §2 conformance basis, §3 task→clause map (row 7), §4 the 3-node structure.
 - Related: **SOP-PR-011** Finalization/Certification (final assembly/release), **SOP-PR-003** Forward Translation.
