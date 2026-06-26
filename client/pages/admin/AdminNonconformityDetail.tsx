@@ -17,6 +17,11 @@ const SEV_STYLE: Record<string, string> = {
 };
 const SevBadge = ({ s }: { s: string }) => <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${SEV_STYLE[s] || SEV_STYLE.low}`}>{s}</span>;
 const NC_STATUSES = ["open", "investigating", "capa_planned", "capa_in_progress", "verifying", "closed"];
+const UPDATE_TYPES = [
+  { v: "internal_note", label: "Internal note", cls: "bg-slate-100 text-slate-600" },
+  { v: "reply_to_client", label: "Reply → client", cls: "bg-teal-50 text-teal-700" },
+  { v: "client_response", label: "Client responded", cls: "bg-indigo-50 text-indigo-700" },
+];
 const CAPA_STATUSES = ["open", "in_progress", "done", "verified", "cancelled"];
 const fmtDateTime = (d?: string | null) => (d ? new Date(d).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—");
@@ -34,6 +39,9 @@ export default function AdminNonconformityDetail() {
   const [attributed, setAttributed] = useState(false);
   const [vQuery, setVQuery] = useState("");
   const [vResults, setVResults] = useState<any[]>([]);
+  const [updates, setUpdates] = useState<any[]>([]);
+  const [updBody, setUpdBody] = useState("");
+  const [updType, setUpdType] = useState("internal_note");
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -46,6 +54,8 @@ export default function AdminNonconformityDetail() {
       setRootCause(res?.result?.nonconformity?.root_cause ?? "");
       setRcMethod(res?.result?.nonconformity?.root_cause_method ?? "5_whys");
       setAttributed(res?.result?.nonconformity?.attributed_to_vendor ?? false);
+      const { data: upd } = await supabase.functions.invoke("quality-read", { body: { action: "list_updates", kind: "nonconformity", id } });
+      setUpdates(upd?.result ?? []);
     } catch (err: any) {
       toast.error(`Failed to load nonconformity: ${err?.message ?? "unknown error"}`);
     } finally {
@@ -178,6 +188,40 @@ export default function AdminNonconformityDetail() {
                 ))}
               </div>
             )}
+          </section>
+
+          {/* Correspondence & updates */}
+          <section className="bg-white rounded-xl border border-gray-200 p-5">
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Correspondence &amp; updates</h2>
+            <p className="text-xs text-gray-400 mb-3">Handling thread — internal notes and replies to/from the client. The full client emails live on the linked order&apos;s Client Communications.</p>
+            <div className="space-y-2 mb-4">
+              {updates.length === 0 ? <p className="text-xs text-gray-400">No updates logged yet.</p> : (
+                updates.map((u) => {
+                  const meta = UPDATE_TYPES.find((t) => t.v === u.entry_type) || UPDATE_TYPES[0];
+                  return (
+                    <div key={u.id} className="border border-gray-100 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className={`inline-flex px-2 py-0.5 text-[11px] font-medium rounded-full ${meta.cls}`}>{meta.label}</span>
+                        <span className="text-[11px] text-gray-400">{u.created_by_name || "—"} · {fmtDateTime(u.created_at)}</span>
+                      </div>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{u.body}</p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="border-t border-gray-100 pt-3">
+              <select value={updType} onChange={(e) => setUpdType(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs mb-2">
+                {UPDATE_TYPES.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+              </select>
+              <textarea value={updBody} onChange={(e) => setUpdBody(e.target.value)} rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="What was said / done (e.g. replied to RWS confirming the patients' suitability)" />
+              <div className="mt-2">
+                <button disabled={busy || !updBody.trim()}
+                  onClick={() => { const b = updBody; setUpdBody(""); call({ action: "add_update", kind: "nonconformity", id, entry_type: updType, body: b }, "Update logged."); }}
+                  className="px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50">Log update</button>
+              </div>
+            </div>
           </section>
         </div>
 
