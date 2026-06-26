@@ -145,6 +145,7 @@ ${pre}
 
 // ───────────────────────── Email body ────────────────────────────────────────
 interface TrainingInfo {
+  id: string;
   title: string;
   description: string | null;
   lessons: number;
@@ -182,10 +183,10 @@ function buildEmail(t: TrainingInfo, dueAt: string | null, portal: string, reply
     ),
     detailsTable(rows),
     t.description ? paragraph(esc(t.description)) : "",
-    ctaButton("Go to your trainings", `${portal}/trainings`),
+    ctaButton("Start the training", `${portal}/trainings/${t.id}`),
     callout(
       "How to access it",
-      `Sign in to the vendor portal with your email — we'll send you a one-time code (no password needed). Your assigned training appears at the top of your ${strong("Trainings")} list with a ${strong("Required")} badge.`,
+      `The button above opens the training directly. If you're not signed in, the vendor portal will email you a one-time code first (no password needed). You can also find it any time under ${strong("Trainings")} — it's marked ${strong("Required")} and sorted to the top of your list.`,
     ),
     hint(
       `Questions about this training? Just reply to this email — our vendor management team will help you out.`,
@@ -302,6 +303,7 @@ serve(async (req: Request) => {
   );
 
   const training: TrainingInfo = {
+    id: trainingRow.id,
     title: trainingRow.title,
     description: trainingRow.description,
     lessons,
