@@ -1,0 +1,27 @@
+export default {
+  key: "sop037",
+  sopNumber: "SOP-037",
+  title: "Cognitive / Debriefing Interview (Standalone LV Step)",
+  docCode: "CTH-VRF-037",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Clinical Validation / Operations",
+  isoRef: "ISO 17100:2015 §5.3.6; ISO 9001; ISPOR COA good practices (cognitive debriefing)",
+  where: "Portal → QUALITY → SOPs (open SOP-037)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-037 is participant recruitment + cognitive interviews on the translated instrument, verified by an independent §5.3.6 review.",
+    "SOP-037 recruits/screens target-population participants and runs structured cognitive interviews on the translated instrument, then an independent reviewer performs a §5.3.6 verification. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-037 and read the control block",
+      url: "/admin/sops/8ca8ceec-3c75-4809-8a5e-b79a8269221d",
+      ring: "Approved versions are frozen",
+      caption: "SOP-037 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-037 — Cognitive / Debriefing Interview (Standalone LV Step)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/8ca8ceec-3c75-4809-8a5e-b79a8269221d",
+      ring: "5.3.6",
+      caption: "Cognitive interviews (incl. recruitment) + independent §5.3.6 verification; participant PII de-identified",
+      say: "Read the procedure body. Confirm participant recruitment + cognitive interviews on the translated instrument, verified by an independent §5.3.6 review." },
+  ],
+};

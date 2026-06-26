@@ -1,0 +1,27 @@
+export default {
+  key: "sop031",
+  sopNumber: "SOP-031",
+  title: "Adaptation (Standalone LV Step)",
+  docCode: "CTH-VRF-031",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.2, §5.3.3, §5.3.6; ISPOR COA good practices",
+  where: "Portal → QUALITY → SOPs (open SOP-031)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-031 is a locale/regional adaptation delivered with an independent §5.3.3 revision.",
+    "SOP-031 adapts an approved translation to a regional variant, then an independent second linguist performs the §5.3.3 revision — an ISO 17100-aligned translation service. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-031 and read the control block",
+      url: "/admin/sops/08a417b8-acf2-449f-a9d1-797ec017b1d9",
+      ring: "Approved versions are frozen",
+      caption: "SOP-031 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-031 — Adaptation (Standalone LV Step)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/08a417b8-acf2-449f-a9d1-797ec017b1d9",
+      ring: "5.3.3",
+      caption: "Regional adaptation + independent §5.3.3 revision (ISO 17100-aligned translation service)",
+      say: "Read the procedure body. Confirm a locale/regional adaptation delivered with an independent §5.3.3 revision." },
+  ],
+};

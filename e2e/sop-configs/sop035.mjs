@@ -1,0 +1,27 @@
+export default {
+  key: "sop035",
+  sopNumber: "SOP-035",
+  title: "Harmonization (Standalone LV Step)",
+  docCode: "CTH-VRF-035",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.6; ISO 9001; ISPOR COA good practices",
+  where: "Portal → QUALITY → SOPs (open SOP-035)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-035 is a cross-language harmonization of a multi-country instrument, verified by an independent §5.3.6 review.",
+    "SOP-035 reviews multiple language versions for cross-language consistency and flags inconsistencies, then an independent reviewer performs a §5.3.6 verification — a validation step. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-035 and read the control block",
+      url: "/admin/sops/4c3a1c80-3df2-4b50-a7f0-3e35d8fb0765",
+      ring: "Approved versions are frozen",
+      caption: "SOP-035 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-035 — Harmonization (Standalone LV Step)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/4c3a1c80-3df2-4b50-a7f0-3e35d8fb0765",
+      ring: "5.3.6",
+      caption: "Cross-language harmonization + independent §5.3.6 verification",
+      say: "Read the procedure body. Confirm a cross-language harmonization of a multi-country instrument, verified by an independent §5.3.6 review." },
+  ],
+};

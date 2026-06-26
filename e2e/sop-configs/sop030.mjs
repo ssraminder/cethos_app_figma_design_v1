@@ -1,0 +1,27 @@
+export default {
+  key: "sop030",
+  sopNumber: "SOP-030",
+  title: "Forward Translation (Standalone LV Step)",
+  docCode: "CTH-VRF-030",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.1–§5.3.3, §5.3.6; ISPOR COA good practices",
+  where: "Portal → QUALITY → SOPs (open SOP-030)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-030 is a forward translation delivered with an independent §5.3.3 revision by a second qualified linguist.",
+    "SOP-030 is a translation-type step: translate the source instrument, then an independent second linguist performs the §5.3.3 revision before release — an ISO 17100-aligned translation service. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-030 and read the control block",
+      url: "/admin/sops/7541fd10-370f-4621-a30b-f0098b35309d",
+      ring: "Approved versions are frozen",
+      caption: "SOP-030 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-030 — Forward Translation (Standalone LV Step)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/7541fd10-370f-4621-a30b-f0098b35309d",
+      ring: "5.3.3",
+      caption: "Forward translation + independent §5.3.3 revision by a second linguist (ISO 17100-aligned translation service)",
+      say: "Read the procedure body. Confirm a forward translation delivered with an independent §5.3.3 revision by a second qualified linguist." },
+  ],
+};

@@ -1,0 +1,27 @@
+export default {
+  key: "sop038",
+  sopNumber: "SOP-038",
+  title: "Finalization / Certification (Standalone LV Step)",
+  docCode: "CTH-VRF-038",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.6, §6.2; ISO 9001",
+  where: "Portal → QUALITY → SOPs (open SOP-038)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-038 is final assembly + a certificate of completion, verified by an independent §5.3.6 review that checks the certificate does not overclaim.",
+    "SOP-038 assembles the validated instrument and issues a certificate documenting the LV steps performed; an independent reviewer performs a §5.3.6 verification and confirms the certificate states 'aligned with ISO 17100', never 'certified'. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-038 and read the control block",
+      url: "/admin/sops/325dc26a-a170-4576-abb7-d81464cd8e04",
+      ring: "Approved versions are frozen",
+      caption: "SOP-038 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-038 — Finalization / Certification (Standalone LV Step)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/325dc26a-a170-4576-abb7-d81464cd8e04",
+      ring: "5.3.6",
+      caption: "Final assembly + certificate of completion + independent §5.3.6 verification (no ISO-certification overclaim)",
+      say: "Read the procedure body. Confirm final assembly + a certificate of completion, verified by an independent §5.3.6 review that checks the certificate does not overclaim." },
+  ],
+};

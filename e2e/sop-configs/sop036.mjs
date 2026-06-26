@@ -1,0 +1,27 @@
+export default {
+  key: "sop036",
+  sopNumber: "SOP-036",
+  title: "Proofreading (Standalone LV Step)",
+  docCode: "CTH-VRF-036",
+  versionLine: "v1 active (effective 26 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.5, §5.3.6; ISPOR COA good practices",
+  where: "Portal → QUALITY → SOPs (open SOP-036)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-036 is a final paper/eCOA proofread against the approved text, verified by an independent §5.3.6 review.",
+    "SOP-036 proofreads the formatted instrument against the approved text (typography, layout, truncation, display), then an independent reviewer performs a §5.3.6 verification. It is a controlled, version-frozen procedure. "+ "**Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-036 and read the control block",
+      url: "/admin/sops/f9207802-5fc4-4146-96d2-ffaa517c9ecc",
+      ring: "Approved versions are frozen",
+      caption: "SOP-036 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-036 — Proofreading (Standalone LV Step)**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The workflow and conformance basis are defined",
+      url: "/admin/sops/f9207802-5fc4-4146-96d2-ffaa517c9ecc",
+      ring: "5.3.6",
+      caption: "Final proofread (paper/eCOA) against approved text + independent §5.3.6 verification",
+      say: "Read the procedure body. Confirm a final paper/eCOA proofread against the approved text, verified by an independent §5.3.6 review." },
+  ],
+};
