@@ -3,7 +3,7 @@ export default {
   sopNumber: "SOP-028",
   title: "Post-Delivery Client Review and Revision Rounds",
   docCode: "CTH-VRF-028",
-  versionLine: "v1 active (effective 26 June 2026)",
+  versionLine: "v2 active (effective 25 June 2026) — cross-references corrected: SOP-011 (CAPA), production SOPs updated to current numbering",
   owner: "Production / Operations",
   isoRef: "ISO 17100:2015 §5.3.5 (review), §6.1 (client communication); ISO 9001:2015 §8.5.3 (property of customers)",
   where: "Portal → QUALITY → SOPs;  and any order with a post-delivery revision round",

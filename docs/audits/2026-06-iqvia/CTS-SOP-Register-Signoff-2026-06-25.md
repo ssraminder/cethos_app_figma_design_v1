@@ -39,7 +39,7 @@ This document records the complete Cethos QMS Standard Operating Procedure regis
 |---|---|---|---|---|---|---|---|
 | SOP-002 | Training and Competency Assessment | v1 | 25 Jun 2026 | ISO 17100:2015 §3.1.5; ISO 9001:2015 §7.2; 21 CFR §11.10(i) | ✓ CTH-VRF-002 | | |
 | SOP-003 | Vendor Qualification and Management | v2 | 24 Jun 2026 | ISO 17100:2015 §3.1, §6.1 | ✓ CTH-VRF-003 | | |
-| SOP-019 | COA Linguistic Validation Qualification | v2 | 24 Jun 2026 | ISO 17100:2015 §3.1.4, §6.1; ISPOR COA LV | ✓ CTH-VRF-019 | | |
+| SOP-019 | COA Linguistic Validation Qualification | v3 | 25 Jun 2026 | ISO 17100:2015 §3.1.4, §6.1; ISPOR COA LV | ✓ CTH-VRF-019 | | |
 
 > **Note:** SOP-019 is the primary audit gate for this IQVIA engagement. It defines the qualification pathway, evidence requirements, and two-tier (Qualified / Provisional) roster maintained in the portal QMS.
 
@@ -64,9 +64,13 @@ This document records the complete Cethos QMS Standard Operating Procedure regis
 | SOP-023 | Translation and Review | v1 | 25 Jun 2026 | ISO 17100:2015 §5.3.1–5.3.3 | ✓ CTH-VRF-023 | | |
 | SOP-024 | Certified Translation | v1 | 25 Jun 2026 | ISO 17100:2015 §5.3.1, §5.3.2, §5.3.6 | ✓ CTH-VRF-024 | | |
 | SOP-025 | Transcription and Translation | v1 | 25 Jun 2026 | ISO 17100:2015 §5.3.1–5.3.6 | ✓ CTH-VRF-025 | | |
-| SOP-028 | Post-Delivery Client Review and Revision Rounds | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.5, §6.1; ISO 9001:2015 §8.5.3 | ✓ CTH-VRF-028 | | |
+| SOP-028 | Post-Delivery Client Review and Revision Rounds | v2 | 25 Jun 2026 | ISO 17100:2015 §5.3.5, §6.1; ISO 9001:2015 §8.5.3 | ✓ CTH-VRF-028 | | |
 
-> **SOP-008 / SOP-009 note:** Issued as v3 on 25 June 2026. Cross-references corrected (SOP-006 → SOP-019; SOP-007 → SOP-011; SOP-PR-001 → SOP-008). v1 and v2 are retained as superseded versions in the portal audit trail.
+> **SOP-008 / SOP-009 note:** Issued as v3 on 25 June 2026. Cross-references corrected (SOP-006 → SOP-019; SOP-007 → SOP-011; SOP-PR-001 → SOP-008). v1 and v2 retained as superseded in the portal audit trail.
+
+> **SOP-019 note:** Issued as v3 on 25 June 2026. Cross-references corrected: §1 "SOP-001" → SOP-003 (Vendor Qualification); §5 "SOP-005" → SOP-014 (Data Security and Confidentiality). v1 (retired draft) and v2 retained as superseded.
+
+> **SOP-028 note:** Issued as v2 on 25 June 2026. Cross-references corrected: governing-policy "SOP-007" → SOP-011 (CAPA); old draft SOP-PR numbering → current production SOP numbers (SOP-008, SOP-009, SOP-022–SOP-025, SOP-028). v1 retained as superseded.
 
 > **SOP-024 note (documented honestly):** The certified translation workflow includes Translation + translator self-check (§5.3.2) + PM review & certification release (§5.3.6). Independent §5.3.3 revision by a second linguist is not a current step — documented explicitly in the SOP rather than implied. This is an open quality gap for management review.
 
@@ -94,7 +98,7 @@ This document records the complete Cethos QMS Standard Operating Procedure regis
 | SOPs with verification guide | **23** |
 | SOPs pending guide | 1 (SOP-013 — management review record in progress) |
 | Verification guides in Fayza folder | **23** |
-| New/updated SOPs since 24 June 2026 | 7 (SOP-002, SOP-004, SOP-008 v3, SOP-009 v3, SOP-026, SOP-027, SOP-028) |
+| New/updated SOPs since 24 June 2026 | 9 (SOP-002, SOP-004, SOP-008 v3, SOP-009 v3, SOP-019 v3, SOP-026, SOP-027, SOP-028 v2 — all cross-refs clean) |
 
 **Skipped number note:** SOP-005, SOP-006, SOP-007, SOP-010 are not in the active register.
 - SOP-006 was renumbered → **SOP-019** (COA Linguistic Validation Qualification).

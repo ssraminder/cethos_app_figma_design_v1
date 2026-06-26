@@ -18,6 +18,12 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-25 — SOP cross-ref fixes (SOP-019 v3, SOP-028 v2) + audit handout
+- **Decision:** Created SOP-019 v3 (fixes: §1 SOP-001→SOP-003; §5 SOP-005→SOP-014; version header from "Draft" to active) and SOP-028 v2 (fixes: SOP-007→SOP-011; SOP-PR-001…011→SOP-008/009/022–025/028) via migration `20260625_sop_crossref_fixes_019_028`. Rebuilt Fayza verification guides for both. Created `IQVIA-Audit-Day-Reference-2026-06-26.md` — a concise audit-day reference covering COA qualification gates, active SOP register, key portal navigation, and open items.
+- **Rationale:** Cross-reference scan found SOP-019 referenced two non-existent SOPs (SOP-001/SOP-005) and SOP-028 referenced a retired number (SOP-007) and obsolete draft prefix (SOP-PR-). All 24 active SOPs now have internally consistent cross-references. One benign false-positive remains: "SOP-005" appears in SOP-019 v3's revision history row documenting the correction — not a live cross-reference.
+- **Status:** active. Migration applied to prod; Fayza folder updated (25 files: 23 guides + signoff + handout). B2 (SOP-013 management review verification guide) still pending.
+- **Affects:** `supabase/migrations/20260625_sop_crossref_fixes_019_028.sql`, `e2e/sop-configs/sop019.mjs`, `e2e/sop-configs/sop028.mjs`, `docs/audits/2026-06-iqvia/CTS-SOP-Register-Signoff-2026-06-25.md`, `docs/audits/2026-06-iqvia/IQVIA-Audit-Day-Reference-2026-06-26.md`, `docs/guides/Cethos-SOP-019-…-Verification-Guide.docx`, `docs/guides/Cethos-SOP-028-…-Verification-Guide.docx`.
+
 ### 2026-06-25 — SOP activation + QMS COA panel (B1/F1/F2 of IQVIA audit prep)
 - **Decision:** Activated 4 draft SOPs (SOP-002 Staff Training, SOP-004 Project Management, SOP-026 SDLC, SOP-027 Change Control) via migration `20260625_sop_activate_drafts_and_crossref_fixes`; issued cross-ref-corrected v3 for SOP-008 (SOP-006→019, SOP-007→011) and SOP-009 (same + SOP-PR-001→SOP-008); updated `qms_list_vendor_qualifications` to return `subject_matter.code` in the JSON; added COA LV status panel to `VendorQmsTab.tsx` (shows green/amber/grey based on qualified/pending/absent COA quals).
 - **Rationale:** Closes gaps G1–G4 from IA-2026-002 IQVIA audit assessment; SOP-008/009 v2 had stale cross-refs pointing to retired SOP-006/007 numbers. B2 (SOP-013 Management Review) deferred to next session — needs a management review record first.
