@@ -15,6 +15,7 @@
 //   link_vendor             { kind: 'complaint'|'nonconformity', id, vendor_id|null }
 //   create_capa             { payload }
 //   update_capa             { payload }   // payload includes id + status/effectiveness
+//   add_update              { kind, id, entry_type, body }   // correspondence/updates log
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -87,6 +88,10 @@ serve(async (req: Request) => {
       case "update_capa":
         rpc = "qms_update_capa";
         args = { p_payload: body.payload ?? {}, p_actor: actor };
+        break;
+      case "add_update":
+        rpc = "qms_add_update";
+        args = { p_kind: body.kind, p_id: body.id, p_entry_type: body.entry_type ?? "internal_note", p_body: body.body, p_actor: actor };
         break;
       default:
         return jr({ error: `Unknown action: ${action}` }, 400);

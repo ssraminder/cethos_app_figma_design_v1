@@ -71,6 +71,10 @@ serve(async (req: Request) => {
         rpc = "qms_list_for_order";
         args = { p_order_id: body.order_id };
         break;
+      case "list_updates":
+        rpc = "qms_list_updates";
+        args = { p_kind: body.kind, p_id: body.id };
+        break;
       case "linguist_performance":
         rpc = "qms_linguist_performance";
         args = { p_vendor_id: body.vendor_id };
