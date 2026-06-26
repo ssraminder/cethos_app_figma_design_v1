@@ -1,4 +1,5 @@
 import { ElementType, useEffect, useState } from "react";
+import StaffNdaGate from "./StaffNdaGate";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -410,9 +411,24 @@ function AdminLayoutInner() {
   const [testsToReview, setTestsToReview] = useState(0);
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [rtStatus, setRtStatus] = useState<RealtimeStatus | null>(null);
+  const [ndaSigned, setNdaSigned] = useState<boolean | null>(null);
   const location = useLocation();
   const branding = useBranding();
   const { session, signOut } = useAdminAuthContext();
+
+  // Check staff NDA on session load
+  useEffect(() => {
+    if (!session?.staffId) return;
+    import("@/lib/supabase").then(({ supabase }) => {
+      supabase
+        .from("staff_nda_signatures")
+        .select("id")
+        .eq("staff_user_id", session.staffId)
+        .eq("is_current", true)
+        .maybeSingle()
+        .then(({ data }) => setNdaSigned(!!data));
+    });
+  }, [session?.staffId]);
   const { unreadCount, newOrderCount, resetNewOrders, newQuoteCount, resetNewQuotes, smsUnreadCount } = useStaffNotifications();
 
   // Poll RC realtime subscription health every 5 min for the sidebar dot
@@ -832,6 +848,13 @@ function AdminLayoutInner() {
         <main className="flex-1 lg:pt-0 pt-16 min-h-screen">
           <Outlet />
         </main>
+        {session && ndaSigned === false && (
+          <StaffNdaGate
+            staffUserId={session.staffId}
+            staffEmail={session.staffEmail}
+            onSigned={() => setNdaSigned(true)}
+          />
+        )}
         <BugReportFab />
       </div>
     </NotificationProvider>
