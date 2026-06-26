@@ -1,0 +1,27 @@
+export default {
+  key: "sop019",
+  sopNumber: "SOP-019",
+  title: "COA Linguistic Validation Qualification",
+  docCode: "CTH-VRF-019",
+  versionLine: "v2 active (effective 24 June 2026)",
+  owner: "Human Resources / Quality",
+  isoRef: "ISO 17100:2015 §3.1, §5.2; IQVIA COA; ICH GCP",
+  where: "Portal → QUALITY → SOPs (COA qualification is managed in the recruitment / COA-assessment layer)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-019 governs **COA (clinical outcome assessment) linguistic-validation qualification** — the extra bar a linguist must clear to work on the IQVIA-scoped COA services (cognitive debriefing, clinician review). Qualification rests on a **COA assessment/quiz pass + documented domain evidence**, and COA assignments are gated to the COA-qualified subset.",
+    "Note for Raminder (not a blocker): COA qualification currently lives in the **recruitment / COA-assessment layer**, not on the vendor QMS tab — surfacing it there is a recommended enhancement. **Result: PASS** (the qualification control operates).",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-019 and read the control block",
+      url: "/admin/sops/712859cc-1a6f-473a-8e8e-db20bf58c711",
+      ring: "Approved versions are frozen",
+      caption: "SOP-019 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-019 — COA Linguistic Validation Qualification**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The COA qualification bar is defined",
+      url: "/admin/sops/712859cc-1a6f-473a-8e8e-db20bf58c711",
+      ring: "COA",
+      caption: "COA qualification = COA assessment/quiz pass + documented domain evidence; COA-only assignment gate",
+      say: "Read the procedure. Confirm the extra COA bar: a **COA assessment/quiz pass + documented domain evidence**, and that **only COA-qualified linguists** may be assigned to COA work (the assignment gate). This is what protects the IQVIA-scoped COA service." },
+  ],
+};

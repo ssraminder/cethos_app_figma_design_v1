@@ -1,0 +1,27 @@
+export default {
+  key: "sop024",
+  sopNumber: "SOP-024",
+  title: "Certified Translation",
+  docCode: "CTH-VRF-024",
+  versionLine: "v1 active (effective 25 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.1 (translation), §5.3.2 (self-check), §5.3.6 (release)",
+  where: "Portal → QUALITY → SOPs;  and a certified-translation order's workflow",
+  golden: "**Look only.** You are confirming the procedure and an order's setup. If something doesn't match, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-024 is the **certified translation** workflow — translation + translator self-check (§5.3.2) + verification & release with certification (§5.3.6).",
+    "Note (documented honestly in the SOP): an **independent §5.3.3 revision by a second linguist is NOT a step** in this certified-translation workflow — the SOP states this explicitly rather than implying it. **Result: PASS** (the SOP accurately reflects the workflow).",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-024 and read it",
+      url: "/admin/sops/480962ec-7780-4be2-9a02-98cda234d0a9",
+      ring: "5.3.3",
+      caption: "Certified translation — §5.3.3 independent revision documented as NOT a step in this workflow",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-024 — Certified Translation**. Note it states clearly that **independent §5.3.3 revision is not a step** here (the controls are translation + self-check + certified release) — documented honestly, not hidden." },
+    { id: "s2", title: "A real certified-translation order",
+      url: "/admin/orders/05cd7008-f881-46b9-b3c3-7b50177fa591",
+      ring: "Certification",
+      caption: "A certified-translation order — Translation + PM Review & Certification + release",
+      say: "Open a real certified-translation order (here **ORD-2026-10521**). Confirm the workflow includes **Translation** and a **PM Review & Certification** step before the final deliverable." },
+  ],
+};

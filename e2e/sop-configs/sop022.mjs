@@ -1,0 +1,27 @@
+export default {
+  key: "sop022",
+  sopNumber: "SOP-022",
+  title: "Standard TEP (Translation, Editing and Proofreading)",
+  docCode: "CTH-VRF-022",
+  versionLine: "v1 active (effective 25 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.1–§5.3.6 (translation, §5.3.3 revision, §5.3.5 proofreading, verification & release)",
+  where: "Portal → QUALITY → SOPs (the workflow is defined in SOP-022)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-022 is the full ISO 17100 TEP workflow — **Translation → Editing (revision, §5.3.3 by a second linguist) → Proofreading (§5.3.5) → verification & release (§5.3.6)** — the highest-assurance service.",
+    "It is a controlled, version-frozen procedure. **Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-022 and read the control block",
+      url: "/admin/sops/8f972878-af55-4a67-8c57-6bf92727fe30",
+      ring: "Approved versions are frozen",
+      caption: "SOP-022 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-022 — Standard TEP**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The TEP steps are defined",
+      url: "/admin/sops/8f972878-af55-4a67-8c57-6bf92727fe30",
+      ring: "Proofreading",
+      caption: "Translation → Editing/revision → Proofreading → release (ISO 17100 §5.3)",
+      say: "Read the workflow section. Confirm the four production controls: **Translation → Editing (independent revision, §5.3.3) → Proofreading (§5.3.5) → verification & release (§5.3.6)** — a second linguist revises the translation." },
+  ],
+};

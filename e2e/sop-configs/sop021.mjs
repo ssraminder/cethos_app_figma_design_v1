@@ -1,0 +1,27 @@
+export default {
+  key: "sop021",
+  sopNumber: "SOP-021",
+  title: "Answering AI Front-Desk Escalations",
+  docCode: "CTH-VRF-021",
+  versionLine: "v2 active (effective 24 June 2026)",
+  owner: "Operations",
+  isoRef: "Operational (front-desk escalation handling)",
+  where: "Portal → QUALITY → SOPs;  and the Vendor Communication inbox (/admin/vendors/communication)",
+  golden: "**Look only.** You are confirming where escalations arrive, not replying to anyone. If something doesn't match, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. When the AI front-desk can't safely auto-handle an inbound message (a question, status request, or complaint), it **escalates to a human** — these land in the unified inbox for a staff reply, per SOP-021.",
+    "The inbox surfaces all inbound with type badges + threading so staff can answer escalations. **Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-021 and read it",
+      url: "/admin/sops/01c4e5fe-933e-4328-bb37-fed6ea4f0f0a",
+      ring: "Approved versions are frozen",
+      caption: "SOP-021 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-021 — Answering AI Front-Desk Escalations**. It tells staff how to respond to messages the AI front-desk escalated to a human." },
+    { id: "s2", title: "Escalations arrive in the inbox for a human reply",
+      url: "/admin/vendors/communication",
+      ring: "Applicants",
+      caption: "Escalated inbound mail lands here, filterable, with type badges — staff reply per SOP-021",
+      say: "Open the **Vendor Communication** inbox. Confirm escalated inbound mail appears here (filterable by All / Vendors / Applicants / Other, with type badges), where a staff member reads and answers it." },
+  ],
+};
