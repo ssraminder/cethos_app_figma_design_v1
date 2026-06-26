@@ -43,9 +43,9 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-function buildEmail(args: { firstName: string; signUrl: string; referenceCode: string | null }): { subject: string; html: string } {
+function buildEmail(args: { greetingName: string; signUrl: string; referenceCode: string | null }): { subject: string; html: string } {
   const link = escapeHtml(args.signUrl);
-  const name = escapeHtml(args.firstName) || "there";
+  const name = escapeHtml(args.greetingName) || "there";
   const ref = args.referenceCode ? escapeHtml(args.referenceCode) : null;
   const subject = "Action needed: review and e-sign your Cethos onboarding package";
 
@@ -145,7 +145,7 @@ serve(async (req: Request) => {
   // ── Test-send mode: one preview to the requested address, no DB writes.
   if (body.test_email) {
     if (!BREVO_API_KEY) return json({ success: false, error: "BREVO_API_KEY not configured" }, 500);
-    const defaults = buildEmail({ firstName: "Test", signUrl: `${vendorPortalUrl}/onboarding-sign/TEST-TOKEN-PREVIEW`, referenceCode: "CSV0000" });
+    const defaults = buildEmail({ greetingName: "Jane Translator (CSV0000)", signUrl: `${vendorPortalUrl}/onboarding-sign/TEST-TOKEN-PREVIEW`, referenceCode: "CSV0000" });
     const subject = (body.subject_override?.trim() || defaults.subject).replace(/%FIRSTNAME%/g, "Test");
     const html = (body.body_html_override?.trim() || defaults.html).replace(/%FIRSTNAME%/g, "Test");
     const r = await sendBrevo(BREVO_API_KEY, { email: body.test_email }, `[TEST] ${subject}`, html, ["vendor-onboarding-invite", "test"]);
@@ -156,7 +156,7 @@ serve(async (req: Request) => {
   // ── Resolve the cohort: vendors with a current onboarding package, not yet signed.
   const { data: pkgRows, error: pkgErr } = await sb
     .from("vendor_onboarding_packages")
-    .select("vendor_id, reference_code, sign_token")
+    .select("vendor_id, reference_code, sign_token, contractor_name")
     .eq("is_current", true);
   if (pkgErr) return json({ success: false, error: "package_lookup_failed", detail: pkgErr.message }, 500);
 
@@ -169,10 +169,12 @@ serve(async (req: Request) => {
 
   const refByVendor = new Map<string, string | null>();
   const tokenByVendor = new Map<string, string | null>();
+  const nameByVendor = new Map<string, string | null>();
   for (const r of pkgRows ?? []) {
-    const row = r as { vendor_id: string; reference_code: string | null; sign_token: string | null };
+    const row = r as { vendor_id: string; reference_code: string | null; sign_token: string | null; contractor_name: string | null };
     refByVendor.set(row.vendor_id, row.reference_code);
     tokenByVendor.set(row.vendor_id, row.sign_token);
+    nameByVendor.set(row.vendor_id, row.contractor_name);
   }
 
   // Already-signed onboarding packages → exclude.
@@ -206,7 +208,7 @@ serve(async (req: Request) => {
     }
   }
 
-  type Cand = { id: string; full_name: string | null; email: string; status: string | null; reference_code: string | null; sign_token: string };
+  type Cand = { id: string; full_name: string | null; contractor_name: string | null; email: string; status: string | null; reference_code: string | null; sign_token: string };
   const candidates: Cand[] = [];
   for (const v of vendorRows ?? []) {
     const row = v as { id: string; full_name: string | null; email: string | null; status: string | null };
@@ -218,6 +220,7 @@ serve(async (req: Request) => {
     candidates.push({
       id: row.id,
       full_name: row.full_name,
+      contractor_name: nameByVendor.get(row.id) ?? null,
       email: row.email,
       status: row.status,
       reference_code: refByVendor.get(row.id) ?? null,
@@ -244,9 +247,11 @@ serve(async (req: Request) => {
   const errors: string[] = [];
   let sent = 0;
   for (const c of candidates) {
-    const firstName = (c.full_name || "").split(" ")[0] || "";
+    const fullName = c.contractor_name || "";
+    const greetingName = fullName ? `${fullName}${c.reference_code ? ` (${c.reference_code})` : ""}` : (c.reference_code || "there");
+    const firstName = fullName.split(" ")[0] || "";
     const signUrl = `${vendorPortalUrl}/onboarding-sign/${c.sign_token}`;
-    const defaults = buildEmail({ firstName, signUrl, referenceCode: c.reference_code });
+    const defaults = buildEmail({ greetingName, signUrl, referenceCode: c.reference_code });
     const subject = (body.subject_override?.trim() || defaults.subject).replace(/%FIRSTNAME%/g, firstName);
     const html = (body.body_html_override?.trim() || defaults.html).replace(/%FIRSTNAME%/g, firstName);
 
@@ -254,7 +259,7 @@ serve(async (req: Request) => {
     let emailError: string | null = null;
     let brevoMessageId: string | null = null;
     try {
-      const r = await sendBrevo(BREVO_API_KEY, { email: c.email, name: c.full_name || c.email }, subject, html, ["vendor-onboarding-invite", `vendor-${c.id}`]);
+      const r = await sendBrevo(BREVO_API_KEY, { email: c.email, name: c.contractor_name || c.email }, subject, html, ["vendor-onboarding-invite", `vendor-${c.id}`]);
       if (r.ok) { emailSent = true; brevoMessageId = (r.result as Record<string, unknown>)?.messageId as string ?? null; }
       else emailError = `Brevo ${r.status}: ${JSON.stringify(r.result).slice(0, 500)}`;
     } catch (e) {
