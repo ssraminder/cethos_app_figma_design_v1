@@ -33,6 +33,10 @@ interface UploadedFile {
   fileSize?: number;
   chunkIndex?: number | null;
   fileGroupId?: string | null;
+  // Links the batch file back to the originating quote_files row so
+  // update-quote-from-analysis can map analysis → quote_file without filename
+  // guessing. Set by the public quote pipeline (process-quote-documents).
+  quoteFileId?: string | null;
 }
 
 interface CreateBatchRequest {
@@ -192,6 +196,7 @@ serve(async (req) => {
     status: "pending",
     chunk_index: f.chunkIndex ?? null,
     file_group_id: f.fileGroupId ?? null,
+    quote_file_id: f.quoteFileId ?? null,
     queued_at: now,
   }));
 

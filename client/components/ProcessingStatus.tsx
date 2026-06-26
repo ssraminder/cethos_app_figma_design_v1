@@ -23,7 +23,11 @@ type QuoteStatus =
   | "review_required"
   | "error";
 
-const TIMEOUT_SECONDS = 45;
+// Real OCR + AI analysis takes longer than the former placeholder stub's
+// instant response. Give the pipeline more room before falling back to the
+// "we'll email you" screen — the quote still finishes pricing server-side
+// regardless, so this only affects how long the customer watches the spinner.
+const TIMEOUT_SECONDS = 75;
 
 export default function ProcessingStatus({
   quoteId,

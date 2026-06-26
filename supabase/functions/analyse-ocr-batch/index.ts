@@ -28,7 +28,13 @@ const floorBillable = (raw: number): number =>
   Math.max(parseFloat((raw ?? 0).toFixed(2)), MIN_BILLABLE_PAGES);
 
 // Anthropic API config
-const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+// claude-sonnet-4-20250514 was retired by Anthropic and started returning
+// 404 not_found_error (~2026-06), which silently failed EVERY document
+// analysis (admin "Analyze" + the public quote pipeline) — see the 49/49
+// failed ocr_ai_analysis rows. claude-sonnet-4-6 is the drop-in replacement
+// for the deprecated Sonnet 4 snapshot; the Messages API call below is
+// unchanged (no sampling params / thinking / prefill to migrate).
+const ANTHROPIC_MODEL = "claude-sonnet-4-6";
 const MAX_SYNC_TOKENS = 150000; // ~150K tokens = process synchronously
 const CHARS_PER_TOKEN = 4;
 
@@ -136,18 +142,24 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseAdmin.auth.getUser(token);
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Invalid token" }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    // Allow trusted service-role callers (process-quote-documents drives the
+    // public quote pipeline server-side with no staff session). Otherwise
+    // require a valid staff user as before.
+    const isServiceRole = token === supabaseServiceKey;
+    if (!isServiceRole) {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabaseAdmin.auth.getUser(token);
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Invalid token" }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
     }
 
     // ── Parse request ────────────────────────────────────────────────────
