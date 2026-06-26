@@ -20,6 +20,7 @@ import {
   TrainingLesson as TrainingLessonType,
   TrainingAssignment,
 } from "@/lib/trainings";
+import { LessonBlocks } from "./LessonBlocks";
 
 export default function TrainingLesson() {
   const { slug = "", lessonSlug = "" } = useParams();
@@ -116,11 +117,16 @@ export default function TrainingLesson() {
         <h1 className="text-2xl font-bold text-gray-900">{current.title}</h1>
       </header>
 
-      <article className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-a:text-teal-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-pink-700 prose-code:before:content-none prose-code:after:content-none">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-          {current.body_markdown}
-        </ReactMarkdown>
-      </article>
+      {Array.isArray((current as any).content_blocks) &&
+      (current as any).content_blocks.length > 0 ? (
+        <LessonBlocks blocks={(current as any).content_blocks} />
+      ) : (
+        <article className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-a:text-teal-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-pink-700 prose-code:before:content-none prose-code:after:content-none">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+            {current.body_markdown}
+          </ReactMarkdown>
+        </article>
+      )}
 
       {current.screenshot_paths?.length > 0 && (
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
