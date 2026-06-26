@@ -224,6 +224,67 @@ export async function markLessonAcknowledged(
   }
 }
 
+/**
+ * Single-confirmation completion: the learner reads the whole training and
+ * confirms once. Acknowledges every lesson (so the per-lesson audit trail is
+ * preserved) and stamps started_at + completed_at on the assignment in one go.
+ */
+export async function confirmTrainingComplete(
+  assignmentId: string,
+  trainingId: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  const { data: lessons } = await supabase
+    .from("cvp_training_lessons")
+    .select("id")
+    .eq("training_id", trainingId);
+  const lessonIds = (lessons ?? []).map((l) => l.id);
+
+  const { data: existing } = await supabase
+    .from("cvp_training_lesson_progress")
+    .select("id, lesson_id, acknowledged_at")
+    .eq("assignment_id", assignmentId);
+  const existingByLesson = new Map(
+    (existing ?? []).map((e) => [e.lesson_id, e]),
+  );
+
+  const toInsert: {
+    assignment_id: string;
+    lesson_id: string;
+    viewed_at: string;
+    acknowledged_at: string;
+  }[] = [];
+  const toAck: string[] = [];
+  for (const lessonId of lessonIds) {
+    const row = existingByLesson.get(lessonId);
+    if (!row) {
+      toInsert.push({
+        assignment_id: assignmentId,
+        lesson_id: lessonId,
+        viewed_at: now,
+        acknowledged_at: now,
+      });
+    } else if (!row.acknowledged_at) {
+      toAck.push(row.id);
+    }
+  }
+  if (toInsert.length) {
+    await supabase.from("cvp_training_lesson_progress").insert(toInsert);
+  }
+  if (toAck.length) {
+    await supabase
+      .from("cvp_training_lesson_progress")
+      .update({ acknowledged_at: now })
+      .in("id", toAck);
+  }
+
+  await supabase
+    .from("cvp_training_assignments")
+    .update({ started_at: now, completed_at: now })
+    .eq("id", assignmentId);
+}
+
 export async function recordLessonViewed(
   assignmentId: string,
   lessonId: string,

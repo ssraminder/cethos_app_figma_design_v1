@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -15,7 +15,6 @@ import {
   getLessons,
   getMyAssignment,
   getLessonProgress,
-  markLessonAcknowledged,
   recordLessonViewed,
   Training,
   TrainingLesson as TrainingLessonType,
@@ -24,7 +23,6 @@ import {
 
 export default function TrainingLesson() {
   const { slug = "", lessonSlug = "" } = useParams();
-  const navigate = useNavigate();
 
   const [training, setTraining] = useState<Training | null>(null);
   const [lessons, setLessons] = useState<TrainingLessonType[]>([]);
@@ -32,7 +30,6 @@ export default function TrainingLesson() {
   const [ackedLessonIds, setAckedLessonIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busyAck, setBusyAck] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -87,26 +84,6 @@ export default function TrainingLesson() {
     ? lessons[currentIdx + 1]
     : null;
   const acked = current ? ackedLessonIds.has(current.id) : false;
-
-  async function handleAcknowledge() {
-    if (!assignment || !current || busyAck) return;
-    setBusyAck(true);
-    try {
-      await markLessonAcknowledged(assignment.id, current.id);
-      setAckedLessonIds((prev) => {
-        const n = new Set(prev);
-        n.add(current.id);
-        return n;
-      });
-      if (next) {
-        navigate(`/admin/trainings/${slug}/${next.slug}`);
-      }
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setBusyAck(false);
-    }
-  }
 
   if (loading) return <div className="p-6 text-gray-500">Loading…</div>;
   if (error)
@@ -226,36 +203,27 @@ export default function TrainingLesson() {
         </div>
 
         <div className="flex items-center gap-3">
-          {assignment ? (
-            acked ? (
-              <span className="inline-flex items-center gap-1 text-sm text-green-700">
-                <CheckCircle2 className="w-4 h-4" />
-                Acknowledged
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={handleAcknowledge}
-                disabled={busyAck}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                I've read this
-              </button>
-            )
-          ) : (
-            <span className="text-xs text-gray-500">
-              Progress tracking requires an assignment.
+          {acked && (
+            <span className="inline-flex items-center gap-1 text-sm text-green-700">
+              <CheckCircle2 className="w-4 h-4" />
+              Read
             </span>
           )}
-
-          {next && (
+          {next ? (
             <Link
               to={`/admin/trainings/${training.slug}/${next.slug}`}
               className="inline-flex items-center gap-1 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50"
             >
               Next
               <ArrowRight className="w-4 h-4" />
+            </Link>
+          ) : (
+            <Link
+              to={`/admin/trainings/${training.slug}`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Finish &amp; confirm completion
             </Link>
           )}
         </div>
