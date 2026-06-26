@@ -5,6 +5,7 @@ import {
   getTrainingBySlug,
   listVendorsForAssign,
   assignVendorsBulk,
+  notifyVendorsOfAssignment,
   type VendorLite,
   type Training,
 } from "@/lib/trainings";
@@ -38,10 +39,12 @@ export default function VendorAssign() {
   const [vendors, setVendors] = useState<VendorLite[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dueDate, setDueDate] = useState("");
+  const [notify, setNotify] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
+  const [emailedCount, setEmailedCount] = useState<number | null>(null);
 
   useEffect(() => {
     getTrainingBySlug(slug).then(setTraining).catch(() => {});
@@ -84,13 +87,32 @@ export default function VendorAssign() {
     setSaving(true);
     setError(null);
     setDoneCount(null);
+    setEmailedCount(null);
     try {
-      const n = await assignVendorsBulk(
+      const dueIso = dueDate ? new Date(dueDate).toISOString() : null;
+      const { count, vendorIds } = await assignVendorsBulk(
         training.id,
         Array.from(selected),
-        dueDate ? new Date(dueDate).toISOString() : null,
+        dueIso,
       );
-      setDoneCount(n);
+      setDoneCount(count);
+      // Only notify the vendors who were newly assigned just now.
+      if (notify && vendorIds.length > 0) {
+        try {
+          const { sent } = await notifyVendorsOfAssignment(
+            training.id,
+            vendorIds,
+            dueIso,
+          );
+          setEmailedCount(sent);
+        } catch (e: any) {
+          // The assignment already succeeded — surface the email failure
+          // without implying the assignment didn't go through.
+          setError(
+            `Assigned, but the notification email failed: ${e?.message ?? String(e)}`,
+          );
+        }
+      }
       setSelected(new Set());
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -124,8 +146,12 @@ export default function VendorAssign() {
       {doneCount !== null && (
         <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-          Assigned to {doneCount} vendor{doneCount === 1 ? "" : "s"}. Already-assigned
-          vendors were skipped.
+          <span>
+            Assigned to {doneCount} vendor{doneCount === 1 ? "" : "s"}. Already-assigned
+            vendors were skipped.
+            {emailedCount !== null &&
+              ` Emailed ${emailedCount} vendor${emailedCount === 1 ? "" : "s"}.`}
+          </span>
         </div>
       )}
       {error && (
@@ -227,6 +253,15 @@ export default function VendorAssign() {
             onChange={(e) => setDueDate(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
           />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={notify}
+            onChange={(e) => setNotify(e.target.checked)}
+            className="h-4 w-4 accent-teal-600"
+          />
+          Notify vendors by email
         </label>
         <button
           type="button"

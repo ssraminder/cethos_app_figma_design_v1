@@ -595,8 +595,8 @@ export async function assignVendorsBulk(
   trainingId: string,
   vendorIds: string[],
   dueAt: string | null,
-): Promise<number> {
-  if (!vendorIds.length) return 0;
+): Promise<{ count: number; vendorIds: string[] }> {
+  if (!vendorIds.length) return { count: 0, vendorIds: [] };
   const assignedBy = await currentStaffId();
 
   // Load existing assignments for dedup, paging past the 1000-row cap. A training
@@ -627,7 +627,7 @@ export async function assignVendorsBulk(
       assigned_by: assignedBy,
       due_at: dueAt,
     }));
-  if (!rows.length) return 0;
+  if (!rows.length) return { count: 0, vendorIds: [] };
 
   // Insert in chunks to stay under request payload limits on large bulk assigns.
   const CHUNK = 500;
@@ -640,5 +640,28 @@ export async function assignVendorsBulk(
     if (error) throw error;
     inserted += batch.length;
   }
-  return inserted;
+  return { count: inserted, vendorIds: rows.map((r) => r.vendor_id) };
+}
+
+// Admin: email the just-assigned vendors that a training was assigned to them.
+// Calls the vendor-send-training-assignment edge function (Mailgun batch send +
+// notification_log audit). Returns how many were sent/failed. Throws on a
+// transport/edge error so the caller can report it without implying the
+// assignment itself failed.
+export async function notifyVendorsOfAssignment(
+  trainingId: string,
+  vendorIds: string[],
+  dueAt: string | null,
+): Promise<{ sent: number; failed: number }> {
+  if (!vendorIds.length) return { sent: 0, failed: 0 };
+  const { data, error } = await supabase.functions.invoke(
+    "vendor-send-training-assignment",
+    { body: { training_id: trainingId, vendor_ids: vendorIds, due_at: dueAt } },
+  );
+  if (error) throw error;
+  if (data && (data as { success?: boolean }).success === false) {
+    throw new Error((data as { error?: string }).error ?? "notification_failed");
+  }
+  const d = (data as { data?: { sent?: number; failed?: number } })?.data ?? {};
+  return { sent: Number(d.sent ?? 0), failed: Number(d.failed ?? 0) };
 }
