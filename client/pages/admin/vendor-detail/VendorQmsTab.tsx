@@ -140,7 +140,7 @@ interface RoleQualificationRow {
     direction: string;
   }>;
   subject_matter_qualifications?: Array<{
-    subject_matter: { id: string; name: string } | null;
+    subject_matter: { id: string; code: string; name: string } | null;
     proficiency: string;
     notes: string | null;
   }>;
@@ -314,6 +314,16 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
     [ndas],
   );
 
+  const COA_ROLE_CODES = new Set(["cd_interviewer", "clinical_reviewer"]);
+  const COA_SM_CODES = new Set(["ls_clinical_trials", "ls_cognitive_debriefing"]);
+  const coaQuals = useMemo(() =>
+    qualifications.filter((q) =>
+      COA_ROLE_CODES.has(q.role_type?.code ?? "") ||
+      q.subject_matter_qualifications?.some((s) => COA_SM_CODES.has(s.subject_matter?.code ?? ""))
+    ),
+    [qualifications], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -326,6 +336,51 @@ export default function VendorQmsTab({ vendorData, onRefresh }: TabProps & { onR
           {qualifications.length > 0 ? "Add qualification" : "Mark vendor qualified"}
         </button>
       </div>
+
+      {/* COA Linguistic Validation (SOP-019) qualification status */}
+      {!loading && (() => {
+        const qualified = coaQuals.filter((q) => q.status === "qualified");
+        const pending   = coaQuals.filter((q) => q.status === "preliminary" || q.status === "under_review");
+        if (qualified.length > 0) return (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3 flex items-start gap-2">
+            <ShieldCheck className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+            <div>
+              <div className="text-sm font-medium text-green-800">COA Linguistic Validation (SOP-019) — Qualified</div>
+              <div className="text-xs text-green-700 mt-0.5 space-y-0.5">
+                {qualified.map((q) => (
+                  <div key={q.id}>
+                    {q.role_type?.name ?? q.role_type?.code}
+                    {q.language_pair_qualifications?.map((p, i) => (
+                      <span key={i} className="ml-1 px-1.5 py-0.5 bg-green-100 rounded">
+                        {p.source_language?.code} → {p.target_language?.code}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+        if (pending.length > 0) return (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <div className="text-sm font-medium text-amber-800">COA Linguistic Validation (SOP-019) — Pending approval</div>
+              <div className="text-xs text-amber-700 mt-0.5">
+                {pending.map((q) => (
+                  <span key={q.id} className="inline-block mr-2">{q.role_type?.name ?? q.role_type?.code} · {q.status}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+        return (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-gray-400 shrink-0" />
+            <span className="text-sm text-gray-500">COA Linguistic Validation (SOP-019) — no qualification recorded for this vendor</span>
+          </div>
+        );
+      })()}
 
       <div className="rounded-lg border bg-white p-4">
         <div className="text-sm font-medium text-gray-700 mb-2">NDA on file</div>
