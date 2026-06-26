@@ -20,6 +20,8 @@ import {
   X as XIcon,
   CheckCircle2,
   History,
+  ChevronDown,
+  CalendarDays,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
@@ -62,6 +64,10 @@ function fmtDate(iso: string | null): string {
   }
 }
 
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function AdminSopDetail() {
   const { id } = useParams<{ id: string }>();
   const { session } = useAdminAuthContext();
@@ -76,7 +82,15 @@ export default function AdminSopDetail() {
   const [editSummary, setEditSummary] = useState("");
   const [saving, setSaving] = useState(false);
   const [activating, setActivating] = useState(false);
-  const { confirm, state: confirmState, handleAnswer } = useConfirmDialog();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // Approve & Activate dialog — lets the approver set/backdate the effective date.
+  const [activateOpen, setActivateOpen] = useState(false);
+  const [activateDate, setActivateDate] = useState(todayISO());
+  // Inline effective-date correction for already-recorded versions.
+  const [editDateId, setEditDateId] = useState<string | null>(null);
+  const [editDateValue, setEditDateValue] = useState("");
+  const [savingDate, setSavingDate] = useState(false);
+  const { state: confirmState, handleAnswer } = useConfirmDialog();
 
   const load = async (keepSelection = false) => {
     if (!id) return;
@@ -144,28 +158,60 @@ export default function AdminSopDetail() {
     }
   };
 
+  const openActivate = () => {
+    if (!selected) return;
+    setActivateDate(todayISO());
+    setActivateOpen(true);
+  };
+
   const handleActivate = async () => {
     if (!selected || !staffId) return;
-    const ok = await confirm({
-      title: `Approve & activate v${selected.version_number}?`,
-      message:
-        "This records you as the approver and makes this the official current version. The content can never be edited again — future changes need a new version.",
-      confirmLabel: "Approve & Activate",
-    });
-    if (!ok) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(activateDate)) {
+      toast.error("Pick a valid effective date");
+      return;
+    }
     setActivating(true);
     try {
       const { data, error } = await supabase.functions.invoke("manage-sops", {
-        body: { action: "activate", version_id: selected.id, staff_id: staffId },
+        body: { action: "activate", version_id: selected.id, staff_id: staffId, effective_date: activateDate },
       });
       if (error || !data?.success) {
         toast.error(data?.error ?? error?.message ?? "Failed to activate");
         return;
       }
-      toast.success(`v${data.version.version_number} is now the active version`);
+      setActivateOpen(false);
+      toast.success(`v${data.version.version_number} is now active — effective ${fmtDate(data.version.effective_date)}`);
       await load(true);
     } finally {
       setActivating(false);
+    }
+  };
+
+  const startEditDate = (v: SopVersion) => {
+    setEditDateId(v.id);
+    setEditDateValue(v.effective_date ?? todayISO());
+  };
+
+  const handleSetEffectiveDate = async (versionId: string) => {
+    if (!staffId) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(editDateValue)) {
+      toast.error("Pick a valid effective date");
+      return;
+    }
+    setSavingDate(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-sops", {
+        body: { action: "set_effective_date", version_id: versionId, effective_date: editDateValue, staff_id: staffId },
+      });
+      if (error || !data?.success) {
+        toast.error(data?.error ?? error?.message ?? "Failed to update effective date");
+        return;
+      }
+      toast.success(`Effective date set to ${fmtDate(data.version.effective_date)}`);
+      setEditDateId(null);
+      await load(true);
+    } finally {
+      setSavingDate(false);
     }
   };
 
@@ -217,7 +263,7 @@ export default function AdminSopDetail() {
           )}
           {!editing && selected?.status === "draft" && (
             <button
-              onClick={handleActivate}
+              onClick={openActivate}
               disabled={activating}
               className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
             >
@@ -228,9 +274,105 @@ export default function AdminSopDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_290px]">
-        <div className="rounded-xl border border-slate-200 bg-white">
-          {selected && selected.id !== sop.current_version_id && !editing && (
+      {/* Version history — collapsible, on top, so the document below gets the full column width */}
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white">
+        <button
+          onClick={() => setHistoryOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          <span className="flex flex-wrap items-center gap-2">
+            <History className="w-4 h-4" /> Version history
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+              {versions.length}
+            </span>
+            {selected && (
+              <span className="text-xs font-normal text-slate-400">
+                · viewing v{selected.version_number} ({selected.status})
+              </span>
+            )}
+          </span>
+          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${historyOpen ? "rotate-180" : ""}`} />
+        </button>
+        {historyOpen && (
+          <div className="border-t border-slate-200 p-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {versions.map((v) => (
+                <div
+                  key={v.id}
+                  className={`rounded-lg border p-3 ${v.id === selectedId ? "border-teal-300 bg-teal-50/60" : "border-slate-200"}`}
+                >
+                  <button
+                    onClick={() => {
+                      setSelectedId(v.id);
+                      setEditing(false);
+                    }}
+                    className="block w-full text-left"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-slate-900">v{v.version_number}</span>
+                      {sopStatusChip(v.status)}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {v.status === "draft"
+                        ? `Created ${fmtDate(v.created_at)}${v.created_by_name ? ` by ${v.created_by_name}` : ""}`
+                        : `Approved ${fmtDate(v.approved_at)}${v.approved_by_name ? ` by ${v.approved_by_name}` : ""}`}
+                    </div>
+                    {v.change_summary && (
+                      <div className="mt-1 line-clamp-2 text-xs text-slate-400">{v.change_summary}</div>
+                    )}
+                  </button>
+                  {v.status !== "draft" && (
+                    <div className="mt-2 border-t border-slate-100 pt-2">
+                      {editDateId === v.id ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <input
+                            type="date"
+                            value={editDateValue}
+                            onChange={(e) => setEditDateValue(e.target.value)}
+                            className="rounded border border-slate-300 px-2 py-1 text-xs focus:border-teal-500 focus:outline-none"
+                          />
+                          <button
+                            onClick={() => handleSetEffectiveDate(v.id)}
+                            disabled={savingDate}
+                            className="rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+                          >
+                            {savingDate ? "…" : "Save"}
+                          </button>
+                          <button
+                            onClick={() => setEditDateId(null)}
+                            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                            <CalendarDays className="h-3.5 w-3.5" /> Effective {fmtDate(v.effective_date)}
+                          </span>
+                          <button
+                            onClick={() => startEditDate(v)}
+                            className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700"
+                            title="Correct the effective date — for SOPs that existed before they were entered into the portal"
+                          >
+                            <Pencil className="h-3 w-3" /> Edit
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 px-1 text-xs text-slate-400">
+              Approved versions are frozen — the database refuses content edits; changes always create a new version (latest: v{latestNumber}). The effective date can be corrected to reflect when the document actually took effect.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white">
+        {selected && selected.id !== sop.current_version_id && !editing && (
             <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-800">
               You are viewing v{selected.version_number} ({selected.status}) — not the current version.
             </div>
@@ -279,45 +421,52 @@ export default function AdminSopDetail() {
           ) : (
             <div className="p-6 text-slate-500">No versions.</div>
           )}
-        </div>
-
-        <aside>
-          <div className="rounded-xl border border-slate-200 bg-white">
-            <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
-              <History className="w-4 h-4" /> Version history
-            </div>
-            <ul className="divide-y divide-slate-100">
-              {versions.map((v) => (
-                <li key={v.id}>
-                  <button
-                    onClick={() => {
-                      setSelectedId(v.id);
-                      setEditing(false);
-                    }}
-                    className={`w-full px-4 py-3 text-left hover:bg-slate-50 ${v.id === selectedId ? "bg-teal-50/60" : ""}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-slate-900">v{v.version_number}</span>
-                      {sopStatusChip(v.status)}
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {v.status === "draft"
-                        ? `Created ${fmtDate(v.created_at)}${v.created_by_name ? ` by ${v.created_by_name}` : ""}`
-                        : `Approved ${fmtDate(v.approved_at)}${v.approved_by_name ? ` by ${v.approved_by_name}` : ""}`}
-                    </div>
-                    {v.change_summary && (
-                      <div className="mt-1 line-clamp-2 text-xs text-slate-400">{v.change_summary}</div>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <p className="mt-3 px-1 text-xs text-slate-400">
-            Approved versions are frozen — the database refuses edits. Changes always create a new version (latest: v{latestNumber}).
-          </p>
-        </aside>
       </div>
+
+      {activateOpen && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">
+              Approve &amp; activate v{selected.version_number}?
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This records you as the approver and makes this the official current version. The content can never be
+              edited again — future changes need a new version.
+            </p>
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Effective date
+              <input
+                type="date"
+                value={activateDate}
+                onChange={(e) => setActivateDate(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+              />
+              <span className="mt-1 block text-xs font-normal text-slate-400">
+                Backdate this to when the document actually took effect if the SOP existed before it was entered into
+                the portal.
+              </span>
+            </label>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => setActivateOpen(false)}
+                disabled={activating}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleActivate}
+                disabled={activating}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                Approve &amp; Activate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog state={confirmState} onAnswer={handleAnswer} />
     </div>
   );

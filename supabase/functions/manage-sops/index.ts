@@ -11,7 +11,8 @@
 //   get           { sop_id | slug }                 → SOP + full version history
 //   create_sop    { title, category?, iso_clause_reference?, content_md, staff_id, sop_number? }
 //   save_draft    { sop_id, content_md, change_summary?, staff_id }
-//   activate      { version_id, staff_id, effective_date? }
+//   activate           { version_id, staff_id, effective_date? }
+//   set_effective_date { version_id, effective_date, staff_id }  → correct a recorded version's basis date
 //   update_meta   { sop_id, title?, category?, iso_clause_reference? }
 //   archive_sop   { sop_id, staff_id }
 
@@ -206,6 +207,39 @@ serve(async (req) => {
         .eq("id", version.sop_id);
       if (linkErr) return json({ success: false, error: linkErr.message }, 400);
       return json({ success: true, version: activated });
+    }
+
+    // Correct the effective date of an already-recorded version. Used for SOPs
+    // that existed (and took effect) before they were entered into the portal —
+    // the regulatory basis date should reflect when the document actually became
+    // effective, not when it was keyed in. The immutability trigger freezes
+    // content_md and version_number only, so effective_date remains correctable.
+    if (action === "set_effective_date") {
+      const { version_id, effective_date, staff_id } = body;
+      if (!version_id || !effective_date || !staff_id) {
+        return json({ success: false, error: "version_id, effective_date, staff_id required" }, 400);
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(effective_date)) {
+        return json({ success: false, error: "effective_date must be YYYY-MM-DD" }, 400);
+      }
+      const { data: version, error: vErr } = await sb
+        .from("sop_versions")
+        .select("id, status")
+        .eq("id", version_id)
+        .maybeSingle();
+      if (vErr) return json({ success: false, error: vErr.message }, 400);
+      if (!version) return json({ success: false, error: "Version not found" }, 404);
+      if (version.status === "draft") {
+        return json({ success: false, error: "Drafts take their effective date at activation" }, 409);
+      }
+      const { data: updated, error } = await sb
+        .from("sop_versions")
+        .update({ effective_date })
+        .eq("id", version_id)
+        .select("*")
+        .single();
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json({ success: true, version: updated });
     }
 
     if (action === "update_meta") {
