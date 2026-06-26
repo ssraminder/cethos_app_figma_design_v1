@@ -89,19 +89,8 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "quality", label: "Quality", icon: ShieldCheck },
 ];
 
-// SOPs that are known gaps (not yet written)
-const GAP_SOPS = [
-  {
-    number: "SOP-TBD-A",
-    title: "Compliance Management Plan",
-    note: "Partially covered by SOP-011 (CAPA), SOP-012 (Internal Audits), SOP-013 (Management Review), SOP-015 (Risk). A standalone compliance register + annual review cycle SOP is missing.",
-  },
-  {
-    number: "SOP-TBD-B",
-    title: "Offboarding Procedure (Staff & Vendor) + Data Management",
-    note: "SOP-003 covers vendor qualification but not offboarding. SOP-014 covers data security but not data retention/deletion on departure. No offboarding SOP exists.",
-  },
-];
+// Known gaps — cleared once the SOP is published
+const GAP_SOPS: { number: string; title: string; note: string }[] = [];
 
 // ── component ─────────────────────────────────────────────────────────────────
 
@@ -238,22 +227,29 @@ export default function AdminQmsHub() {
 
       {/* Gap banner */}
       <div className="max-w-6xl mx-auto px-6 pt-4">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 mb-4">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-amber-800">2 QMS gaps identified</p>
-              <ul className="mt-1 space-y-1">
-                {GAP_SOPS.map((g) => (
-                  <li key={g.number} className="text-xs text-amber-700">
-                    <span className="font-mono font-semibold">{g.number}</span> — <strong>{g.title}:</strong>{" "}
-                    {g.note}
-                  </li>
-                ))}
-              </ul>
+        {GAP_SOPS.length > 0 ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 mb-4">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">{GAP_SOPS.length} QMS gap{GAP_SOPS.length !== 1 ? "s" : ""} identified</p>
+                <ul className="mt-1 space-y-1">
+                  {GAP_SOPS.map((g) => (
+                    <li key={g.number} className="text-xs text-amber-700">
+                      <span className="font-mono font-semibold">{g.number}</span> — <strong>{g.title}:</strong>{" "}
+                      {g.note}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 mb-4 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <p className="text-sm text-emerald-700 font-medium">All QMS gaps resolved — 36 SOPs active, compliance and offboarding procedures in place.</p>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -331,16 +327,25 @@ export default function AdminQmsHub() {
                     ))}
                   </QuickSection>
 
-                  <QuickSection title="QMS gaps" viewAll={undefined}>
-                    {GAP_SOPS.map((g) => (
-                      <div key={g.number} className="py-2 border-b border-slate-100 last:border-0">
-                        <p className="text-xs font-mono font-semibold text-amber-700">{g.number}</p>
-                        <p className="text-xs text-slate-700 font-medium">{g.title}</p>
-                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{g.note}</p>
+                  <QuickSection title="QMS coverage" viewAll={undefined}>
+                    {GAP_SOPS.length === 0 ? (
+                      <div className="py-3 text-center">
+                        <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
+                        <p className="text-xs text-emerald-700 font-medium">All gaps resolved</p>
                       </div>
-                    ))}
-                    <div className="pt-2">
-                      <p className="text-xs text-slate-400 italic">Training plan covered by SOP-002 ✓</p>
+                    ) : (
+                      GAP_SOPS.map((g) => (
+                        <div key={g.number} className="py-2 border-b border-slate-100 last:border-0">
+                          <p className="text-xs font-mono font-semibold text-amber-700">{g.number}</p>
+                          <p className="text-xs text-slate-700 font-medium">{g.title}</p>
+                          <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{g.note}</p>
+                        </div>
+                      ))
+                    )}
+                    <div className="pt-2 space-y-0.5">
+                      <p className="text-xs text-slate-400">Training plan → SOP-002 ✓</p>
+                      <p className="text-xs text-slate-400">Compliance management → SOP-039 ✓</p>
+                      <p className="text-xs text-slate-400">Offboarding + data → SOP-040 ✓</p>
                     </div>
                   </QuickSection>
                 </div>
