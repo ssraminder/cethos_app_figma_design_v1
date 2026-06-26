@@ -98,6 +98,35 @@ serve(async (req) => {
     const orderOrQuoteId = String(body.orderOrQuoteId || "").trim();
     const message = String(body.message || "").trim();
     const companyWebsite = String(body.companyWebsite || "").trim();
+
+    // Quote intent (anon /secure-upload only). The form asks whether this is for
+    // an existing order/quote or a brand-new quote; for a new quote it collects
+    // source/target language + intended use so the draft quote isn't created
+    // with NULL languages. Only the new form sends submissionType — when it's
+    // absent we're talking to a legacy client and keep the old behaviour (no
+    // language / intended-use requirement), just defaulting the discriminator.
+    const rawSubmissionType = String(body.submissionType || "").trim();
+    const hasQuoteIntent = rawSubmissionType.length > 0;
+    const submissionType =
+      rawSubmissionType === "existing" ? "existing" : "new_quote";
+    const isUuid = (v: unknown): v is string =>
+      typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
+    const sourceLanguageId = isUuid(body.sourceLanguageId)
+      ? body.sourceLanguageId
+      : null;
+    const targetLanguageId = isUuid(body.targetLanguageId)
+      ? body.targetLanguageId
+      : null;
+    const intendedUseId = isUuid(body.intendedUseId) ? body.intendedUseId : null;
+    const sourceLanguageName = String(body.sourceLanguageName || "")
+      .trim()
+      .slice(0, 120) || null;
+    const targetLanguageName = String(body.targetLanguageName || "")
+      .trim()
+      .slice(0, 120) || null;
+    const intendedUseName = String(body.intendedUseName || "")
+      .trim()
+      .slice(0, 200) || null;
     const customerToken = String(body.customerToken || "");
     const targetCustomerId = String(body.targetCustomerId || "");
     const submittedFrom = String(body.submittedFrom || "unknown");
@@ -239,6 +268,34 @@ serve(async (req) => {
         });
       }
 
+      // Quote-intent validation (new form only — gated on hasQuoteIntent so
+      // legacy clients without these fields still work). Source language is
+      // optional (OCR detects it); target language + intended use are required
+      // for a new quote, and an order/quote reference is required for existing.
+      if (hasQuoteIntent) {
+        if (submissionType === "existing") {
+          if (!orderOrQuoteId) {
+            return jsonResponse(400, {
+              success: false,
+              error: "Order or quote number is required for an existing order",
+            });
+          }
+        } else {
+          if (!targetLanguageId) {
+            return jsonResponse(400, {
+              success: false,
+              error: "Target language is required for a new quote",
+            });
+          }
+          if (!intendedUseId) {
+            return jsonResponse(400, {
+              success: false,
+              error: "Intended use is required for a new quote",
+            });
+          }
+        }
+      }
+
       // AV scan kill-switch for the public route. When ON, files land
       // scan_pending and the scanner runs (converting to a quote on
       // completion). When OFF, files are marked scan_skipped (not scanned, not
@@ -264,6 +321,13 @@ serve(async (req) => {
           phone,
           order_or_quote_id: orderOrQuoteId || null,
           message: message || null,
+          submission_type: submissionType,
+          source_language_id: sourceLanguageId,
+          target_language_id: targetLanguageId,
+          source_language_name: sourceLanguageName,
+          target_language_name: targetLanguageName,
+          intended_use_id: intendedUseId,
+          intended_use_name: intendedUseName,
           file_paths: filePathsMeta,
           submitted_from:
             submittedFrom === "customer_portal" || submittedFrom === "main_web"
@@ -318,6 +382,10 @@ serve(async (req) => {
         email,
         phone,
         orderOrQuoteId,
+        submissionType,
+        sourceLanguageName,
+        targetLanguageName,
+        intendedUseName,
         message,
         files: filePathsMeta,
         avEnabled,
@@ -510,6 +578,10 @@ async function notifyAdminOfSubmission(args: {
   email: string;
   phone: string;
   orderOrQuoteId: string;
+  submissionType: string;
+  sourceLanguageName: string | null;
+  targetLanguageName: string | null;
+  intendedUseName: string | null;
   message: string;
   files: Array<{
     originalName: string;
@@ -565,7 +637,16 @@ async function notifyAdminOfSubmission(args: {
       ["Email", String(args.email)],
       ["Phone", String(args.phone)],
     ];
+    detailRows.push([
+      "Type",
+      args.submissionType === "existing"
+        ? "Existing order / quote"
+        : "New quote request",
+    ]);
     if (args.orderOrQuoteId) detailRows.push(["Order / Quote ID", String(args.orderOrQuoteId)]);
+    if (args.sourceLanguageName) detailRows.push(["Source language", String(args.sourceLanguageName)]);
+    if (args.targetLanguageName) detailRows.push(["Target language", String(args.targetLanguageName)]);
+    if (args.intendedUseName) detailRows.push(["Intended use", String(args.intendedUseName)]);
     detailRows.push(["Files", String(totalCount)]);
     detailRows.push(["Submission ID", String(args.submissionId)]);
 
