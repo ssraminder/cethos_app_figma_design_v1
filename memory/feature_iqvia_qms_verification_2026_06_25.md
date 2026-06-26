@@ -72,5 +72,12 @@ My IA-2026-002 gap report duplicated existing work because I didn't reconcile ag
 3. **Refer-out** SOP-008/009/013/021 (clinical/management/ops — not portal-judgeable): confirm w/ Raminder / clinical lead / ops.
 4. Process Fayza's returned results; fix real issues.
 
+## AUTONOMOUS SERIAL RUN COMPLETE (2026-06-26)
+User directive: validate every SOP in serial order, fix non-blockers, build Fayza guides, skip+log blockers, "work should not stop." Built a reusable config-driven engine: `e2e/capture-sop-guide.mjs` + `e2e/build-sop-guide.mjs` + `e2e/sop-configs/sopNNN.mjs` (annotated read-only screenshots → branded .docx; waits for ring text to render to avoid blank SPA paints). **18 Fayza guides delivered to `D:\IQVIA AUDIT\Documents for Fayza\`**: SOP-001/003/008/009/011/014/015/016/017/018/019/020/021/022/023/024/025 (+ SOP-012 prior). PRs #1152/#1155/#1156 (engine + configs + run report; guide .docx NOT committed — delivered to the folder, regenerable). Auth = `e2e/.auth/admin.json` (~1h; refresh via `node e2e/refresh-auth.mjs`, headed; live-token extraction classifier-blocked).
+- **Fixes shipped:** SOP-001 superseded-status backfill + delete-guard (#1136); SOP-003 repoint qualification gate+UI retired-SOP-001 → SOP-003 (#1144).
+- **BLOCKERS (full report `docs/audits/2026-06-iqvia/SOP-validation-run-blocking-issues.md`):** B1 — SOP-002/004/026/027 are DRAFTS (need content + activation); B2 — SOP-013 Management Review has no record (management must hold + file one).
+- **Non-blocking QM findings:** F1 — production/COA SOPs (008/009, likely 022-025) cite pre-renumber numbers (SOP-006→019, SOP-007→011, SOP-PR-001→008), need content re-version; F2 — COA qual (SOP-019) not surfaced on vendor QMS tab (recruitment-layer only); F3 — SOP-014 encryption/audit = IT-enforced (confirm w/ Cital).
+- Worked examples (read-only): CD ORD-2026-10488; clinician-review ORD-2026-10525; CAPA NC-2026-00007; vendor qual Omotola; certified ORD-2026-10521; transcription ORD-2026-10287; TEP ORD-2026-10507. **§6 spot-check finding remains deliberately UNRECORDED per user.**
+
 ## Git note
 This session committed: the `docs/audits/2026-06-iqvia/` docs + handover + this memory file + 3 reviewed source tweaks. **Held for review (not committed):** `supabase/migrations/*` (8), new edge functions `cvp-inbox-backlog-sweep`/`cvp-recruitment-pulse`, `e2e/` (possible auth secret), `docs/training/`, `docs/sops/sharepoint-export/`, `tmp/`, `~$*` lock files. See handover §11.
