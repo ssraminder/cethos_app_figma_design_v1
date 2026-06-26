@@ -22,7 +22,7 @@ interface StaffUser {
   id: string;
   email: string;
   full_name: string;
-  role: "reviewer" | "admin" | "super_admin";
+  role: "super_admin" | "manager" | "account_manager" | "coordinator" | "qa_reviewer" | "finance" | "translator" | "reviewer" | "admin";
   is_active: boolean;
   created_at: string;
   last_login_at: string | null;
@@ -32,24 +32,15 @@ interface StaffUser {
 }
 
 const ROLES = [
-  {
-    value: "reviewer",
-    label: "Reviewer",
-    icon: Shield,
-    color: "text-blue-600",
-  },
-  {
-    value: "admin",
-    label: "Admin",
-    icon: ShieldCheck,
-    color: "text-green-600",
-  },
-  {
-    value: "super_admin",
-    label: "Super Admin",
-    icon: ShieldAlert,
-    color: "text-purple-600",
-  },
+  { value: "super_admin",     label: "Super Admin",     icon: ShieldAlert, color: "text-purple-600" },
+  { value: "manager",         label: "Manager",         icon: ShieldCheck, color: "text-teal-600"   },
+  { value: "account_manager", label: "Account Manager", icon: ShieldCheck, color: "text-green-600"  },
+  { value: "coordinator",     label: "Coordinator",     icon: Shield,      color: "text-blue-500"   },
+  { value: "qa_reviewer",     label: "QA Reviewer",     icon: Shield,      color: "text-indigo-600" },
+  { value: "finance",         label: "Finance",         icon: Shield,      color: "text-amber-600"  },
+  { value: "translator",      label: "Translator",      icon: Shield,      color: "text-gray-600"   },
+  { value: "reviewer",        label: "Reviewer",        icon: Shield,      color: "text-blue-600"   },
+  { value: "admin",           label: "Admin",           icon: ShieldCheck, color: "text-green-600"  },
 ];
 
 export default function AdminStaffManagement() {
@@ -66,7 +57,7 @@ export default function AdminStaffManagement() {
 
   const [formEmail, setFormEmail] = useState("");
   const [formName, setFormName] = useState("");
-  const [formRole, setFormRole] = useState("reviewer");
+  const [formRole, setFormRole] = useState("coordinator");
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
 

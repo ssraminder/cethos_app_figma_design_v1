@@ -52,9 +52,15 @@ interface TrainingEntry {
 }
 
 const ROLES = [
-  { value: "reviewer", label: "Reviewer", icon: Shield, color: "text-blue-600" },
-  { value: "admin", label: "Admin", icon: ShieldCheck, color: "text-green-600" },
-  { value: "super_admin", label: "Super Admin", icon: ShieldAlert, color: "text-purple-600" },
+  { value: "super_admin",     label: "Super Admin",     icon: ShieldAlert, color: "text-purple-600" },
+  { value: "manager",         label: "Manager",         icon: ShieldCheck, color: "text-teal-600"   },
+  { value: "account_manager", label: "Account Manager", icon: ShieldCheck, color: "text-green-600"  },
+  { value: "coordinator",     label: "Coordinator",     icon: Shield,      color: "text-blue-500"   },
+  { value: "qa_reviewer",     label: "QA Reviewer",     icon: Shield,      color: "text-indigo-600" },
+  { value: "finance",         label: "Finance",         icon: Shield,      color: "text-amber-600"  },
+  { value: "translator",      label: "Translator",      icon: Shield,      color: "text-gray-600"   },
+  { value: "reviewer",        label: "Reviewer",        icon: Shield,      color: "text-blue-600"   },
+  { value: "admin",           label: "Admin",           icon: ShieldCheck, color: "text-green-600"  },
 ];
 
 const DOC_CATEGORIES = [
