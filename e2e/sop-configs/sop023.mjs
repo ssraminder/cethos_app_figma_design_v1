@@ -1,0 +1,27 @@
+export default {
+  key: "sop023",
+  sopNumber: "SOP-023",
+  title: "Translation and Review",
+  docCode: "CTH-VRF-023",
+  versionLine: "v1 active (effective 25 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.1–§5.3.6 (translation, §5.3.3 revision, verification & release)",
+  where: "Portal → QUALITY → SOPs (the workflow is defined in SOP-023)",
+  golden: "**Look only.** You are reading the controlled procedure. If a step looks wrong, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-023 is the **Translation → Review** workflow — a translation followed by an independent bilingual revision/review (§5.3.3) before verification & release (§5.3.6).",
+    "It is a controlled, version-frozen procedure. **Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-023 and read the control block",
+      url: "/admin/sops/d9cf47e1-a2d0-4714-b462-df88f67383b1",
+      ring: "Approved versions are frozen",
+      caption: "SOP-023 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-023 — Translation and Review**. Confirm the control block and that the approved version is frozen." },
+    { id: "s2", title: "The Translation + Review steps are defined",
+      url: "/admin/sops/d9cf47e1-a2d0-4714-b462-df88f67383b1",
+      ring: "Review",
+      caption: "Translation → independent Review/revision → verification & release",
+      say: "Read the workflow section. Confirm the controls: **Translation → Review** (an independent linguist revises the translation, §5.3.3) → verification & release (§5.3.6)." },
+  ],
+};

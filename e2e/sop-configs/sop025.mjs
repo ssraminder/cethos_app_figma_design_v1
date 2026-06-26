@@ -1,0 +1,27 @@
+export default {
+  key: "sop025",
+  sopNumber: "SOP-025",
+  title: "Transcription and Translation",
+  docCode: "CTH-VRF-025",
+  versionLine: "v1 active (effective 25 June 2026)",
+  owner: "Production / Operations",
+  isoRef: "ISO 17100:2015 §5.3.1–§5.3.6; transcription pre-translation production step",
+  where: "Portal → QUALITY → SOPs;  and a transcription order's workflow",
+  golden: "**Look only.** You are confirming the procedure and an order's setup. If something doesn't match, write it in the Notes box.",
+  summary: [
+    "Validated on the live portal. SOP-025 adds a **Transcription** production step before translation — source audio/handwritten material is transcribed, then translated, then verified & released (§5.3).",
+    "Confirmed on a real order (transcription + translation steps present). **Result: PASS.**",
+  ],
+  steps: [
+    { id: "s1", title: "Open SOP-025 and read it",
+      url: "/admin/sops/4d93ac11-d2bd-4d1b-bf2c-72de82a82757",
+      ring: "Approved versions are frozen",
+      caption: "SOP-025 open — approved version is frozen & controlled",
+      say: "Log in. Left menu **QUALITY → SOPs**, open **SOP-025 — Transcription and Translation**. It adds a transcription step before the translation workflow." },
+    { id: "s2", title: "A real transcription order",
+      url: "/admin/orders/98384f06-0b33-4244-a013-ec4c41fbe80d",
+      ring: "Transcription",
+      caption: "A real order with Transcription + Translation production steps",
+      say: "Open a real order (here **ORD-2026-10287**). Confirm it has both a **Transcription** step and a **Translation** step before the final deliverable." },
+  ],
+};
