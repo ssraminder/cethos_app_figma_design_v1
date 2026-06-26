@@ -71,6 +71,8 @@ for (const s of cfg.steps) {
   let ringed = false;
   if (s.ring) {
     const loc = page.getByText(new RegExp(s.ring, "i")).first();
+    // wait for the target text to actually render (guards against blank/slow SPA paints)
+    await loc.waitFor({ state: "visible", timeout: 9000 }).catch(() => {});
     ringed = await ring(loc, s.caption || s.title);
   }
   const file = `${s.id}-${T(s.title)}.png`;

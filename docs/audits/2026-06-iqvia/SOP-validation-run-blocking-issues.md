@@ -15,7 +15,7 @@
 | SOP-009 | Clinician Reviews | ✅ Done | PASS — workflow = Clinician Review → QA Review → Final Deliverable, 0 translation steps; guide delivered |
 | SOP-011 | Corrective and Preventive Actions | — | |
 | SOP-012 | Internal Audits | ✅ Done (prior) | Guide already published (CTH-VRF-012) |
-| SOP-013 | Management Review | — | |
+| SOP-013 | Management Review | ⛔ Blocked | No management-review record exists; needs management to hold + file the first one (see B2) |
 | SOP-014 | Data Security and Confidentiality | — | |
 | SOP-015 | Risk Management | — | |
 | SOP-016 | Data Backup and Recovery | — | |
@@ -36,6 +36,10 @@
 ### B1 — SOP-002, SOP-004, SOP-026, SOP-027 are DRAFTS (not active)
 These four are `v1 draft` placeholders in the registry (purpose + scope only, pointing to working `.docx` drafts in `docs/audits/2026-06-iqvia/`). They are **not effective procedures**, so there is nothing live to validate and no Fayza "confirm the SOP matches the system" guide to build yet.
 **Needs you to:** finalise/expand the content and **approve & activate** each (then I can validate + build guides). Decision also pending on reconciling SOP-002/004 with the RFQ versions IQVIA holds, and adding SOP-022–027 to QM-002 (register drift).
+
+### B2 — SOP-013 (Management Review) has no record in the system
+SOP-013 is active, but there is **no management-review record** anywhere in the portal (Documents library or elsewhere). A management review (ISO 9001 §9.3) is a periodic management activity that produces minutes/actions — it can't be validated against the system because the review itself hasn't been held/filed, and I can't perform it.
+**Needs you to:** hold the management review and file the record (like the internal-audit report IA-2026-001 sits in Documents → Quality Records). Once a record exists, I can build the Fayza guide and validate it.
 
 _(Further blockers appended below as the run proceeds.)_
 
