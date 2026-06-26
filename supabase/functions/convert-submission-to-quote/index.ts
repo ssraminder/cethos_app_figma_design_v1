@@ -147,18 +147,40 @@ serve(async (req: Request) => {
       throw new Error(`customer upsert: ${custErr?.message ?? "no row"}`);
     }
 
-    // 2. Create the quote
+    // 2. Create the quote. Carry over the quote intent the customer gave on the
+    //    /secure-upload form so the draft doesn't land with NULL languages.
+    //    Source language is optional (OCR detects it from the documents); target
+    //    language + intended use come straight from the form when it's a new
+    //    quote. For an "existing order/quote" upload we still create the draft
+    //    but flag the referenced number prominently so staff can merge it.
+    const submissionType =
+      String(sub.submission_type ?? "new_quote") === "existing"
+        ? "existing"
+        : "new_quote";
     const noteParts: string[] = [];
+    if (submissionType === "existing" && sub.order_or_quote_id) {
+      noteParts.push(
+        `[Customer says these documents are for an EXISTING order/quote: ${String(
+          sub.order_or_quote_id,
+        ).trim()} — verify and merge if applicable]`,
+      );
+    }
     if (sub.message) noteParts.push(String(sub.message).trim());
     noteParts.push(`[Converted from public submission ${submissionId}]`);
+
+    const quoteInsert: Record<string, unknown> = {
+      status: "lead",
+      entry_point: "public_submission",
+      customer_id: customer.id,
+      customer_note: noteParts.join("\n"),
+    };
+    if (sub.source_language_id) quoteInsert.source_language_id = sub.source_language_id;
+    if (sub.target_language_id) quoteInsert.target_language_id = sub.target_language_id;
+    if (sub.intended_use_id) quoteInsert.intended_use_id = sub.intended_use_id;
+
     const { data: quote, error: quoteErr } = await admin
       .from("quotes")
-      .insert({
-        status: "lead",
-        entry_point: "public_submission",
-        customer_id: customer.id,
-        customer_note: noteParts.join("\n"),
-      })
+      .insert(quoteInsert)
       .select("id, quote_number")
       .single();
     if (quoteErr || !quote) {

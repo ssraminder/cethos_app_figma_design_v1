@@ -54,6 +54,10 @@ interface Submission {
   phone: string;
   order_or_quote_id: string | null;
   message: string | null;
+  submission_type: 'new_quote' | 'existing' | null;
+  source_language_name: string | null;
+  target_language_name: string | null;
+  intended_use_name: string | null;
   file_paths: FileMeta[];
   submitted_from: string | null;
   scan_status:
@@ -321,6 +325,7 @@ export default function PublicSubmissionsPage() {
               <tr>
                 <th className="px-4 py-2.5 font-medium">Received</th>
                 <th className="px-4 py-2.5 font-medium">Contact</th>
+                <th className="px-4 py-2.5 font-medium">Request</th>
                 <th className="px-4 py-2.5 font-medium">Order / Quote ID</th>
                 <th className="px-4 py-2.5 font-medium">Files</th>
                 <th className="px-4 py-2.5 font-medium">Scan</th>
@@ -356,6 +361,9 @@ export default function PublicSubmissionsPage() {
                       <PhoneIcon className="w-3 h-3" />
                       {r.phone}
                     </div>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <RequestCell submission={r} />
                   </td>
                   <td className="px-4 py-3">
                     {r.converted_to_quote_id ? (
@@ -430,6 +438,44 @@ export default function PublicSubmissionsPage() {
           onCreateQuote={() => createQuoteFromSubmission(detail)}
           converting={converting}
         />
+      )}
+    </div>
+  );
+}
+
+function languagePair(s: Submission): string | null {
+  const src = s.source_language_name?.trim();
+  const tgt = s.target_language_name?.trim();
+  if (!src && !tgt) return null;
+  return `${src || 'Detect'} → ${tgt || '?'}`;
+}
+
+function RequestCell({ submission: s }: { submission: Submission }) {
+  const isExisting = s.submission_type === 'existing';
+  const pair = languagePair(s);
+  return (
+    <div className="space-y-1">
+      <span
+        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${
+          isExisting
+            ? 'bg-slate-100 text-slate-600'
+            : 'bg-teal-50 text-teal-700'
+        }`}
+      >
+        {isExisting ? 'Existing' : 'New quote'}
+      </span>
+      {pair && (
+        <div className="text-xs font-medium text-foreground whitespace-nowrap">
+          {pair}
+        </div>
+      )}
+      {s.intended_use_name && (
+        <div
+          className="text-[11px] text-muted-foreground max-w-[180px] truncate"
+          title={s.intended_use_name}
+        >
+          {s.intended_use_name}
+        </div>
       )}
     </div>
   );
@@ -584,6 +630,38 @@ function DetailModal({
                 <span className="text-xs text-muted-foreground ml-2">
                   (verify manually)
                 </span>
+              </div>
+            )}
+            <div>
+              <div className="text-xs uppercase text-muted-foreground mb-0.5">
+                Request type
+              </div>
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                  submission.submission_type === 'existing'
+                    ? 'bg-slate-100 text-slate-600'
+                    : 'bg-teal-50 text-teal-700'
+                }`}
+              >
+                {submission.submission_type === 'existing'
+                  ? 'Existing order / quote'
+                  : 'New quote request'}
+              </span>
+            </div>
+            {languagePair(submission) && (
+              <div>
+                <div className="text-xs uppercase text-muted-foreground mb-0.5">
+                  Languages
+                </div>
+                <div className="font-medium">{languagePair(submission)}</div>
+              </div>
+            )}
+            {submission.intended_use_name && (
+              <div className="col-span-2">
+                <div className="text-xs uppercase text-muted-foreground mb-0.5">
+                  Intended use
+                </div>
+                <div className="text-sm">{submission.intended_use_name}</div>
               </div>
             )}
           </div>
