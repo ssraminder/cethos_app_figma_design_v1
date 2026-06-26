@@ -3,7 +3,7 @@
 // completions feed, and a "Record offline completion" action for linguists trained
 // outside the portal. Completions are the ISO/IQVIA training-file evidence.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BookOpen, CheckCircle2, Loader2, RefreshCw, Plus, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
@@ -21,6 +21,7 @@ export default function AdminTrainings() {
 
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [completions, setCompletions] = useState<Completion[]>([]);
+  const [countByTraining, setCountByTraining] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -29,10 +30,26 @@ export default function AdminTrainings() {
     try {
       const [{ data: t }, { data: c }] = await Promise.all([
         supabase.from("cvp_trainings").select("id, title, category, quiz_enabled").eq("audience", "linguist").eq("is_active", true).order("created_at"),
-        supabase.from("cvp_training_completions").select("id, vendor_id, training_id, method, completed_at, vendors(full_name, email)").order("completed_at", { ascending: false }).limit(200),
+        supabase.from("cvp_training_completions").select("id, vendor_id, training_id, method, completed_at, vendors(full_name, email)").order("completed_at", { ascending: false }).limit(500),
       ]);
-      setTrainings((t as Training[]) ?? []);
+      const tlist = (t as Training[]) ?? [];
+      setTrainings(tlist);
       setCompletions((c as unknown as Completion[]) ?? []);
+      // Accurate per-training completion counts via real COUNT queries — the
+      // "recent completions" feed above is capped, so deriving counts from it
+      // under-reports once total completions exceed the cap (e.g. after a bulk
+      // rollout). One head-count per training (small N).
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        tlist.map(async (tr) => {
+          const { count } = await supabase
+            .from("cvp_training_completions")
+            .select("id", { count: "exact", head: true })
+            .eq("training_id", tr.id);
+          counts[tr.id] = count ?? 0;
+        }),
+      );
+      setCountByTraining(counts);
     } catch (e: any) {
       toast.error(`Load failed: ${e?.message ?? "unknown"}`);
     } finally {
@@ -40,12 +57,6 @@ export default function AdminTrainings() {
     }
   }, []);
   useEffect(() => { load(); }, [load]);
-
-  const countByTraining = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const c of completions) m[c.training_id] = (m[c.training_id] ?? 0) + 1;
-    return m;
-  }, [completions]);
 
   return (
     <div className="min-h-screen bg-[#f6f9fc] p-6">
@@ -78,7 +89,7 @@ export default function AdminTrainings() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">Recent completions</div>
+            <div className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">Recent completions <span className="font-normal text-gray-400">(latest 500 — counts above are totals)</span></div>
             {completions.length === 0 ? (
               <div className="py-12 text-center text-sm text-gray-500">No completions recorded yet.</div>
             ) : (
