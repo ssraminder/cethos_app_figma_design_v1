@@ -3,7 +3,7 @@ export default {
   sopNumber: "SOP-008",
   title: "Cognitive Debriefing",
   docCode: "CTH-VRF-008",
-  versionLine: "v2 active (effective 24 June 2026)",
+  versionLine: "v3 active (effective 25 June 2026) — cross-references corrected to SOP-019/SOP-011",
   owner: "Project Management / Operations",
   isoRef: "ISO 17100:2015 §4.4, §5.2, §6.1; ISPOR COA good practices",
   where: "Portal → QUALITY → SOPs;  and a cognitive-debriefing order's workflow",
