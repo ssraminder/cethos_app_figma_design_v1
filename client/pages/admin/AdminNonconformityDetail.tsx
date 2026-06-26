@@ -31,6 +31,9 @@ export default function AdminNonconformityDetail() {
   const [rootCause, setRootCause] = useState("");
   const [rcMethod, setRcMethod] = useState("5_whys");
   const [closureSummary, setClosureSummary] = useState("");
+  const [attributed, setAttributed] = useState(false);
+  const [vQuery, setVQuery] = useState("");
+  const [vResults, setVResults] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -42,6 +45,7 @@ export default function AdminNonconformityDetail() {
       setData(res?.result ?? null);
       setRootCause(res?.result?.nonconformity?.root_cause ?? "");
       setRcMethod(res?.result?.nonconformity?.root_cause_method ?? "5_whys");
+      setAttributed(res?.result?.nonconformity?.attributed_to_vendor ?? false);
     } catch (err: any) {
       toast.error(`Failed to load nonconformity: ${err?.message ?? "unknown error"}`);
     } finally {
@@ -64,6 +68,13 @@ export default function AdminNonconformityDetail() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const searchVendors = async () => {
+    if (!vQuery.trim()) return;
+    const { data } = await supabase.from("vendors").select("id, full_name, email")
+      .or(`full_name.ilike.%${vQuery}%,email.ilike.%${vQuery}%`).limit(8);
+    setVResults(data ?? []);
   };
 
   if (loading) return <div className="min-h-screen bg-[#f6f9fc] flex items-center justify-center text-gray-400"><Loader2 className="w-6 h-6 animate-spin" /></div>;
@@ -175,12 +186,45 @@ export default function AdminNonconformityDetail() {
           <section className="bg-white rounded-xl border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">Status</h2>
             <select value={nc.status} disabled={busy}
-              onChange={(e) => call({ action: "update_nc_status", id, status: e.target.value, summary: e.target.value === "closed" ? closureSummary : null }, "Status updated.")}
+              onChange={(e) => call({ action: "update_nc_status", id, status: e.target.value, summary: e.target.value === "closed" ? closureSummary : null, attributed_to_vendor: attributed }, "Status updated.")}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2">
               {NC_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
             </select>
             <textarea value={closureSummary} onChange={(e) => setClosureSummary(e.target.value)} rows={2}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Closure summary (when closing)" />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3" placeholder="Closure summary (when closing)" />
+
+            {/* Linked linguist — traceability now, performance impact only at attributed closure */}
+            <div className="border-t border-gray-100 pt-3">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Linked linguist</label>
+              {nc.vendor_id ? (
+                <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <Link to={`/admin/vendors/${nc.vendor_id}?tab=performance`} className="text-teal-700 hover:underline">{nc.vendor_name || nc.vendor_id}</Link>
+                  <button disabled={busy} onClick={() => call({ action: "link_vendor", kind: "nonconformity", id, vendor_id: null }, "Linguist unlinked.")} className="text-gray-400 hover:text-gray-600 text-xs">Unlink</button>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex gap-2">
+                    <input value={vQuery} onChange={(e) => setVQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && searchVendors()}
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Search linguist by name or email" />
+                    <button onClick={searchVendors} className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Search</button>
+                  </div>
+                  {vResults.length > 0 && (
+                    <div className="mt-1 border border-gray-200 rounded-lg divide-y">
+                      {vResults.map((v) => (
+                        <button key={v.id} disabled={busy} onClick={() => { setVResults([]); setVQuery(""); call({ action: "link_vendor", kind: "nonconformity", id, vendor_id: v.id }, "Linguist linked."); }}
+                          className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-50">{v.full_name} <span className="text-gray-400">· {v.email}</span></button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {nc.vendor_id && (
+                <label className="flex items-start gap-2 mt-2 cursor-pointer">
+                  <input type="checkbox" checked={attributed} onChange={(e) => setAttributed(e.target.checked)} className="mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500" />
+                  <span className="text-xs text-gray-600">Attributed to the linguist — when this NC is <strong>closed</strong>, record a quality event on {nc.vendor_name || "the linguist"}&apos;s performance scorecard. Leave OFF if the cause isn&apos;t their work (e.g. a process / recordkeeping issue).</span>
+                </label>
+              )}
+            </div>
           </section>
 
           <section className="bg-white rounded-xl border border-gray-200 p-5">
