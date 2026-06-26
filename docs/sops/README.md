@@ -58,16 +58,35 @@ controlled system of record** and numbers SOPs in a flat `SOP-0NN` sequence (the
 | **SOP-025** | **Transcription and Translation** | `transcription_translation` | `.md` + portal | [SOP-025-transcription-and-translation.md](SOP-025-transcription-and-translation.md) |
 | **SOP-028** | **Post-Delivery Client Review & Revision Rounds** | *All workflows (cross-cutting)* | `.md` (+ portal) | [SOP-028-post-delivery-revision-rounds.md](SOP-028-post-delivery-revision-rounds.md) |
 
+#### Linguistic Validation (LV) standalone-step set — published to the portal 2026-06-26
+
+The master framework + the per-step recipes for every standalone COA linguistic-validation workflow.
+Published as flat `SOP-0NN` (active, immutable). These replace the former `SOP-LV-001` / `SOP-PR-003…011`
+working drafts (now removed; SOP-PR-001/002 remain the working copies of SOP-008/009).
+
+| ID | Title | Workflow template | Source |
+|---|---|---|---|
+| **SOP-029** | **Linguistic Validation — Standalone Services (master framework)** | *(all LV workflows)* | [SOP-029-linguistic-validation-master.md](SOP-029-linguistic-validation-master.md) |
+| **SOP-030** | Forward Translation | `translation_only` | [SOP-030-forward-translation.md](SOP-030-forward-translation.md) |
+| **SOP-031** | Adaptation | `lv_adaptation` | [SOP-031-adaptation.md](SOP-031-adaptation.md) |
+| **SOP-032** | Reconciliation | `lv_reconciliation` | [SOP-032-reconciliation.md](SOP-032-reconciliation.md) |
+| **SOP-033** | Back-translation | `lv_back_translation` | [SOP-033-back-translation.md](SOP-033-back-translation.md) |
+| **SOP-034** | Back-translation Review | `lv_bt_review` | [SOP-034-back-translation-review.md](SOP-034-back-translation-review.md) |
+| **SOP-035** | Harmonization | `lv_harmonization` | [SOP-035-harmonization.md](SOP-035-harmonization.md) |
+| **SOP-036** | Proofreading | `lv_proofreading` | [SOP-036-proofreading.md](SOP-036-proofreading.md) |
+| **SOP-037** | Cognitive / Debriefing Interview | `lv_interview` | [SOP-037-cognitive-debriefing-interview.md](SOP-037-cognitive-debriefing-interview.md) |
+| **SOP-038** | Finalization / Certification | `lv_finalization` | [SOP-038-finalization-certification.md](SOP-038-finalization-certification.md) |
+
 Also published in the portal (flat scheme): **SOP-008** Cognitive Debriefing (working copy
 [SOP-PR-001](SOP-PR-001-cognitive-debriefing.md)) and **SOP-009** Clinician Reviews (working copy
 [SOP-PR-002](SOP-PR-002-clinician-review.md)).
 
-> **Numbering note.** Two schemes currently coexist: the **portal flat `SOP-0NN`** scheme (controlled,
-> auditor-facing — e.g. cognitive debriefing = `SOP-008`) and the repo **`SOP-PR-*` / `SOP-LV-*`**
-> working drafts (the LV standalone-step set — SOP-PR-001…011 + SOP-LV-001 — most **not yet published**
-> to the portal). New workflow SOPs are numbered in the portal flat sequence (next after `SOP-021` →
-> `SOP-022`, `SOP-023`). Reconciling the `SOP-PR-*` drafts onto the portal scheme and publishing them
-> is a tracked follow-up.
+> **Numbering note.** The **portal flat `SOP-0NN`** scheme is the single controlled, auditor-facing
+> register (e.g. cognitive debriefing = `SOP-008`, LV master = `SOP-029`). The former repo
+> **`SOP-LV-001` / `SOP-PR-003…011`** working drafts were reconciled onto the portal scheme and
+> published as **SOP-029…SOP-038** on 2026-06-26; the old-numbered drafts have been removed so only one
+> scheme remains. The 8 `lv_*` workflow templates now reference `SOP-029` (migration
+> `20260626_lv_workflow_template_sop_refs.sql`). New workflow SOPs continue the flat sequence.
 
 ### How the qualification SOPs relate
 

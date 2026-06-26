@@ -18,7 +18,7 @@ IQVIA audits Cethos as a **translation sub-vendor for COA (Clinical Outcome Asse
 
 1. **Do you have a qualification procedure for COA linguists?** → SOP-019
 2. **Are your COA linguists actually qualified under that procedure?** → QMS tab / COA roster
-3. **Is your quality system documented and controlled?** → 24 active SOPs, version-controlled portal
+3. **Is your quality system documented and controlled?** → 34 active SOPs, version-controlled portal
 
 ---
 
@@ -26,8 +26,9 @@ IQVIA audits Cethos as a **translation sub-vendor for COA (Clinical Outcome Asse
 
 | Metric | Value |
 |---|---|
-| Active SOPs in portal | **24** |
-| SOPs with verification guides | 23 (SOP-013 pending — management review record) |
+| Active SOPs in portal | **34** |
+| SOPs with verification guides | 23 (SOP-013 pending — management review record; the 10 LV SOPs SOP-029–038 are covered by the SOP-029 master framework, per-SOP guides pending) |
+| LV standalone-step SOPs (published 2026-06-26) | **10** (SOP-029 master + SOP-030–038) |
 | COA-qualified linguists (Qualified tier) | **5** (Karine, Maurice, Rémi, Victor, Miriam) |
 | COA Provisional tier (self-declared, monitored) | ~113 (general translators eligible for COA quiz) |
 | Cognitive debriefing vendors (with evidence) | 28 |
@@ -93,6 +94,22 @@ All five gates must be met before a linguist is assigned to any COA service:
 | SOP-028 | Post-Delivery Client Review and Revision Rounds | v2 |
 
 > **SOP-024 known gap (documented):** Independent §5.3.3 revision by a second linguist is not a current step — documented honestly in the SOP; under management review.
+
+### Production — Linguistic Validation (LV) standalone steps *(published 2026-06-26)*
+| SOP | Title | Ver | Workflow template |
+|---|---|---|---|
+| SOP-029 | **Linguistic Validation — Standalone Services (master framework)** | v1 | *(all LV)* |
+| SOP-030 | Forward Translation | v1 | `translation_only` |
+| SOP-031 | Adaptation | v1 | `lv_adaptation` |
+| SOP-032 | Reconciliation | v1 | `lv_reconciliation` |
+| SOP-033 | Back-translation | v1 | `lv_back_translation` |
+| SOP-034 | Back-translation Review | v1 | `lv_bt_review` |
+| SOP-035 | Harmonization | v1 | `lv_harmonization` |
+| SOP-036 | Proofreading | v1 | `lv_proofreading` |
+| SOP-037 | Cognitive / Debriefing Interview | v1 | `lv_interview` |
+| SOP-038 | Finalization / Certification | v1 | `lv_finalization` |
+
+> **LV conformance line (if asked):** translation-type steps (forward translation, adaptation, back-translation) carry a §5.3.3 second-linguist revision → ISO 17100-aligned translation services. Validation/review steps (reconciliation, BT review, harmonization, proofreading, interview, finalization) carry a §5.3.6 independent verification under the ISO 9001 QMS + ISPOR methodology — **not** labelled "ISO 17100 translation services." End-to-end LV conformance of an assembled deliverable rests with the prime/client. Cethos is ISO 17100-**aligned, not certified**.
 
 ### IT / Systems
 | SOP | Title | Ver |

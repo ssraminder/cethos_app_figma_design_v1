@@ -76,6 +76,27 @@ This document records the complete Cethos QMS Standard Operating Procedure regis
 
 ---
 
+## SOP Register — Production (Linguistic Validation standalone-step set, published 2026-06-26)
+
+The master framework + the per-step recipe for every standalone COA linguistic-validation workflow. Published to the portal as flat `SOP-0NN` (active, immutable) on 26 June 2026; these reconcile and supersede the former `SOP-LV-001` / `SOP-PR-003…011` working drafts. Per-SOP verification guides (CTH-VRF-029…038) are pending; until issued, SOP-029 is the framework reference and each step maps 1:1 to a live portal workflow template (verifiable by running the matching order type).
+
+| SOP | Title | Version | Effective | ISO Ref | Workflow template | Sign-Off | Date |
+|---|---|---|---|---|---|---|---|
+| SOP-029 | Linguistic Validation — Standalone Services (Master Framework) | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3, §6.2; ISO 9001; ISPOR | *(all LV)* | | |
+| SOP-030 | Forward Translation | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.1–§5.3.3, §5.3.6 | `translation_only` | | |
+| SOP-031 | Adaptation | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.2, §5.3.3, §5.3.6 | `lv_adaptation` | | |
+| SOP-032 | Reconciliation | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.6; ISO 9001; ISPOR | `lv_reconciliation` | | |
+| SOP-033 | Back-translation | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.2, §5.3.3, §5.3.6 | `lv_back_translation` | | |
+| SOP-034 | Back-translation Review | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.6; ISO 9001; ISPOR | `lv_bt_review` | | |
+| SOP-035 | Harmonization | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.6; ISO 9001; ISPOR | `lv_harmonization` | | |
+| SOP-036 | Proofreading | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.5, §5.3.6; ISPOR | `lv_proofreading` | | |
+| SOP-037 | Cognitive / Debriefing Interview | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.6; ISO 9001; ISPOR | `lv_interview` | | |
+| SOP-038 | Finalization / Certification | v1 | 26 Jun 2026 | ISO 17100:2015 §5.3.6, §6.2; ISO 9001 | `lv_finalization` | | |
+
+> **Conformance basis (documented honestly):** the translation-type steps (SOP-030/031/033) carry an independent **§5.3.3** second-linguist revision and are delivered as ISO 17100-aligned translation services; the validation/review steps (SOP-032/034/035/036/037/038) carry an independent **§5.3.6** verification under the ISO 9001 QMS + ISPOR methodology and are **not** labelled "ISO 17100 translation services." End-to-end LV conformance of an assembled deliverable rests with the prime/client. Cethos is ISO 17100-**aligned, not certified**.
+
+---
+
 ## SOP Register — IT / Systems
 
 | SOP | Title | Version | Effective | ISO Ref | Verification Guide | Sign-Off | Date |
@@ -94,11 +115,11 @@ This document records the complete Cethos QMS Standard Operating Procedure regis
 
 | | Count |
 |---|---|
-| Total active SOPs in portal | 24 |
+| Total active SOPs in portal | **34** |
 | SOPs with verification guide | **23** |
-| SOPs pending guide | 1 (SOP-013 — management review record in progress) |
+| SOPs pending guide | 11 (SOP-013 — management review record in progress; SOP-029–038 — LV set, covered by the SOP-029 master framework, per-SOP guides pending) |
 | Verification guides in Fayza folder | **23** |
-| New/updated SOPs since 24 June 2026 | 9 (SOP-002, SOP-004, SOP-008 v3, SOP-009 v3, SOP-019 v3, SOP-026, SOP-027, SOP-028 v2 — all cross-refs clean) |
+| New/updated SOPs since 24 June 2026 | 19 (SOP-002, SOP-004, SOP-008 v3, SOP-009 v3, SOP-019 v3, SOP-026, SOP-027, SOP-028 v2 + the 10 LV SOPs SOP-029–038 published 26 Jun — all cross-refs clean) |
 
 **Skipped number note:** SOP-005, SOP-006, SOP-007, SOP-010 are not in the active register.
 - SOP-006 was renumbered → **SOP-019** (COA Linguistic Validation Qualification).
