@@ -77,6 +77,7 @@ import AdminReviewJobDetail from "./pages/admin/tr/AdminReviewJobDetail";
 import TRSharePage from "./pages/TRSharePage";
 import StaffTasks from "./pages/admin/StaffTasks";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
+import AdminStaffDetail from "./pages/admin/AdminStaffDetail";
 import AdminAIAnalytics from "./pages/admin/AdminAIAnalytics";
 import AdminReports from "./pages/admin/AdminReports";
 import AdminSettings from "./pages/admin/AdminSettings";
@@ -439,6 +440,7 @@ const App = () => (
                     <Route path="thresholds" element={<Thresholds />} />
                     <Route path="ai/knowledge" element={<AIKnowledgeBase />} />
                     <Route path="staff" element={<AdminStaffManagement />} />
+                    <Route path="staff/:id" element={<AdminStaffDetail />} />
                     <Route path="kiosk-devices" element={<AdminKioskDevices />} />
                     <Route path="reports" element={<AdminReports />} />
                     <Route path="ar" element={<AccountsReceivable />} />

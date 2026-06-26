@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import {
   CheckCircle,
@@ -52,6 +53,7 @@ const ROLES = [
 ];
 
 export default function AdminStaffManagement() {
+  const navigate = useNavigate();
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -321,7 +323,12 @@ export default function AdminStaffManagement() {
                 return (
                   <tr key={member.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium">
-                      {member.full_name || "—"}
+                      <button
+                        onClick={() => navigate(`/admin/staff/${member.id}`)}
+                        className="hover:text-teal-600 hover:underline text-left"
+                      >
+                        {member.full_name || "—"}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{member.email}</td>
                     <td className="px-4 py-3">
