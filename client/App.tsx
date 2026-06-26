@@ -136,6 +136,7 @@ import TrainingsList from "./pages/admin/trainings/TrainingsList";
 import TrainingOverview from "./pages/admin/trainings/TrainingOverview";
 import TrainingLesson from "./pages/admin/trainings/TrainingLesson";
 import TrainingAssign from "./pages/admin/trainings/TrainingAssign";
+import BulkAssignTrainings from "./pages/admin/trainings/BulkAssignTrainings";
 import ExchangeRates from "./pages/admin/ExchangeRates";
 import PartnerQuotePage from "./pages/partner/PartnerQuotePage";
 import LegalPage from "./pages/LegalPage";
@@ -466,6 +467,7 @@ const App = () => (
                     <Route path="recruitment/approval-queue" element={<RecruitmentApprovalQueue />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
                     <Route path="trainings" element={<TrainingsList />} />
+                    <Route path="trainings/bulk-assign" element={<BulkAssignTrainings />} />
                     <Route path="trainings/:slug" element={<TrainingOverview />} />
                     <Route path="trainings/:slug/assign" element={<TrainingAssign />} />
                     <Route path="trainings/:slug/:lessonSlug" element={<TrainingLesson />} />
