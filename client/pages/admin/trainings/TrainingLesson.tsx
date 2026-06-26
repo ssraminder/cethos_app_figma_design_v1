@@ -107,13 +107,27 @@ export default function TrainingLesson() {
         {training.title}
       </Link>
 
-      <header className="mb-6 pb-4 border-b border-gray-200">
-        <div className="flex items-baseline gap-2 text-xs text-gray-500 mb-1">
+      <div className="mb-4">
+        <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
           <span>
-            Lesson {current.order_index} of {lessons.length}
+            Step {currentIdx + 1} of {lessons.length}
           </span>
-          <span>· {current.estimated_minutes} min</span>
+          <span>{current.estimated_minutes} min</span>
         </div>
+        <div className="flex gap-1.5">
+          {lessons.map((l, i) => (
+            <Link
+              key={l.id}
+              to={`/admin/trainings/${training.slug}/${l.slug}`}
+              aria-label={`Step ${i + 1}: ${l.title}`}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${
+                i <= currentIdx ? "bg-teal-500" : "bg-gray-200"
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+      <header className="mb-6 pb-4 border-b border-gray-200">
         <h1 className="text-2xl font-bold text-gray-900">{current.title}</h1>
       </header>
 
