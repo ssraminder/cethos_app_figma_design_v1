@@ -3,7 +3,7 @@
  *
  * Reviews the latest auto-qualification run (qms-auto-qualify) and releases
  * auto-qualify rows into real qms records. The Apply action is gated
- * server-side: SOP-001 must be approved & active (the §3.1.1 signoff), and
+ * server-side: SOP-003 must be approved & active (the §3.1.1 signoff), and
  * the releasing staff member becomes qualified_by on every record while the
  * evidence stays machine-labelled (automated_pipeline_v1).
  *
@@ -134,7 +134,7 @@ export default function AdminQmsQueue() {
     const ok = await confirm({
       title: "Release auto-qualifications?",
       message:
-        "This writes real qualification records (NDA bridge + evidence + role qualifications + language pairs) for every unapplied auto-qualify row, with you recorded as the releasing approver. Requires SOP-001 to be active.",
+        "This writes real qualification records (NDA bridge + evidence + role qualifications + language pairs) for every unapplied auto-qualify row, with you recorded as the releasing approver. Requires SOP-003 to be active.",
       confirmLabel: "Apply batch",
     });
     if (!ok) return;
@@ -225,7 +225,7 @@ export default function AdminQmsQueue() {
               : "Latest auto-qualification run"}
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            Procedure: <Link to="/admin/sops" className="underline hover:text-slate-600">SOP-001 — How we qualify translators and revisers</Link>
+            Procedure: <Link to="/admin/sops/46d69698-d8a8-47d4-b27f-5b5824a8a667" className="underline hover:text-slate-600">SOP-003 — Vendor Qualification and Management</Link>
           </p>
         </div>
         {tab === "auto_qualify" && (
