@@ -7,6 +7,7 @@ import {
   Users,
   ClipboardList,
   UserPlus,
+  Plus,
 } from "lucide-react";
 import { listMyTrainings, TrainingWithStats } from "@/lib/trainings";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
@@ -129,8 +130,15 @@ export default function TrainingsList() {
         {isAdmin && (
           <div className="flex-shrink-0 flex items-center gap-2">
             <Link
-              to="/admin/trainings/bulk-assign"
+              to="/admin/trainings/new"
               className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+            >
+              <Plus className="w-4 h-4" />
+              New training
+            </Link>
+            <Link
+              to="/admin/trainings/bulk-assign"
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-900"
             >
               <UserPlus className="w-4 h-4" />
               Assign trainings

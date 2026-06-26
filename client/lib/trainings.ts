@@ -480,6 +480,82 @@ export async function listVendorsForAssign(
   return (data ?? []) as VendorLite[];
 }
 
+function slugify(s: string): string {
+  return (
+    (s || "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 60) || "training"
+  );
+}
+
+// Admin: create a new training (cvp_trainings). Generates a unique slug from the
+// title. Gated by the cvp_is_training_admin() RLS policy.
+export async function createTraining(fields: {
+  title: string;
+  audience: "staff" | "linguist";
+  category: string;
+  description: string;
+}): Promise<{ id: string; slug: string }> {
+  const base = slugify(fields.title);
+  let slug = base;
+  for (let i = 2; i < 100; i++) {
+    const { data } = await supabase
+      .from("cvp_trainings")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+    if (!data) break;
+    slug = `${base}-${i}`;
+  }
+  const { data, error } = await supabase
+    .from("cvp_trainings")
+    .insert({
+      title: fields.title.trim(),
+      slug,
+      audience: fields.audience,
+      category: fields.category.trim() || "general",
+      description: fields.description.trim() || null,
+      is_active: true,
+      quiz_enabled: false,
+    })
+    .select("id, slug")
+    .single();
+  if (error) throw error;
+  return data as { id: string; slug: string };
+}
+
+// Admin: replace a training's lessons with the supplied ordered set. Used by the
+// training editor on save (delete-then-insert for a clean ordering).
+export async function saveLessons(
+  trainingId: string,
+  lessons: { title: string; estimated_minutes: number; content_blocks: unknown[] }[],
+): Promise<void> {
+  await supabase.from("cvp_training_lessons").delete().eq("training_id", trainingId);
+  if (!lessons.length) return;
+  const seen = new Set<string>();
+  const rows = lessons.map((l, i) => {
+    let s = slugify(l.title) || `lesson-${i + 1}`;
+    let u = s;
+    let n = 2;
+    while (seen.has(u)) u = `${s}-${n++}`;
+    seen.add(u);
+    return {
+      training_id: trainingId,
+      order_index: i + 1,
+      slug: u,
+      title: l.title.trim(),
+      estimated_minutes: l.estimated_minutes || 5,
+      content_blocks: l.content_blocks,
+      body_markdown: "",
+    };
+  });
+  const { error } = await supabase.from("cvp_training_lessons").insert(rows);
+  if (error) throw error;
+}
+
 // Admin: assign a vendor training to many vendors in one go. Idempotent (skips
 // vendors already assigned this training).
 export async function assignVendorsBulk(
