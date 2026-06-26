@@ -1,6 +1,6 @@
 // qms-auto-qualify — AI-first vendor qualification pipeline (ISO 17100 §3.1).
 //
-// Design (per SOP-001): AI extracts facts from the CV with verbatim quotes;
+// Design (per SOP-003): AI extracts facts from the CV with verbatim quotes;
 // FIXED RULES — not AI — decide which §3.1.4 basis applies; outcomes are
 // recorded with full inputs for reproducibility. In dry_run mode nothing is
 // written to qms.role_qualifications — only to qms.auto_qualification_results
@@ -513,7 +513,7 @@ serve(async (req) => {
       return json({ success: true, run_id: run.id, vendor_count: copied });
     }
 
-    // Release auto_qualify rows into real qms records. Gated on SOP-001 being
+    // Release auto_qualify rows into real qms records. Gated on SOP-003 being
     // ACTIVE (the §3.1.1 signoff) and on a staff identity — the acting user
     // becomes qualified_by while the evidence stays machine-labelled.
     if (action === "apply") {
@@ -526,7 +526,7 @@ serve(async (req) => {
       const { data: sop } = await sb
         .from("sops")
         .select("id, current_version_id")
-        .eq("slug", "qualify-translators-revisers")
+        .eq("slug", "approval-authority-qa-oversight")
         .maybeSingle();
       let sopStatus: string | null = null;
       if (sop?.current_version_id) {
@@ -537,7 +537,7 @@ serve(async (req) => {
         return json({
           success: false,
           code: "SOP_NOT_ACTIVE",
-          error: "SOP-001 (How we qualify translators and revisers) must be approved and active before qualifications can be applied. Activate it at /admin/sops.",
+          error: "SOP-003 (Vendor Qualification and Management) must be approved and active before qualifications can be applied. Activate it at /admin/sops.",
         }, 409);
       }
 
