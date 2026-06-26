@@ -408,3 +408,20 @@ export async function deleteAssignment(assignmentId: string): Promise<void> {
     .eq("id", assignmentId);
   if (error) throw error;
 }
+
+/**
+ * Admin-only: change a training's type (audience). 'staff' shows it in the admin
+ * portal; 'linguist' (= "Vendor") shows it to vendors in the vendor portal via
+ * cvp_linguist_trainings_for_vendor. Gated server-side by the cvp_is_training_admin()
+ * RLS policy on cvp_trainings.
+ */
+export async function updateTrainingAudience(
+  trainingId: string,
+  audience: "staff" | "linguist",
+): Promise<void> {
+  const { error } = await supabase
+    .from("cvp_trainings")
+    .update({ audience })
+    .eq("id", trainingId);
+  if (error) throw error;
+}
