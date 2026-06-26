@@ -11,7 +11,8 @@
 //   triage_complaint        { id, status, note? }
 //   create_nonconformity    { payload }
 //   set_root_cause          { id, root_cause, method? }
-//   update_nc_status        { id, status, summary? }
+//   update_nc_status        { id, status, summary?, attributed_to_vendor? }
+//   link_vendor             { kind: 'complaint'|'nonconformity', id, vendor_id|null }
 //   create_capa             { payload }
 //   update_capa             { payload }   // payload includes id + status/effectiveness
 
@@ -73,7 +74,11 @@ serve(async (req: Request) => {
         break;
       case "update_nc_status":
         rpc = "qms_update_nc_status";
-        args = { p_id: body.id, p_status: body.status, p_summary: body.summary ?? null, p_actor: actor };
+        args = { p_id: body.id, p_status: body.status, p_summary: body.summary ?? null, p_actor: actor, p_attributed_to_vendor: body.attributed_to_vendor ?? false };
+        break;
+      case "link_vendor":
+        rpc = "qms_link_vendor";
+        args = { p_kind: body.kind, p_id: body.id, p_vendor_id: body.vendor_id ?? null, p_actor: actor };
         break;
       case "create_capa":
         rpc = "qms_create_capa";
