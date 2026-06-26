@@ -7,6 +7,7 @@ import {
   getMyAssignment,
   getLessonProgress,
   confirmTrainingComplete,
+  updateTrainingAudience,
   Training,
   TrainingLesson,
   TrainingAssignment,
@@ -42,6 +43,22 @@ export default function TrainingOverview() {
       setError(e?.message ?? String(e));
     } finally {
       setConfirming(false);
+    }
+  }
+
+  const [changingType, setChangingType] = useState(false);
+
+  async function handleChangeType(audience: "staff" | "linguist") {
+    if (!training || changingType) return;
+    setChangingType(true);
+    setError(null);
+    try {
+      await updateTrainingAudience(training.id, audience);
+      setTraining({ ...training, audience } as Training);
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setChangingType(false);
     }
   }
 
@@ -132,7 +149,7 @@ export default function TrainingOverview() {
         </div>
 
         {isAdmin && (
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <Link
               to={`/admin/trainings/${training.slug}/assign`}
               className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700"
@@ -140,6 +157,27 @@ export default function TrainingOverview() {
               <UserPlus className="w-4 h-4" />
               Assign to staff
             </Link>
+            <label className="inline-flex items-center gap-2 text-sm text-gray-600">
+              <span>Type:</span>
+              <select
+                value={
+                  (training as any).audience === "linguist"
+                    ? "linguist"
+                    : "staff"
+                }
+                onChange={(e) =>
+                  handleChangeType(e.target.value as "staff" | "linguist")
+                }
+                disabled={changingType}
+                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm disabled:opacity-50"
+              >
+                <option value="staff">Staff</option>
+                <option value="linguist">Vendor</option>
+              </select>
+              {changingType && (
+                <span className="text-xs text-gray-400">Saving…</span>
+              )}
+            </label>
           </div>
         )}
       </header>
