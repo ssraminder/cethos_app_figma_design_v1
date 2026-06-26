@@ -56,6 +56,7 @@ controlled system of record** and numbers SOPs in a flat `SOP-0NN` sequence (the
 | **SOP-023** | **Translation and Review** | `translation_review` | `.md` + portal | [SOP-023-translation-and-review.md](SOP-023-translation-and-review.md) |
 | **SOP-024** | **Certified Translation** | `certified_translation` | `.md` + portal | [SOP-024-certified-translation.md](SOP-024-certified-translation.md) |
 | **SOP-025** | **Transcription and Translation** | `transcription_translation` | `.md` + portal | [SOP-025-transcription-and-translation.md](SOP-025-transcription-and-translation.md) |
+| **SOP-026** | **Post-Delivery Client Review & Revision Rounds** | *All workflows (cross-cutting)* | `.md` (+ portal) | [SOP-026-post-delivery-revision-rounds.md](SOP-026-post-delivery-revision-rounds.md) |
 
 Also published in the portal (flat scheme): **SOP-008** Cognitive Debriefing (working copy
 [SOP-PR-001](SOP-PR-001-cognitive-debriefing.md)) and **SOP-009** Clinician Reviews (working copy

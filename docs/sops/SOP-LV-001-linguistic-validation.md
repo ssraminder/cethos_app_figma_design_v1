@@ -68,3 +68,5 @@ POs in, deliverables out; client queries and feedback are logged against the ord
 
 ## 11. Related documents
 Per-step SOPs (the detailed recipes): SOP-PR-001 Cognitive Debriefing · SOP-PR-002 Clinician Review · SOP-PR-003 Forward Translation · -004 Adaptation · -005 Reconciliation · -006 Back-translation · -007 BT Review · -008 Harmonization · -009 Proofreading · -010 Interview · -011 Finalization/Certification. Design: `LV-standalone-workflow-set-design.md`.
+
+- **SOP-026** — Post-Delivery Client Review & Revision Rounds (client review/changes after delivery → controlled revision round on the revised version, billing, and the already-invoiced → new-order rule).

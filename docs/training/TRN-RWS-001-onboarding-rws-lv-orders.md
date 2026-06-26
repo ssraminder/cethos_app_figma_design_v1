@@ -1,10 +1,12 @@
+# TRN-RWS-001 — Onboarding an RWS Linguistic-Validation PO (staff training)
+
 | | |
 |---|---|
 | **Document ID** | TRN-RWS-001 |
 | **Title** | Onboarding an RWS Linguistic-Validation PO into the portal — staff training |
 | **Owner** | Quality / Operations |
 | **Audience** | Staff (LV operations / project management) |
-| **Status** | Draft v0.1 — 2026-06-25 *(screenshots to be embedded in the controlled .docx)* |
+| **Status** | Draft v0.2 — 2026-06-26 *(updated for the team-Dropbox per-workflow folder structure + post-delivery revision rounds & billing; screenshots embedded in the controlled .docx)* |
 | **Related** | SOP-LV-001 (master LV SOP) · SOP-PR-003…011 (per-step SOPs) · the task→template map below |
 
 ---
@@ -104,25 +106,45 @@ The vendor produces the step and uploads the deliverable. Then the **QA Review**
 
 ## 10. Step 8 — Deliver + complete
 
-On QA approval, upload the released version to the **Final Deliverable** node, deliver to the client, and complete the order. Files live in the portal-managed Dropbox folder, auto-created per order:
+On QA approval, upload the released version to the **Final Deliverable** node, deliver to the client, and complete the order. Files live in the **Cethos team Dropbox**, auto-organised per order into a **per-workflow, per-step, versioned** structure:
 
 ```
-Cethos/Projects/RWS/<PRJ-2026-NNNNN> — RWS/<ORD-2026-NNNNN> — <Target Language> — <date>
+Cethos Team Folder/01_Clients/RWS/{PRJ-2026-NNNNN} - {client project code}/
+└── {ORD-2026-NNNNN} - {Service} - {src-tgt} - {date}/
+    ├── 00_Admin/                 PROJECT-RECORD.md (the audit record) + the order's invoice/PO PDFs
+    ├── 01_Source/v1/             the source files RWS sent
+    ├── 02_Reference/v1/          instructions / reference / working files
+    ├── 10_{Step}/v1/             the LV step's deliverable (10_Translation, 10_Adaptation, 10_Proofreading, 10_Harmonization, …)
+    ├── 20_QA-Review/v1/          the QA-approved copy
+    └── 30_Final-Deliverable/v1/  the released copy
 ```
 
-Use **"Re-sync folders and source files to Dropbox"** on the order if the folder needs refreshing. Records (order, workflow, QA, deliverables) are retained **≥ 5 years** (ISO 17100 §6.2).
+- **Every workflow step is its own numbered folder** (`10_`, `20_`, `30_` — step × 10), and **every folder is versioned** (`v1`, `v2`, …). A revision round re-versions the affected step to `v2`/`v3`; **`v1` is never overwritten** (see §11). Post-delivery client feedback adds a **`05_Client-Review/round-N/`** folder.
+- Use **"Sync"** (top of the order detail) to refresh the folder; **"Open in Dropbox"** jumps to it. Records are retained **≥ 5 years** (ISO 17100 §6.2).
 
-> `[SCREENSHOT 8: completed order showing the auto-created Dropbox folder link]`
+> `[SCREENSHOT 8: the order's team-Dropbox folder — breadcrumb "Cethos Team Folder ▸ 01_Clients ▸ RWS ▸ PRJ-2026-00031 - 261-A2229A-EILV ▸ ORD-2026-10227 …", listing 00_Admin / 01_Source / 02_Reference / 10_Translation / 20_QA-Review / 30_Final-Deliverable]`
 
-## 11. Review rounds & client feedback
+## 11. Review rounds, revisions & post-delivery changes
 
-RWS work is iterative — developer feedback, clinician feedback, and query rounds are normal. Three mechanisms, **all built into the portal**:
+RWS work is iterative — developer/clinician feedback and query rounds are normal, and they often arrive **after** we've delivered. Handle every one as a **controlled revision round**, never a silent re-send. (Full process + ISO basis: **SOP-026 — Post-Delivery Client Review & Revision Rounds**.)
 
-1. **Client feedback → the order's "Client Communications" tab.** It is an **append-only log**: paste each RWS email (feedback, review comments, queries) as a client communication. This is the ISO 17100 §6.1 feedback record, and the portal can **auto-generate the vendor's job instructions** from it. Entries are never deleted — append-only by design.
-2. **In-order revisions → the Workflow.** When a deliverable comes back for changes, upload a **new version** on its step; the QA reviewer re-checks it. Use **"+ Add Step"** to add an extra review pass within the same order.
-3. **A separately-billed round → a new order.** When RWS issues a *separate PO* for a review round (e.g. **DEVRF** Developer Feedback Review, **CLNFBR** Clinician Feedback Review), create a **new order** on the matching review template, following Section 6. Each billable round is its own order.
+**a) Always log the client's return first (§6.1).** Paste each RWS email into the order's **Client Communications** tab — **append-only**, **back-date** it to RWS's send time, and **attach their markup/feedback files**. This is the ISO 17100 §6.1 record, and it is what **populates the `05_Client-Review/round-N/`** folder (a `feedback.md` of the request + the attachments). The portal can auto-generate the vendor brief from it.
 
-> `[SCREENSHOT 9: the order's Client Communications tab — the append-only "Client communications" log with "Add client email," feeding AI-generated vendor instructions]`
+> `[SCREENSHOT 9: the order's Client Communications tab — append-only log, "Add client email," with attachments]`
+
+**b) Run the revision as a new version.** Re-open the affected step (**Request revision**); the vendor delivers a **new version**; QA re-checks it; re-issue the Final Deliverable. The folders update themselves — the revised artifact lands in **`…/v2/`** and the original stays at **`v1`** (use **Sync** to refresh). Use **"+ Add Step"** only if the round genuinely needs an *extra* review pass.
+
+**c) Billing the round — this is where the order's invoice status decides everything:**
+
+| The delivered order is… | Where the payable/receivable go |
+|---|---|
+| **Not yet invoiced** (status not Paid/Invoiced) | Add the round's **vendor payable** (the step's **Purchase Order / Send PO**) and, if the client is charged, a **receivable + a supplementary invoice** — **on the same order**. The revised work stays as `v2` in the same folder. |
+| **Already invoiced / Paid** | The order is financially **closed** — do **not** add charges to it. **Create a new order under the *same project* (`PRJ-…`)**, with its own PO / payable / receivable / invoice. RWS normally issues a **separate PO** for this (e.g. **DEVRF** Developer Feedback Review, **CLNFBR** Clinician Feedback Review) — onboard it per §3–10. It gets **its own order folder under the same `PRJ` folder**, so the project keeps all its rounds together. |
+
+In-scope corrections **we** own are not charged to the client; client changes **beyond the PO scope** are quoted to RWS and the vendor paid accordingly. **Confirm chargeability (and the vendor rate) before starting paid revision work.** Use the order's **Financials** bar (Client / Vendor / Margin) and **Send PO** on the step to set the round's money; the vendor's invoice is accepted through **Vendor Invoices** as usual.
+
+> `[SCREENSHOT 10: the order's workflow with the per-step "Send PO" + the "Financials: Client / Vendor / Margin" bar — where a round's payable and receivable are set]`
+> `[SCREENSHOT 11: an already-Paid order showing the "Part of PRJ-… · N prior tasks" chip — one project carrying multiple orders/rounds]`
 
 ## 12. Audit-critical DON'Ts
 
@@ -133,7 +155,7 @@ RWS work is iterative — developer feedback, clinician feedback, and query roun
 - ✗ Never **chain** the LV steps — each PO is its own independent single-step order.
 - ✗ Never **assign an unqualified linguist** or override the eligibility gate.
 
-## 12. Quick reference
+## 13. Quick reference
 
 - **RWS customer (USD, tax-exempt):** RWS Life Sciences, Inc.
 - **Default QA reviewer:** Bobby Rawat (internal review).
