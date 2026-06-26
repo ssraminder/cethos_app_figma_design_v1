@@ -43,8 +43,8 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-function buildEmail(args: { firstName: string; vendorPortalUrl: string; referenceCode: string | null }): { subject: string; html: string } {
-  const portal = escapeHtml(args.vendorPortalUrl);
+function buildEmail(args: { firstName: string; signUrl: string; referenceCode: string | null }): { subject: string; html: string } {
+  const link = escapeHtml(args.signUrl);
   const name = escapeHtml(args.firstName) || "there";
   const ref = args.referenceCode ? escapeHtml(args.referenceCode) : null;
   const subject = "Action needed: review and e-sign your Cethos onboarding package";
@@ -71,12 +71,12 @@ function buildEmail(args: { firstName: string; vendorPortalUrl: string; referenc
   </p>
 
   <p style="margin:20px 0;text-align:center;">
-    <a href="${portal}/onboarding-package" style="display:inline-block;padding:12px 24px;background:#0891B2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Review &amp; sign your onboarding package</a>
+    <a href="${link}" style="display:inline-block;padding:12px 24px;background:#0891B2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Review &amp; sign your onboarding package</a>
   </p>
 
   <p style="margin:0 0 12px;">
-    The link opens the Cethos vendor portal. We don't use passwords &mdash; sign in with this email address and we'll send
-    you a 6-digit code. For your security, we re-confirm your identity with a one-time code again at the moment you sign.
+    This is your personal signing link &mdash; it opens your package directly, with no password or login needed. Please
+    don't forward it, as it is unique to you. Review the documents, type your full legal name, and click sign.
   </p>
 
   <h2 style="font-size:14px;color:#0f766e;margin:22px 0 6px;">Why we're asking</h2>
@@ -89,7 +89,7 @@ function buildEmail(args: { firstName: string; vendorPortalUrl: string; referenc
   <h2 style="font-size:14px;color:#0f766e;margin:22px 0 6px;">If anything goes wrong</h2>
   <p style="margin:0 0 8px;">
     Reply to this email or write to <a href="mailto:vm@cethos.com" style="color:#0891B2;">vm@cethos.com</a> and we'll help the
-    same day. Common gotcha: the one-time code can land in your spam folder.
+    same day. Common gotcha: this email and its signing link can land in your spam folder.
   </p>
 
   <p style="margin:18px 0 0;">
@@ -145,7 +145,7 @@ serve(async (req: Request) => {
   // ── Test-send mode: one preview to the requested address, no DB writes.
   if (body.test_email) {
     if (!BREVO_API_KEY) return json({ success: false, error: "BREVO_API_KEY not configured" }, 500);
-    const defaults = buildEmail({ firstName: "Test", vendorPortalUrl, referenceCode: "CSV0000" });
+    const defaults = buildEmail({ firstName: "Test", signUrl: `${vendorPortalUrl}/onboarding-sign/TEST-TOKEN-PREVIEW`, referenceCode: "CSV0000" });
     const subject = (body.subject_override?.trim() || defaults.subject).replace(/%FIRSTNAME%/g, "Test");
     const html = (body.body_html_override?.trim() || defaults.html).replace(/%FIRSTNAME%/g, "Test");
     const r = await sendBrevo(BREVO_API_KEY, { email: body.test_email }, `[TEST] ${subject}`, html, ["vendor-onboarding-invite", "test"]);
@@ -156,7 +156,7 @@ serve(async (req: Request) => {
   // ── Resolve the cohort: vendors with a current onboarding package, not yet signed.
   const { data: pkgRows, error: pkgErr } = await sb
     .from("vendor_onboarding_packages")
-    .select("vendor_id, reference_code")
+    .select("vendor_id, reference_code, sign_token")
     .eq("is_current", true);
   if (pkgErr) return json({ success: false, error: "package_lookup_failed", detail: pkgErr.message }, 500);
 
@@ -168,9 +168,11 @@ serve(async (req: Request) => {
   if (pkgVendorIds.length === 0) return json({ success: true, data: { candidates: 0, sent: 0, skipped: 0, errors: [] } });
 
   const refByVendor = new Map<string, string | null>();
+  const tokenByVendor = new Map<string, string | null>();
   for (const r of pkgRows ?? []) {
-    const row = r as { vendor_id: string; reference_code: string | null };
+    const row = r as { vendor_id: string; reference_code: string | null; sign_token: string | null };
     refByVendor.set(row.vendor_id, row.reference_code);
+    tokenByVendor.set(row.vendor_id, row.sign_token);
   }
 
   // Already-signed onboarding packages → exclude.
@@ -204,19 +206,22 @@ serve(async (req: Request) => {
     }
   }
 
-  type Cand = { id: string; full_name: string | null; email: string; status: string | null; reference_code: string | null };
+  type Cand = { id: string; full_name: string | null; email: string; status: string | null; reference_code: string | null; sign_token: string };
   const candidates: Cand[] = [];
   for (const v of vendorRows ?? []) {
     const row = v as { id: string; full_name: string | null; email: string | null; status: string | null };
     if (!row.email) continue;
     if (signedSet.has(row.id)) continue;
     if (recentlyEmailed.has(row.id)) continue;
+    const tok = tokenByVendor.get(row.id) ?? null;
+    if (!tok) continue; // no signing token (shouldn't happen for the cohort)
     candidates.push({
       id: row.id,
       full_name: row.full_name,
       email: row.email,
       status: row.status,
       reference_code: refByVendor.get(row.id) ?? null,
+      sign_token: tok,
     });
   }
 
@@ -240,7 +245,8 @@ serve(async (req: Request) => {
   let sent = 0;
   for (const c of candidates) {
     const firstName = (c.full_name || "").split(" ")[0] || "";
-    const defaults = buildEmail({ firstName, vendorPortalUrl, referenceCode: c.reference_code });
+    const signUrl = `${vendorPortalUrl}/onboarding-sign/${c.sign_token}`;
+    const defaults = buildEmail({ firstName, signUrl, referenceCode: c.reference_code });
     const subject = (body.subject_override?.trim() || defaults.subject).replace(/%FIRSTNAME%/g, firstName);
     const html = (body.body_html_override?.trim() || defaults.html).replace(/%FIRSTNAME%/g, firstName);
 
