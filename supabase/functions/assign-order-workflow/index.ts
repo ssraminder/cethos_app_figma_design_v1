@@ -40,7 +40,7 @@ serve(async (req: Request) => {
     // Verify order exists
     const { data: order, error: orderErr } = await supabase
       .from("orders")
-      .select("id, quote_id, quotes(source_language_id, target_language_id)")
+      .select("id, quote_id, customer_id, quotes(source_language_id, target_language_id)")
       .eq("id", order_id)
       .single();
 
@@ -150,6 +150,31 @@ serve(async (req: Request) => {
     }
 
     console.log(`Workflow assigned: order=${order_id}, template=${template_code}, steps=${templateSteps.length}`);
+
+    // TransPerfect orders: auto-tag the vendor work step(s) with the external
+    // workflow-system identifier so they surface on the customer-profile TP
+    // integration panel. The precise TP phase (PostEdit / Proof / QM /
+    // BackTransPE / …) is set or overridden by staff per order, since TP's
+    // phase is not reliably derivable from our service. Non-fatal.
+    try {
+      const customerId = (order as any).customer_id;
+      if (customerId) {
+        const { data: cust } = await supabase
+          .from("customers")
+          .select("is_transperfect_customer")
+          .eq("id", customerId)
+          .maybeSingle();
+        if (cust?.is_transperfect_customer) {
+          await supabase
+            .from("order_workflow_steps")
+            .update({ external_workflow_system: "transperfect" })
+            .eq("workflow_id", workflow.id)
+            .eq("actor_type", "external_vendor");
+        }
+      }
+    } catch (tagErr) {
+      console.error("TP auto-tag (non-fatal):", tagErr);
+    }
 
     // Dropbox: create order folder structure + batch-sync source documents
     triggerDropboxOrderSetup({ order_id, quote_id: order.quote_id });
