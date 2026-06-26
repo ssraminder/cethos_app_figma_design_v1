@@ -1,16 +1,20 @@
+# SOP-029 — Linguistic Validation — Standalone LV Services (Master Framework)
+
 | | |
 |---|---|
-| **Document ID** | SOP-LV-001 |
+| **Document ID** | SOP-029 |
 | **Title** | Linguistic Validation — standalone LV services (master framework) |
 | **Owner** | Quality / Operations |
 | **Applies to** | All Cethos COA linguistic-validation *step* services (RWS Life Sciences and other LV clients) |
-| **Status** | Draft v0.1 — 2026-06-24 |
-| **Related** | Per-step SOPs SOP-PR-001…011 · `docs/audits/2026-06-iqvia/LV-standalone-workflow-set-design.md` · workflow templates (portal) |
+| **Category** | Production |
+| **Status** | Active · v1.0 (effective 2026-06-26) |
+| **Governing policy** | SOP-001 (Document Control & Records Management); SOP-003 (Vendor Qualification & Management); SOP-011 (CAPA) |
+| **Standard / ISO reference** | ISO 17100:2015 §5.3 (translation production), §6.2 (records); ISO 9001:2015 QMS; ISPOR COA good practices; FDA/EMA PRO guidance |
+| **Related** | Per-step SOPs SOP-030…SOP-038, SOP-008 (Cognitive Debriefing), SOP-009 (Clinician Review) · `docs/audits/2026-06-iqvia/LV-standalone-workflow-set-design.md` · portal workflow templates |
 
 ---
-
 ## 1. Purpose
-Define, once, the framework Cethos uses to deliver **individual linguistic-validation (LV) steps** subcontracted by LV clients (e.g. RWS Life Sciences) as **standalone single-step services**, each with an **independent internal quality review** before release — consistently, replicably, and in conformance with ISO 17100 (for translation steps) and the ISO 9001 QMS + ISPOR/regulatory LV methodology (for validation steps). Each individual step has its own per-step SOP (SOP-PR-001…011) that gives the detailed recipe; this master holds everything those SOPs share.
+Define, once, the framework Cethos uses to deliver **individual linguistic-validation (LV) steps** subcontracted by LV clients (e.g. RWS Life Sciences) as **standalone single-step services**, each with an **independent internal quality review** before release — consistently, replicably, and in conformance with ISO 17100 (for translation steps) and the ISO 9001 QMS + ISPOR/regulatory LV methodology (for validation steps). Each individual step has its own per-step SOP (the SOP-030…SOP-038 set, plus SOP-008 / SOP-009) that gives the detailed recipe; this master holds everything those SOPs share.
 
 ## 2. Scope & definitions
 - **Linguistic validation (LV):** the methodology for producing and validating COA/PRO instruments across languages (ISPOR good-practice; FDA/EMA PRO guidance).
@@ -36,7 +40,7 @@ The **QA node is Cethos's own quality gate** — not a separate client deliverab
 
 ## 5. Roles & competence
 - **Linguist / consultant (vendor, step 1):** qualified per ISO 17100 competence requirements (degree + experience) and the role/language/subject qualification held in the QMS roster; for clinician review, a qualified clinician.
-- **QA reviewer (internal, step 2):** an independent second person (NOT the producer). Default **Bobby Rawat**. Performs the §5.3.3 revision or §5.3.6 verification per step type.
+- **QA reviewer (internal, step 2):** an independent, qualified second person (NOT the producer), assigned per the QMS approval-authority policy. Performs the §5.3.3 revision or §5.3.6 verification per step type.
 - **Project manager:** assigns the qualified vendor, manages client communication, authorises release.
 
 ## 6. Common operational procedure (shared by every step)
@@ -67,6 +71,6 @@ POs in, deliverables out; client queries and feedback are logged against the ord
 - ✗ Do **not** assign an unqualified linguist; QA must be a **different** person than the producer.
 
 ## 11. Related documents
-Per-step SOPs (the detailed recipes): SOP-PR-001 Cognitive Debriefing · SOP-PR-002 Clinician Review · SOP-PR-003 Forward Translation · -004 Adaptation · -005 Reconciliation · -006 Back-translation · -007 BT Review · -008 Harmonization · -009 Proofreading · -010 Interview · -011 Finalization/Certification. Design: `LV-standalone-workflow-set-design.md`.
+Per-step SOPs (the detailed recipes): SOP-008 Cognitive Debriefing · SOP-009 Clinician Review · SOP-030 Forward Translation · SOP-031 Adaptation · SOP-032 Reconciliation · SOP-033 Back-translation · SOP-034 BT Review · SOP-035 Harmonization · SOP-036 Proofreading · SOP-037 Interview · SOP-038 Finalization/Certification. Design: `LV-standalone-workflow-set-design.md`.
 
 - **SOP-028** — Post-Delivery Client Review & Revision Rounds (client review/changes after delivery → controlled revision round on the revised version, billing, and the already-invoiced → new-order rule).
