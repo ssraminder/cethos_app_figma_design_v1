@@ -46,9 +46,10 @@ interface StaffDocument {
 interface TrainingEntry {
   assignment_id: string;
   assigned_at: string;
-  due_date: string | null;
-  training: { id: string; title: string; audience: string; estimated_minutes: number | null } | null;
-  completion: { status: string; quiz_score: number | null; completed_at: string; method: string } | null;
+  due_at: string | null;
+  completed_at: string | null;
+  started_at: string | null;
+  training: { id: string; title: string; audience: string; category: string | null } | null;
 }
 
 const ROLES = [
@@ -133,6 +134,7 @@ export default function AdminStaffDetail() {
 
   const [trainingLog, setTrainingLog] = useState<TrainingEntry[]>([]);
   const [trainingLoading, setTrainingLoading] = useState(false);
+  const [markingAll, setMarkingAll] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -186,6 +188,33 @@ export default function AdminStaffDetail() {
       console.error(err);
     } finally {
       setTrainingLoading(false);
+    }
+  };
+
+  const handleMarkComplete = async (assignmentId: string) => {
+    try {
+      await invokeManageStaff("mark_training_complete", { assignment_id: assignmentId });
+      setTrainingLog((prev) =>
+        prev.map((e) =>
+          e.assignment_id === assignmentId ? { ...e, completed_at: new Date().toISOString() } : e,
+        ),
+      );
+    } catch (err: any) {
+      alert("Failed: " + err.message);
+    }
+  };
+
+  const handleMarkAllComplete = async () => {
+    if (!id || !confirm("Mark all pending trainings as completed for this staff member?")) return;
+    setMarkingAll(true);
+    try {
+      await invokeManageStaff("mark_all_training_complete", { staff_user_id: id });
+      const now = new Date().toISOString();
+      setTrainingLog((prev) => prev.map((e) => ({ ...e, completed_at: e.completed_at ?? now })));
+    } catch (err: any) {
+      alert("Failed: " + err.message);
+    } finally {
+      setMarkingAll(false);
     }
   };
 
@@ -560,54 +589,72 @@ export default function AdminStaffDetail() {
               No training assignments yet
             </div>
           ) : (
-            <div className="bg-white rounded-lg border divide-y">
-              {trainingLog.map((entry) => (
-                <div key={entry.assignment_id} className="flex items-start gap-4 px-4 py-4">
-                  <div className="mt-0.5">
-                    {entry.completion ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <Clock className="w-5 h-5 text-amber-400" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
-                      {entry.training?.title ?? "Unknown Training"}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-500">
-                      <span>Assigned {format(new Date(entry.assigned_at), "MMM d, yyyy")}</span>
-                      {entry.due_date && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          Due {format(new Date(entry.due_date), "MMM d, yyyy")}
-                        </span>
+            <>
+              {trainingLog.some((e) => !e.completed_at) && (
+                <div className="flex justify-end mb-3">
+                  <button
+                    onClick={handleMarkAllComplete}
+                    disabled={markingAll}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
+                  >
+                    {markingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    Mark All Complete
+                  </button>
+                </div>
+              )}
+              <div className="bg-white rounded-lg border divide-y">
+                {trainingLog.map((entry) => (
+                  <div key={entry.assignment_id} className="flex items-start gap-4 px-4 py-4">
+                    <div className="mt-0.5">
+                      {entry.completed_at ? (
+                        <CheckCircle className="w-5 h-5 text-green-500" />
+                      ) : (
+                        <Clock className="w-5 h-5 text-amber-400" />
                       )}
-                      {entry.training?.estimated_minutes && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {entry.training.estimated_minutes} min
-                        </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {entry.training?.title ?? "Unknown Training"}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-500">
+                        <span>Assigned {format(new Date(entry.assigned_at), "MMM d, yyyy")}</span>
+                        {entry.due_at && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            Due {format(new Date(entry.due_at), "MMM d, yyyy")}
+                          </span>
+                        )}
+                        {entry.training?.category && (
+                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                            {entry.training.category}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right text-xs flex flex-col items-end gap-1">
+                      {entry.completed_at ? (
+                        <div className="space-y-0.5">
+                          <div className="text-green-600 font-medium">Completed</div>
+                          <div className="text-gray-400">
+                            {format(new Date(entry.completed_at), "MMM d, yyyy")}
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="text-amber-600 font-medium">Pending</span>
+                          <button
+                            onClick={() => handleMarkComplete(entry.assignment_id)}
+                            className="text-xs text-teal-600 hover:underline"
+                          >
+                            Mark complete
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
-                  <div className="text-right text-xs">
-                    {entry.completion ? (
-                      <div className="space-y-0.5">
-                        <div className="text-green-600 font-medium">Completed</div>
-                        <div className="text-gray-400">
-                          {format(new Date(entry.completion.completed_at), "MMM d, yyyy")}
-                        </div>
-                        {entry.completion.quiz_score != null && (
-                          <div className="text-gray-500">Score: {entry.completion.quiz_score}%</div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-amber-600 font-medium">Pending</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}

@@ -37,8 +37,8 @@ Deno.serve(async (req) => {
 
     const expires_at = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000).toISOString();
 
-    // Upsert OTP record
-    await supabase.from("secure_upload_otps").upsert({
+    // Upsert OTP record (partial unique index on contact,channel WHERE channel='staff_nda')
+    const { error: upsertErr } = await supabase.from("secure_upload_otps").upsert({
       contact: staff.email,
       channel: "staff_nda",
       code_hash,
@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
       expires_at,
       verified_at: null,
     }, { onConflict: "contact,channel" });
+    if (upsertErr) throw new Error(`Failed to save OTP: ${upsertErr.message}`);
 
     // Send via Brevo
     const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
