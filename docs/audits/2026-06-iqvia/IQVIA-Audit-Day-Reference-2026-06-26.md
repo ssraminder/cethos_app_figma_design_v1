@@ -27,7 +27,7 @@ IQVIA audits Cethos as a **translation sub-vendor for COA (Clinical Outcome Asse
 | Metric | Value |
 |---|---|
 | Active SOPs in portal | **34** |
-| SOPs with verification guides | 23 (SOP-013 pending — management review record; the 10 LV SOPs SOP-029–038 are covered by the SOP-029 master framework, per-SOP guides pending) |
+| SOPs with verification guides | 33 (one per active SOP; the 10 LV guides CTH-VRF-029–038 are issued; only SOP-013 pending — management review record) |
 | LV standalone-step SOPs (published 2026-06-26) | **10** (SOP-029 master + SOP-030–038) |
 | COA-qualified linguists (Qualified tier) | **5** (Karine, Maurice, Rémi, Victor, Miriam) |
 | COA Provisional tier (self-declared, monitored) | ~113 (general translators eligible for COA quiz) |
@@ -128,7 +128,7 @@ All five gates must be met before a linguist is assigned to any COA service:
 
 ## 5. QMS Internal Cross-Reference Consistency
 
-All 24 active SOPs passed a cross-reference scan on 25 June 2026. Every SOP-to-SOP reference points to an active document. No broken links.
+All 34 active SOPs passed a cross-reference scan (the 24 core on 25 June 2026; the 10 LV SOPs SOP-029–038 on 26 June, with every cross-reference remapped to the portal flat scheme). Every SOP-to-SOP reference points to an active document. No broken links.
 
 *(Note: SOP-019 v3 revision history row contains the text "SOP-005→SOP-014" as documentation of the correction — this is expected and is not a live cross-reference.)*
 
