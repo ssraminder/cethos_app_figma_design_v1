@@ -23,6 +23,7 @@ export interface TrainingLesson {
   key_rules: { rule: string; reason: string }[];
   route_reference: string | null;
   estimated_minutes: number;
+  content_blocks: unknown[] | null;
 }
 
 export interface TrainingAssignment {
