@@ -90,6 +90,7 @@ import AdminTrainings from "./pages/admin/AdminTrainings";
 import AdminQmsStaff from "./pages/admin/AdminQmsStaff";
 import AdminQualityHub from "./pages/admin/AdminQualityHub";
 import AdminQmsHub from "./pages/admin/AdminQmsHub";
+import AdminTestSources from "./pages/admin/AdminTestSources";
 import QmsHubLayout from "./components/admin/QmsHubLayout";
 import AdminNonconformityDetail from "./pages/admin/AdminNonconformityDetail";
 import AdminSmsTemplates from "./pages/admin/AdminSmsTemplates";
@@ -469,6 +470,7 @@ const App = () => (
                       <Route path="qms/approvals" element={<AdminQmsApprovals />} />
                       <Route path="qms/training-records" element={<AdminTrainings />} />
                       <Route path="qms/staff" element={<AdminQmsStaff />} />
+                      <Route path="qms/test-sources" element={<AdminTestSources />} />
                       <Route path="quality" element={<AdminQualityHub />} />
                       <Route path="quality/nc/:id" element={<AdminNonconformityDetail />} />
                       <Route path="trainings" element={<TrainingsList />} />

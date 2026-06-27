@@ -18,6 +18,7 @@ import {
   UserCheck,
   ClipboardCheck,
   HelpCircle,
+  FlaskConical,
 } from "lucide-react";
 
 interface HubTab {
@@ -32,6 +33,7 @@ const TABS: HubTab[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, to: "/admin/qms", match: (p) => p === "/admin/qms" },
   { id: "sops", label: "SOPs", icon: BookOpen, to: "/admin/sops", match: (p) => p.startsWith("/admin/sops") },
   { id: "documents", label: "Documents", icon: Files, to: "/admin/documents", match: (p) => p.startsWith("/admin/documents") },
+  { id: "test-sources", label: "Test Sources", icon: FlaskConical, to: "/admin/qms/test-sources", match: (p) => p.startsWith("/admin/qms/test-sources") },
   {
     id: "trainings",
     label: "Trainings",
