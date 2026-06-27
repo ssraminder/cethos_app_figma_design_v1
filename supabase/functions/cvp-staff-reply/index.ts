@@ -206,7 +206,12 @@ serve(async (req: Request) => {
     return json({ success: false, error: "invalid_json" }, 400);
   }
 
-  if (!body.applicationId) return json({ success: false, error: "applicationId_required" }, 400);
+  // Need EITHER an application (recruitment reply/fresh message) OR an
+  // inbound to reply to (lets staff answer a record-less cold sender — a
+  // prospective applicant who emailed vm@ but never created an application).
+  if (!body.applicationId && !body.inboundEmailId) {
+    return json({ success: false, error: "applicationId_or_inboundEmailId_required" }, 400);
+  }
 
   // inboundEmailId is OPTIONAL. Present -> threaded reply to that inbound.
   // Absent -> fresh message to the applicant (new thread).
@@ -256,20 +261,29 @@ serve(async (req: Request) => {
     originalOutbound = ob ?? null;
   }
 
-  const { data: app } = await supabase
-    .from("cvp_applications")
-    .select("id, email, full_name, application_number")
-    .eq("id", body.applicationId)
-    .single();
-  if (!app) return json({ success: false, error: "application_not_found" }, 404);
+  // App is optional: only loaded when an applicationId was supplied. A
+  // cold-inbound reply (inboundEmailId only) leaves app null and replies
+  // to the inbound sender's address instead.
+  let app:
+    | { id: string; email: string | null; full_name: string | null; application_number: string | null }
+    | null = null;
+  if (body.applicationId) {
+    const { data: appData } = await supabase
+      .from("cvp_applications")
+      .select("id, email, full_name, application_number")
+      .eq("id", body.applicationId)
+      .single();
+    if (!appData) return json({ success: false, error: "application_not_found" }, 404);
+    app = appData;
+  }
 
   // If asked, produce an Opus draft BEFORE returning preview / sending.
   let aiDraft: string | null = null;
   let aiError: string | null = null;
   if (body.useAIDraft) {
     const d = await draftWithOpus({
-      applicantName: String(app.full_name ?? ""),
-      applicationNumber: String(app.application_number ?? ""),
+      applicantName: String(app?.full_name ?? inbound?.from_name ?? ""),
+      applicationNumber: String(app?.application_number ?? ""),
       originalOutboundSubject: (originalOutbound?.subject as string) ?? "",
       originalOutboundBody: (originalOutbound?.body_text as string) ?? "",
       inboundSubject: (inbound?.subject as string) ?? "",
@@ -323,25 +337,27 @@ serve(async (req: Request) => {
     if (inbound?.message_id) references.push(String(inbound.message_id));
   }
 
-  const toEmail = String(inbound?.from_email ?? app.email ?? "");
+  const toEmail = String(inbound?.from_email ?? app?.email ?? "");
   if (!toEmail) return json({ success: false, error: "applicant_has_no_email" }, 400);
   const templateTag = isReply ? "staff-reply" : "staff-message";
 
   const sendResult = await sendMailgunEmail({
     to: {
       email: toEmail,
-      name: String(inbound?.from_name ?? app.full_name ?? "") || undefined,
+      name: String(inbound?.from_name ?? app?.full_name ?? "") || undefined,
     },
     subject,
     html: rendered.html,
     text: rendered.text,
-    respectDoNotContactFor: String(app.email),
+    // For a cold-inbound reply there's no application email; honour
+    // do-not-contact against the actual recipient instead.
+    respectDoNotContactFor: String(app?.email ?? toEmail),
     replyTo: body.replyTo || undefined,
-    tags: [templateTag, String(body.applicationId)],
+    tags: body.applicationId ? [templateTag, String(body.applicationId)] : [templateTag],
     inReplyTo,
     references,
     trackContext: {
-      applicationId: String(body.applicationId),
+      applicationId: body.applicationId ? String(body.applicationId) : undefined,
       templateTag,
       staffUserId: staffId,
     },
