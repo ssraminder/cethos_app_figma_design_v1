@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BookOpen,
@@ -11,12 +11,15 @@ import {
 } from "lucide-react";
 import { listMyTrainings, TrainingWithStats } from "@/lib/trainings";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
+import { QmsFilterBar } from "@/components/admin/QmsFilterBar";
 
 export default function TrainingsList() {
   const { isAdmin } = useAdminAuthContext();
   const [trainings, setTrainings] = useState<TrainingWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [audience, setAudience] = useState("");
 
   useEffect(() => {
     listMyTrainings()
@@ -25,9 +28,19 @@ export default function TrainingsList() {
       .finally(() => setLoading(false));
   }, []);
 
-  const visible = isAdmin
+  const inScope = isAdmin
     ? trainings
     : trainings.filter((t) => t.my_assignment !== null);
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return inScope.filter((t) => {
+      const aud = (t as any).audience === "linguist" ? "vendor" : "staff";
+      if (audience && aud !== audience) return false;
+      if (q && !`${t.title} ${t.description ?? ""}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [inScope, search, audience]);
 
   const staffTrainings = visible.filter(
     (t) => (t as any).audience !== "linguist",
@@ -154,6 +167,22 @@ export default function TrainingsList() {
         )}
       </header>
 
+      {!loading && inScope.length > 0 && (
+        <QmsFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search trainings by title…"
+          resultCount={visible.length}
+          totalCount={inScope.length}
+          selects={[
+            { id: "audience", label: "All audiences", value: audience, onChange: setAudience, options: [
+              { value: "staff", label: "Staff" },
+              { value: "vendor", label: "Vendor / linguist" },
+            ] },
+          ]}
+        />
+      )}
+
       {loading && <p className="text-gray-500">Loading…</p>}
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -165,11 +194,13 @@ export default function TrainingsList() {
         <div className="p-12 bg-white border border-gray-200 rounded-lg text-center">
           <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-3" />
           <p className="text-gray-700 font-medium">
-            {isAdmin
-              ? "No trainings exist yet."
-              : "No trainings assigned to you."}
+            {inScope.length > 0
+              ? "No trainings match the current filters."
+              : isAdmin
+                ? "No trainings exist yet."
+                : "No trainings assigned to you."}
           </p>
-          {!isAdmin && (
+          {!isAdmin && inScope.length === 0 && (
             <p className="text-sm text-gray-500 mt-1">
               Ask an admin to assign one to you.
             </p>

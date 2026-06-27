@@ -7,12 +7,13 @@
  * so this is separate from the vendor QMS tab.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, ShieldCheck, X as XIcon, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirmDialog } from "@/components/admin/ConfirmDialog";
+import { QmsFilterBar } from "@/components/admin/QmsFilterBar";
 
 interface CompetenceRecord {
   id: string;
@@ -62,6 +63,17 @@ export default function AdminQmsStaff() {
   const [loading, setLoading] = useState(true);
   const [formFor, setFormFor] = useState<StaffRow | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [missingOnly, setMissingOnly] = useState(false);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return staff.filter((s) => {
+      if (missingOnly && s.competence.length > 0) return false;
+      if (q && !`${s.full_name} ${s.email} ${s.role}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [staff, search, missingOnly]);
 
   const [fnCode, setFnCode] = useState("project_manager");
   const [basisKind, setBasisKind] = useState("formal_training");
@@ -139,11 +151,28 @@ export default function AdminQmsStaff() {
         </p>
       </div>
 
+      {!loading && staff.length > 0 && (
+        <QmsFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by staff name, email, role…"
+          resultCount={filtered.length}
+          totalCount={staff.length}
+          toggles={[
+            { id: "missing", label: "No competence on file", checked: missingOnly, onChange: setMissingOnly },
+          ]}
+        />
+      )}
+
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 p-12 text-center text-sm text-slate-500">
+          {staff.length === 0 ? "No staff found." : "No staff match the current filters."}
+        </div>
       ) : (
         <div className="space-y-4">
-          {staff.map((s) => (
+          {filtered.map((s) => (
             <div key={s.id} className="rounded-xl border border-slate-200 bg-white">
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
                 <div>

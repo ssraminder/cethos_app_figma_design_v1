@@ -80,6 +80,40 @@ function verLabel(v: { document_version: string | null; version_number: number }
   return `v${v.document_version ?? v.version_number}`;
 }
 
+// SOP bodies historically hand-typed a version-history table
+// (| Version | Date | Summary | Approved By |) at the top of content_md. That
+// duplicates the portal's structured version panel + banner above and goes
+// stale on frozen versions (e.g. SOP-019 v4.0 still shows a bogus "1.0 (Draft)"
+// row). We render that table from the DB now, so strip the hand-typed one out of
+// the markdown before display — fixing the stale labels everywhere at once
+// without re-cutting any version. Removes the table block plus an immediately
+// preceding "Version history / Revision history / Document control" heading.
+function stripVersionTable(md: string): string {
+  if (!md) return md;
+  const lines = md.split(/\r?\n/);
+  const isHeaderRow = (l: string) =>
+    /^\s*\|.*\bversion\b.*\|.*\bapprov/i.test(l);
+  const isDelimiterRow = (l: string) => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes("-");
+  const isBodyRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
+
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (isHeaderRow(lines[i]) && i + 1 < lines.length && isDelimiterRow(lines[i + 1])) {
+      i++; // consume the delimiter row
+      while (i + 1 < lines.length && isBodyRow(lines[i + 1])) i++; // consume body rows
+      // Drop a preceding version/revision heading that now has no table under it.
+      let j = out.length - 1;
+      while (j >= 0 && out[j].trim() === "") j--;
+      if (j >= 0 && /^#{1,6}\s+(version|revision|document control|change)/i.test(out[j].trim())) {
+        out.length = j;
+      }
+      continue;
+    }
+    out.push(lines[i]);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export default function AdminSopDetail() {
   const { id } = useParams<{ id: string }>();
   const { session } = useAdminAuthContext();
@@ -530,8 +564,8 @@ export default function AdminSopDetail() {
               </div>
             </div>
           ) : selected ? (
-            <article className="prose prose-slate max-w-none p-6 prose-headings:scroll-mt-4">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{selected.content_md}</ReactMarkdown>
+            <article className="prose prose-slate max-w-none p-6 prose-headings:scroll-mt-4 prose-table:block prose-table:overflow-x-auto prose-th:whitespace-nowrap prose-th:break-normal prose-th:align-top prose-td:break-normal prose-td:align-top">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripVersionTable(selected.content_md)}</ReactMarkdown>
             </article>
           ) : (
             <div className="p-6 text-slate-500">No versions.</div>

@@ -10,7 +10,7 @@
  * Tabs: Auto-qualify / Escalate (human queue) / Chase (no CV) / Errors.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Loader2,
@@ -27,6 +27,7 @@ import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirmDialog } from "@/components/admin/ConfirmDialog";
+import { QmsFilterBar } from "@/components/admin/QmsFilterBar";
 
 type Decision = "auto_qualify" | "escalate" | "chase" | "error";
 
@@ -82,6 +83,17 @@ export default function AdminQmsQueue() {
   const [applying, setApplying] = useState(false);
   const [chasing, setChasing] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const basis = r.basis_code ? (BASIS_LABELS[r.basis_code] ?? r.basis_code) : "";
+      const hay = `${r.vendor?.name ?? ""} ${r.vendor?.email ?? ""} ${basis} ${(r.roles ?? []).join(" ")}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [rows, search]);
 
   const invoke = async (body: Record<string, unknown>, fn = "qms-auto-qualify") => {
     const { data, error } = await supabase.functions.invoke(fn, { body });
@@ -271,10 +283,22 @@ export default function AdminQmsQueue() {
         })}
       </div>
 
+      {!loading && rows.length > 0 && (
+        <QmsFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by vendor name, email, basis, role…"
+          resultCount={filteredRows.length}
+          totalCount={rows.length}
+        />
+      )}
+
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
       ) : rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-300 p-12 text-center text-slate-500">Nothing in this bucket.</div>
+      ) : filteredRows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-slate-300 p-12 text-center text-slate-500">No rows match the current search.</div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
@@ -289,7 +313,7 @@ export default function AdminQmsQueue() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((r) => (
+              {filteredRows.map((r) => (
                 <>
                   <tr key={r.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
                     <td className="px-4 py-3 text-slate-400">
@@ -332,7 +356,7 @@ export default function AdminQmsQueue() {
             </tbody>
           </table>
           <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-            Showing {rows.length} of {total}. Escalated vendors: review the reasons, then record manually via the vendor's QMS tab.
+            Showing {filteredRows.length}{search ? ` of ${rows.length} loaded` : ""} ({total} total). Escalated vendors: review the reasons, then record manually via the vendor's QMS tab.
           </div>
         </div>
       )}

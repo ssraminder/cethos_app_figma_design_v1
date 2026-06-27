@@ -14,6 +14,7 @@ import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { toast } from "sonner";
 import { SopExportButton } from "@/components/admin/SopExportButton";
+import { QmsFilterBar } from "@/components/admin/QmsFilterBar";
 
 interface SopVersionSummary {
   id: string;
@@ -67,6 +68,9 @@ export default function AdminSops() {
   const [newCategory, setNewCategory] = useState("Human Resources");
   const [newIsoRef, setNewIsoRef] = useState("");
   const [newContent, setNewContent] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -123,7 +127,19 @@ export default function AdminSops() {
     }
   };
 
-  const visible = sops.filter((s) => !s.is_archived);
+  const notArchived = sops.filter((s) => !s.is_archived);
+  const allCategories = [...new Set(notArchived.map((s) => s.category))].sort();
+
+  const q = search.trim().toLowerCase();
+  const visible = notArchived.filter((s) => {
+    if (categoryFilter && s.category !== categoryFilter) return false;
+    if (statusFilter && (s.current_version?.status ?? "") !== statusFilter) return false;
+    if (q) {
+      const hay = `${s.sop_number} ${s.title} ${s.category} ${s.iso_clause_reference ?? ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
   const categories = [...new Set(visible.map((s) => s.category))].sort();
 
   return (
@@ -146,13 +162,32 @@ export default function AdminSops() {
         </button>
       </div>
 
+      {!loading && notArchived.length > 0 && (
+        <QmsFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by SOP number, title, category, ISO reference…"
+          resultCount={visible.length}
+          totalCount={notArchived.length}
+          selects={[
+            { id: "category", label: "All categories", value: categoryFilter, onChange: setCategoryFilter, options: allCategories.map((c) => ({ value: c, label: c })) },
+            { id: "status", label: "All statuses", value: statusFilter, onChange: setStatusFilter, options: [
+              { value: "active", label: "Active" },
+              { value: "draft", label: "Draft" },
+              { value: "superseded", label: "Superseded" },
+              { value: "retired", label: "Retired" },
+            ] },
+          ]}
+        />
+      )}
+
       {loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
         </div>
       ) : visible.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-300 p-12 text-center text-slate-500">
-          No SOPs yet. Create the first one.
+          {notArchived.length === 0 ? "No SOPs yet. Create the first one." : "No SOPs match the current filters."}
         </div>
       ) : (
         categories.map((cat) => (

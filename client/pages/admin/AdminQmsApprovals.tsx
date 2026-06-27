@@ -6,12 +6,13 @@
 // manage-qms-evidence action the per-vendor QMS tab uses. This is the
 // always-visible work queue behind the sidebar count badge.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, ShieldCheck, ExternalLink, RefreshCw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { toast } from "sonner";
+import { QmsFilterBar } from "@/components/admin/QmsFilterBar";
 
 interface PendingVendor {
   vendor_id: string;
@@ -28,6 +29,15 @@ export default function AdminQmsApprovals() {
   const [rows, setRows] = useState<PendingVendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      `${r.full_name ?? ""} ${r.email ?? ""} ${r.country ?? ""}`.toLowerCase().includes(q),
+    );
+  }, [rows, search]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +120,16 @@ export default function AdminQmsApprovals() {
         </button>
       </div>
 
+      {!loading && rows.length > 0 && (
+        <QmsFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by vendor name, email, country…"
+          resultCount={filtered.length}
+          totalCount={rows.length}
+        />
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16 text-gray-400">
@@ -118,6 +138,10 @@ export default function AdminQmsApprovals() {
         ) : rows.length === 0 ? (
           <div className="py-16 text-center text-sm text-gray-500">
             No vendors awaiting qualification approval. 🎉
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-16 text-center text-sm text-gray-500">
+            No vendors match the current search.
           </div>
         ) : (
           <table className="w-full">
@@ -130,7 +154,7 @@ export default function AdminQmsApprovals() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {filtered.map((r) => (
                 <tr key={r.vendor_id} className="border-b border-gray-100 hover:bg-gray-50/50">
                   <td className="px-4 py-3">
                     <div className="font-medium text-sm text-gray-900">{r.full_name || "—"}</div>
