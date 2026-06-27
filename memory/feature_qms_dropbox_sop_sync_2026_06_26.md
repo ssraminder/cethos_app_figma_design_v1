@@ -55,7 +55,28 @@ Downloaded SOP-001 v2.0 → valid OOXML, cover + metadata table + headings rende
 SOP-008 (3 versions) shows only v3.0 with `-current`. Idempotent re-run =
 0 processed. Archived/RETIRED SOPs (is_archived) skipped; drafts skipped.
 
+## Manuals / controlled-document library (added same day)
+Extended `qms-dropbox-sync` to ALSO replicate the portal **Documents & Manuals
+library** (`portal_documents` / `portal_document_files`, bucket
+`portal-documents`) — these are **real stored files copied as-is** (.docx/.pdf/
+.html), NOT generated. Layout `/Cethos Team Folder/QMS/Manuals/<DocCode> -
+<Title>/<DocCode> vX.Y - <Title>[ -current]<ext>`. Scope = all published,
+non-archived docs (`is_published=true and is_archived=false`); `is_current`
+resolved via `portal_documents.current_file_id`. Separate ledger
+`public.qms_manual_dropbox_syncs` (unique `document_file_id`); a doc-file row is
+immutable (new version = new row) so dedup is path-equality only (no re-download
+on rename). Triggers `trg_qms_manual_dropbox_files` (insert on
+portal_document_files), `trg_qms_manual_dropbox_docs_ins/_upd` (portal_documents
+title/doc_code/current_file_id/is_published/is_archived). Same weekly cron 1850
+(body `{"limit":200}`, default `kind:"all"`) covers both families.
+
+Function body dispatch: `{sop_id}`→SOPs only, `{document_id}`→manuals only,
+neither→both (filter via `kind:"sop"|"manual"|"all"`).
+
+Verified prod 2026-06-26: 24 docs → 24 folders, **32 files, 0 failed** (sizes
+match DB byte-for-byte incl. a 2 MB HTML guide); QM-002 shows v6.1 `-current` +
+v6.0; CTS-REC-RST-002 shows v1.0/v1.1/v1.2 with only v1.2 `-current`. Idempotent.
+
 ## Extending later
-Design is SOP-only v1. To add QM manuals (QM-001/QM-002 in `portal_documents`)
-or other QMS tables, add another reconcile pass + ledger rows; bump
-`GENERATOR_VERSION` in the edge fn to force a full docx regen after layout edits.
+Bump `GENERATOR_VERSION` to force a full SOP docx regen after layout edits.
+To add more QMS tables, add another reconcile pass + ledger.
