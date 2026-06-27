@@ -1,18 +1,65 @@
-// AdminTrainings — linguist training completion tracker + offline recording.
-// Shows each linguist training with how many vendors have completed it, a recent
-// completions feed, and a "Record offline completion" action for linguists trained
-// outside the portal. Completions are the ISO/IQVIA training-file evidence.
+// AdminTrainings — /admin/qms/training-records
+//
+// The QMS training-completion record (ISO 17100 / IQVIA training-file evidence).
+// Shows BOTH vendor/linguist completions (cvp_training_completions) and staff
+// completions (cvp_training_assignments.completed_at) in one filterable table,
+// plus a "Record offline completion" action for linguists trained outside the
+// portal. Filters let staff find a record fast in front of an auditor — by
+// vendor/name, email, domain, language, training type, training name, and
+// audience (staff vs vendor).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, CheckCircle2, Loader2, RefreshCw, Plus, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { toast } from "sonner";
+import { QmsFilterBar } from "@/components/admin/QmsFilterBar";
 
-interface Training { id: string; title: string; category: string; quiz_enabled: boolean; }
-interface Completion {
-  id: string; vendor_id: string; training_id: string; method: string; completed_at: string;
-  vendors?: { full_name: string | null; email: string | null } | null;
+interface Training {
+  id: string;
+  title: string;
+  category: string;
+  audience: string;
+  quiz_enabled: boolean;
+  is_active: boolean;
+}
+
+// One unified completion record, normalised across the vendor + staff tables.
+interface CompletionRow {
+  id: string;
+  audience: "vendor" | "staff";
+  personName: string;
+  email: string;
+  business: string;
+  country: string;
+  trainingId: string;
+  trainingName: string;
+  trainingType: string; // cvp_trainings.category
+  method: string;
+  completedAt: string;
+  domains: string[];
+  languages: string[];
+}
+
+const arr = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x) => x != null).map((x) => String(x)) : [];
+
+// Page through a PostgREST table in 1000-row windows so the record set isn't
+// silently capped (PostgREST caps any single response at 1000 rows).
+async function pageAll(
+  build: () => any,
+  pages = 15,
+): Promise<any[]> {
+  const out: any[] = [];
+  for (let p = 0; p < pages; p++) {
+    const from = p * 1000;
+    const { data, error } = await build().range(from, from + 999);
+    if (error) throw error;
+    const rows = data ?? [];
+    out.push(...rows);
+    if (rows.length < 1000) break;
+  }
+  return out;
 }
 
 export default function AdminTrainings() {
@@ -20,36 +67,103 @@ export default function AdminTrainings() {
   const staffId = (session as any)?.staffId ?? null;
 
   const [trainings, setTrainings] = useState<Training[]>([]);
-  const [completions, setCompletions] = useState<Completion[]>([]);
-  const [countByTraining, setCountByTraining] = useState<Record<string, number>>({});
+  const [rows, setRows] = useState<CompletionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Filters
+  const [search, setSearch] = useState("");
+  const [audience, setAudience] = useState("");
+  const [trainingName, setTrainingName] = useState("");
+  const [trainingType, setTrainingType] = useState("");
+  const [domain, setDomain] = useState("");
+  const [language, setLanguage] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: t }, { data: c }] = await Promise.all([
-        supabase.from("cvp_trainings").select("id, title, category, quiz_enabled").eq("audience", "linguist").eq("is_active", true).order("created_at"),
-        supabase.from("cvp_training_completions").select("id, vendor_id, training_id, method, completed_at, vendors(full_name, email)").order("completed_at", { ascending: false }).limit(500),
-      ]);
-      const tlist = (t as Training[]) ?? [];
+      // All trainings (both audiences, incl. inactive) — used to resolve a
+      // completion's name/type even if the training was later deactivated.
+      const { data: tData, error: tErr } = await supabase
+        .from("cvp_trainings")
+        .select("id, title, category, audience, quiz_enabled, is_active")
+        .order("created_at");
+      if (tErr) throw tErr;
+      const tlist = (tData as Training[]) ?? [];
       setTrainings(tlist);
-      setCompletions((c as unknown as Completion[]) ?? []);
-      // Accurate per-training completion counts via real COUNT queries — the
-      // "recent completions" feed above is capped, so deriving counts from it
-      // under-reports once total completions exceed the cap (e.g. after a bulk
-      // rollout). One head-count per training (small N).
-      const counts: Record<string, number> = {};
-      await Promise.all(
-        tlist.map(async (tr) => {
-          const { count } = await supabase
-            .from("cvp_training_completions")
-            .select("id", { count: "exact", head: true })
-            .eq("training_id", tr.id);
-          counts[tr.id] = count ?? 0;
-        }),
+      const tById = new Map(tlist.map((t) => [t.id, t]));
+
+      // Vendor / linguist completions.
+      const vendorRows = await pageAll(() =>
+        supabase
+          .from("cvp_training_completions")
+          .select(
+            "id, vendor_id, training_id, method, completed_at, vendors(full_name, business_name, email, country, specializations, target_languages)",
+          )
+          .order("completed_at", { ascending: false }),
       );
-      setCountByTraining(counts);
+
+      // Staff completions live as a stamped completed_at on the assignment.
+      const staffAssign = await pageAll(() =>
+        supabase
+          .from("cvp_training_assignments")
+          .select("id, staff_user_id, training_id, completed_at")
+          .not("staff_user_id", "is", null)
+          .not("completed_at", "is", null)
+          .order("completed_at", { ascending: false }),
+      );
+      const staffIds = [...new Set(staffAssign.map((a) => a.staff_user_id))];
+      const staffById = new Map<string, any>();
+      for (let i = 0; i < staffIds.length; i += 1000) {
+        const chunk = staffIds.slice(i, i + 1000);
+        const { data } = await supabase
+          .from("staff_users")
+          .select("id, full_name, email")
+          .in("id", chunk);
+        (data ?? []).forEach((s: any) => staffById.set(s.id, s));
+      }
+
+      const unified: CompletionRow[] = [];
+      for (const c of vendorRows) {
+        const v = (c as any).vendors ?? {};
+        const t = tById.get(c.training_id);
+        unified.push({
+          id: `v_${c.id}`,
+          audience: "vendor",
+          personName: v.full_name ?? v.business_name ?? "—",
+          email: v.email ?? "",
+          business: v.business_name ?? "",
+          country: v.country ?? "",
+          trainingId: c.training_id,
+          trainingName: t?.title ?? "—",
+          trainingType: t?.category ?? "—",
+          method: c.method ?? "online",
+          completedAt: c.completed_at,
+          domains: arr(v.specializations),
+          languages: arr(v.target_languages),
+        });
+      }
+      for (const a of staffAssign) {
+        const s = staffById.get(a.staff_user_id) ?? {};
+        const t = tById.get(a.training_id);
+        unified.push({
+          id: `s_${a.id}`,
+          audience: "staff",
+          personName: s.full_name ?? "—",
+          email: s.email ?? "",
+          business: "",
+          country: "",
+          trainingId: a.training_id,
+          trainingName: t?.title ?? "—",
+          trainingType: t?.category ?? "—",
+          method: "portal",
+          completedAt: a.completed_at,
+          domains: [],
+          languages: [],
+        });
+      }
+      unified.sort((x, y) => (y.completedAt ?? "").localeCompare(x.completedAt ?? ""));
+      setRows(unified);
     } catch (e: any) {
       toast.error(`Load failed: ${e?.message ?? "unknown"}`);
     } finally {
@@ -58,14 +172,61 @@ export default function AdminTrainings() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  // Distinct option lists for the dropdowns, derived from the loaded records.
+  const opts = useMemo(() => {
+    const names = new Set<string>();
+    const types = new Set<string>();
+    const domains = new Set<string>();
+    const langs = new Set<string>();
+    for (const r of rows) {
+      if (r.trainingName && r.trainingName !== "—") names.add(r.trainingName);
+      if (r.trainingType && r.trainingType !== "—") types.add(r.trainingType);
+      r.domains.forEach((d) => domains.add(d));
+      r.languages.forEach((l) => langs.add(l));
+    }
+    const sortOpt = (s: Set<string>) =>
+      [...s].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
+    return {
+      names: sortOpt(names),
+      types: sortOpt(types),
+      domains: sortOpt(domains),
+      langs: sortOpt(langs),
+    };
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (audience && r.audience !== audience) return false;
+      if (trainingName && r.trainingName !== trainingName) return false;
+      if (trainingType && r.trainingType !== trainingType) return false;
+      if (domain && !r.domains.includes(domain)) return false;
+      if (language && !r.languages.includes(language)) return false;
+      if (q) {
+        const hay = `${r.personName} ${r.email} ${r.business}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [rows, search, audience, trainingName, trainingType, domain, language]);
+
+  const activeTrainings = trainings.filter((t) => t.is_active);
+  const countByTraining = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of rows) m[r.trainingId] = (m[r.trainingId] ?? 0) + 1;
+    return m;
+  }, [rows]);
+
+  const linguistTrainings = trainings.filter((t) => t.audience === "linguist");
+
   return (
     <div className="min-h-screen bg-[#f6f9fc] p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
-            <BookOpen className="w-6 h-6 text-teal-600" /> Linguist Trainings
+            <BookOpen className="w-6 h-6 text-teal-600" /> Training Completion Records
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Completion tracking (ISO 17100 / client-audit training records). Completions auto-record when a linguist finishes online; use “Record offline” for those trained outside the portal.</p>
+          <p className="text-sm text-gray-500 mt-1">Vendor &amp; staff training completions (ISO 17100 / client-audit training records). Online completions auto-record; use “Record offline” for linguists trained outside the portal.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={load} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"><RefreshCw className="w-4 h-4" />Refresh</button>
@@ -78,42 +239,74 @@ export default function AdminTrainings() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            {trainings.map((t) => (
+            {activeTrainings.map((t) => (
               <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4">
                 <div className="text-sm font-semibold text-gray-900">{t.title}</div>
-                <div className="text-xs text-gray-400 mt-0.5 capitalize">{t.category}{t.quiz_enabled ? " · quiz on" : " · quiz off"}</div>
+                <div className="text-xs text-gray-400 mt-0.5 capitalize">{t.category} · {t.audience === "linguist" ? "vendor" : "staff"}</div>
                 <div className="mt-3 text-2xl font-bold text-teal-600">{countByTraining[t.id] ?? 0}</div>
-                <div className="text-xs text-gray-500">linguists completed</div>
+                <div className="text-xs text-gray-500">completions</div>
               </div>
             ))}
           </div>
 
+          <QmsFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search vendor / staff name, email, business…"
+            resultCount={filtered.length}
+            totalCount={rows.length}
+            selects={[
+              { id: "audience", label: "All audiences", value: audience, onChange: setAudience, options: [{ value: "vendor", label: "Vendor / linguist" }, { value: "staff", label: "Staff" }] },
+              { id: "training", label: "All trainings", value: trainingName, onChange: setTrainingName, options: opts.names },
+              { id: "type", label: "All types", value: trainingType, onChange: setTrainingType, options: opts.types },
+              { id: "domain", label: "All domains", value: domain, onChange: setDomain, options: opts.domains },
+              { id: "language", label: "All languages", value: language, onChange: setLanguage, options: opts.langs },
+            ]}
+          />
+
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">Recent completions <span className="font-normal text-gray-400">(latest 500 — counts above are totals)</span></div>
-            {completions.length === 0 ? (
-              <div className="py-12 text-center text-sm text-gray-500">No completions recorded yet.</div>
+            {filtered.length === 0 ? (
+              <div className="py-12 text-center text-sm text-gray-500">
+                {rows.length === 0 ? "No completions recorded yet." : "No records match the current filters."}
+              </div>
             ) : (
-              <table className="w-full">
-                <thead><tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
-                  <th className="text-left px-4 py-2">Linguist</th><th className="text-left px-4 py-2">Training</th><th className="text-left px-4 py-2">Method</th><th className="text-left px-4 py-2">Completed</th>
-                </tr></thead>
-                <tbody>
-                  {completions.map((c) => (
-                    <tr key={c.id} className="border-b border-gray-100">
-                      <td className="px-4 py-2 text-sm"><div className="font-medium text-gray-900">{c.vendors?.full_name ?? "—"}</div><div className="text-xs text-gray-400">{c.vendors?.email}</div></td>
-                      <td className="px-4 py-2 text-sm text-gray-700">{trainings.find((t) => t.id === c.training_id)?.title ?? "—"}</td>
-                      <td className="px-4 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${c.method === "offline" ? "bg-amber-50 text-amber-700" : "bg-green-50 text-green-700"}`}>{c.method}</span></td>
-                      <td className="px-4 py-2 text-sm text-gray-600">{new Date(c.completed_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead><tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                    <th className="text-left px-4 py-2">Person</th>
+                    <th className="text-left px-4 py-2">Audience</th>
+                    <th className="text-left px-4 py-2">Training</th>
+                    <th className="text-left px-4 py-2">Domain / Language</th>
+                    <th className="text-left px-4 py-2">Method</th>
+                    <th className="text-left px-4 py-2">Completed</th>
+                  </tr></thead>
+                  <tbody>
+                    {filtered.map((c) => (
+                      <tr key={c.id} className="border-b border-gray-100">
+                        <td className="px-4 py-2 text-sm"><div className="font-medium text-gray-900">{c.personName}</div><div className="text-xs text-gray-400">{c.email}{c.business ? ` · ${c.business}` : ""}</div></td>
+                        <td className="px-4 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${c.audience === "staff" ? "bg-indigo-50 text-indigo-700" : "bg-sky-50 text-sky-700"}`}>{c.audience === "staff" ? "Staff" : "Vendor"}</span></td>
+                        <td className="px-4 py-2 text-sm text-gray-700">{c.trainingName}<div className="text-xs text-gray-400 capitalize">{c.trainingType}</div></td>
+                        <td className="px-4 py-2 text-xs text-gray-500">
+                          {c.domains.length || c.languages.length ? (
+                            <>
+                              {c.domains.length > 0 && <div>{c.domains.join(", ")}</div>}
+                              {c.languages.length > 0 && <div className="text-gray-400">{c.languages.join(", ")}</div>}
+                            </>
+                          ) : "—"}
+                        </td>
+                        <td className="px-4 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${c.method === "offline" ? "bg-amber-50 text-amber-700" : "bg-green-50 text-green-700"}`}>{c.method}</span></td>
+                        <td className="px-4 py-2 text-sm text-gray-600">{c.completedAt ? new Date(c.completedAt).toLocaleDateString() : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </>
       )}
 
-      {modalOpen && <OfflineModal staffId={staffId} trainings={trainings} onClose={() => setModalOpen(false)} onDone={() => { setModalOpen(false); load(); }} />}
+      {modalOpen && <OfflineModal staffId={staffId} trainings={linguistTrainings} onClose={() => setModalOpen(false)} onDone={() => { setModalOpen(false); load(); }} />}
     </div>
   );
 }

@@ -12,7 +12,6 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Loader2,
   FlaskConical,
-  Search,
   X as XIcon,
   History,
   Save,
@@ -22,6 +21,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAdminAuthContext } from "@/context/AdminAuthContext";
 import { toast } from "sonner";
+import { QmsFilterBar } from "@/components/admin/QmsFilterBar";
 
 interface SourceListItem {
   id: string;
@@ -77,6 +77,7 @@ export default function AdminTestSources() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeOnly, setActiveOnly] = useState(false);
+  const [domainFilter, setDomainFilter] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -100,13 +101,22 @@ export default function AdminTestSources() {
       sources.filter(
         (s) =>
           (!activeOnly || s.is_active) &&
+          (!domainFilter || s.domain === domainFilter) &&
           (!q ||
             s.title.toLowerCase().includes(q) ||
             s.domain.toLowerCase().includes(q) ||
             (s.target_language ?? "").toLowerCase().includes(q) ||
             s.source_preview.toLowerCase().includes(q)),
       ),
-    [sources, q, activeOnly],
+    [sources, q, activeOnly, domainFilter],
+  );
+
+  const domainOptions = useMemo(
+    () =>
+      [...new Set(sources.map((s) => s.domain))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((d) => ({ value: d, label: prettyDomain(d) })),
+    [sources],
   );
 
   const byDomain = useMemo(() => {
@@ -139,20 +149,20 @@ export default function AdminTestSources() {
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-3 my-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title, domain, language, content…"
-            className="w-full rounded-lg border border-slate-300 pl-9 pr-4 py-2 text-sm focus:border-teal-500 focus:outline-none bg-white"
-          />
-        </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600 whitespace-nowrap">
-          <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} className="rounded border-slate-300" />
-          Active only
-        </label>
+      <div className="mt-4">
+        <QmsFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by title, domain, language, content…"
+          resultCount={filtered.length}
+          totalCount={sources.length}
+          selects={[
+            { id: "domain", label: "All domains", value: domainFilter, onChange: setDomainFilter, options: domainOptions },
+          ]}
+          toggles={[
+            { id: "active", label: "Active only", checked: activeOnly, onChange: setActiveOnly },
+          ]}
+        />
       </div>
 
       {loading ? (
