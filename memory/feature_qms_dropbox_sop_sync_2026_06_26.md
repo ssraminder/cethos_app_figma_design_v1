@@ -77,6 +77,34 @@ Verified prod 2026-06-26: 24 docs → 24 folders, **32 files, 0 failed** (sizes
 match DB byte-for-byte incl. a 2 MB HTML guide); QM-002 shows v6.1 `-current` +
 v6.0; CTS-REC-RST-002 shows v1.0/v1.1/v1.2 with only v1.2 `-current`. Idempotent.
 
+## Registers (one-time Excel scaffolds, added same day)
+Operational QMS records (qms schema) are LIVE DATA, not files — so they're
+exported as **one-time Excel scaffolds** the user maintains by hand (NOT
+auto-synced; weekly cron only touches SOPs+manuals). Action
+`{"action":"scaffold_registers","force?":bool}` on `qms-dropbox-sync`:
+- reads `public.qms_register_export()` — a read-only SECURITY DEFINER RPC
+  (migration `20260626_qms_register_export.sql`) that does the cross-schema
+  joins (qms schema is NOT PostgREST-exposed even to service role → must go
+  through a public SECURITY DEFINER wrapper; execute granted to service_role
+  only, PII). Returns one JSONB with: qualification_summary (filtered to
+  vendors holding a role_qual), role_qualifications, language_pairs,
+  competence_evidence, capa, complaints, nonconformities, performance, staff.
+- builds 3 .xlsx via `npm/esm.sh xlsx@0.18.5` (SheetJS, aoa_to_sheet) →
+  `/Cethos Team Folder/QMS/Registers/`:
+  - `Qualification Register (ISO 6.1).xlsx` (Linguist Summary 237 / Role Quals
+    285 / Language-Pair Quals 441 / Competence Evidence 1334 / Legacy blank)
+  - `Quality-Event Registers.xlsx` (CAPA 5 / Complaints 1 / Nonconformities 4 /
+    Performance 105 / Legacy)
+  - `Training Register (template).xlsx` (seeded with 9 active staff; portal
+    training tables empty → template)
+- Each sheet: banner + "ONE-TIME SCAFFOLD, maintain manually, portal=SoR" note
+  + a "Legacy (pre-portal)" sheet for backfilling old manual-register data.
+- **Skip-if-exists** (`dbxExists` via get_metadata) → re-running never clobbers
+  the user's hand-entered rows; pass `force:true` to regenerate.
+Verified prod 2026-06-26: 3 workbooks written, valid xlsx, re-run all skipped.
+NDA register was offered but user declined.
+
 ## Extending later
 Bump `GENERATOR_VERSION` to force a full SOP docx regen after layout edits.
-To add more QMS tables, add another reconcile pass + ledger.
+To add more QMS tables, add another reconcile pass + ledger (live docs) or
+extend `qms_register_export` + a new workbook (scaffolds).
