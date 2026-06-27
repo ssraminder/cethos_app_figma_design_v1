@@ -9,7 +9,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { Search, Loader2, ArrowLeft, MessageSquare, RefreshCw, ArrowRight, Mail, Plus, X, ExternalLink } from "lucide-react";
+import { Search, Loader2, ArrowLeft, MessageSquare, RefreshCw, ArrowRight, Mail, Plus, X, ExternalLink, Send } from "lucide-react";
+import { toast } from "sonner";
 import VendorCommunicationTab from "./vendor-detail/VendorCommunicationTab";
 
 type SenderType = "vendor" | "applicant" | "other";
@@ -80,6 +81,11 @@ export default function AdminVendorCommunication() {
   const [selected, setSelected] = useState<VendorLite | null>(null);
   const [reading, setReading] = useState<ReadMessage | null>(null);
   const [readingLoading, setReadingLoading] = useState(false);
+  // Reply composer for record-less ("other") senders — a prospective
+  // applicant who emailed vm@ but never created an application/vendor.
+  const [replySubject, setReplySubject] = useState("");
+  const [replyBody, setReplyBody] = useState("");
+  const [replySending, setReplySending] = useState(false);
 
   const loadInbox = useCallback(async () => {
     try {
@@ -141,6 +147,36 @@ export default function AdminVendorCommunication() {
       setReadingLoading(false);
     }
   }, []);
+
+  const closeReading = useCallback(() => {
+    setReading(null);
+    setReadingLoading(false);
+    setReplySubject("");
+    setReplyBody("");
+  }, []);
+
+  const sendColdReply = useCallback(async () => {
+    if (!reading || !replyBody.trim()) return;
+    setReplySending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("cvp-staff-reply", {
+        body: { inboundEmailId: reading.id, subject: replySubject.trim() || undefined, body: replyBody.trim() },
+      });
+      if (error) throw new Error(error.message);
+      if (data && (data as { success?: boolean }).success === false) {
+        throw new Error((data as { error?: string }).error || "Send failed");
+      }
+      toast.success("Reply sent from vm@cethos.com.");
+      setReading(null);
+      setReplySubject("");
+      setReplyBody("");
+      loadInbox();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Send failed");
+    } finally {
+      setReplySending(false);
+    }
+  }, [reading, replyBody, replySubject, loadInbox]);
 
   const openRow = (it: InboxItem) => {
     if (it.senderType === "vendor" && it.vendorId) {
@@ -304,7 +340,7 @@ export default function AdminVendorCommunication() {
 
       {/* Read-only viewer for messages from unregistered senders */}
       {(reading || readingLoading) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { setReading(null); setReadingLoading(false); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeReading}>
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-gray-200">
               <div className="min-w-0">
@@ -312,7 +348,7 @@ export default function AdminVendorCommunication() {
                 {reading?.from && <div className="text-xs text-gray-500 truncate">{reading.from}</div>}
                 {reading?.at && <div className="text-[11px] text-gray-400">{fmt(reading.at)}</div>}
               </div>
-              <button onClick={() => { setReading(null); setReadingLoading(false); }} className="text-gray-400 hover:text-gray-700">
+              <button onClick={closeReading} className="text-gray-400 hover:text-gray-700">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -337,6 +373,42 @@ export default function AdminVendorCommunication() {
                     >
                       <ExternalLink className="h-3.5 w-3.5" /> Open recruitment record
                     </button>
+                  )}
+
+                  {/* Reply composer — only for record-less senders (no
+                      application/vendor thread to open). Sends from vm@ via
+                      cvp-staff-reply with the inbound id; the sender's reply
+                      threads back automatically. */}
+                  {!reading.applicationId && !reading.vendorId && (
+                    <div className="mt-5 border-t border-gray-100 pt-4">
+                      <p className="text-xs font-medium text-gray-500 mb-2">
+                        Reply to {reading.from || "this sender"} — sent from <span className="font-mono">vm@cethos.com</span>
+                      </p>
+                      <input
+                        type="text"
+                        value={replySubject}
+                        onChange={(e) => setReplySubject(e.target.value)}
+                        placeholder={reading.subject ? `Re: ${reading.subject.replace(/^Re:\s*/i, "")}` : "Subject (optional)"}
+                        className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                      />
+                      <textarea
+                        value={replyBody}
+                        onChange={(e) => setReplyBody(e.target.value)}
+                        rows={6}
+                        placeholder="Write your reply…"
+                        className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                      />
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          onClick={sendColdReply}
+                          disabled={replySending || !replyBody.trim()}
+                          className="inline-flex items-center gap-1.5 text-sm bg-cyan-600 hover:bg-cyan-700 text-white rounded-md px-4 py-2 disabled:opacity-50"
+                        >
+                          {replySending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          Send reply
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </>
               ) : (
