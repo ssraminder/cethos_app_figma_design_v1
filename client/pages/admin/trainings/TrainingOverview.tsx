@@ -28,12 +28,12 @@ export default function TrainingOverview() {
   const [confirming, setConfirming] = useState(false);
 
   async function handleConfirmComplete() {
-    if (!assignment || !training || confirming) return;
+    if (!training || confirming) return;
     setConfirming(true);
     try {
-      await confirmTrainingComplete(assignment.id, training.id);
+      await confirmTrainingComplete(training.id);
       const now = new Date().toISOString();
-      setAssignment({ ...assignment, completed_at: now });
+      setAssignment({ ...(assignment ?? ({} as TrainingAssignment)), completed_at: now });
       setProgress(
         lessons.map(
           (l) => ({ lesson_id: l.id, acknowledged_at: now }) as LessonProgress,
@@ -194,8 +194,8 @@ export default function TrainingOverview() {
 
       {notAssigned && (
         <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
-          This training is not assigned to you — you can browse lessons but your
-          progress won't be tracked.
+          This training wasn't formally assigned to you — you can still complete
+          it below, and your completion will be recorded.
         </div>
       )}
 
@@ -253,7 +253,7 @@ export default function TrainingOverview() {
         )}
       </div>
 
-      {assignment && !assignment.completed_at && lessons.length > 0 && (
+      {!assignment?.completed_at && lessons.length > 0 && (
         <div className="mt-6 p-5 bg-teal-50 border border-teal-200 rounded-lg">
           <label className="flex items-start gap-3 cursor-pointer select-none">
             <input
