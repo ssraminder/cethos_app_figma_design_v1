@@ -9,10 +9,11 @@
 // Actions:
 //   list                                            → all SOPs + current-version summary
 //   get           { sop_id | slug }                 → SOP + full version history
-//   create_sop    { title, category?, iso_clause_reference?, content_md, staff_id, sop_number? }
-//   save_draft    { sop_id, content_md, change_summary?, staff_id }
+//   create_sop    { title, category?, iso_clause_reference?, content_md, staff_id, sop_number?, document_version? }
+//   save_draft    { sop_id, content_md, change_summary?, staff_id, document_version? }
 //   activate           { version_id, staff_id, effective_date? }
 //   set_effective_date { version_id, effective_date, staff_id }  → correct a recorded version's basis date
+//   set_document_version { version_id, document_version, staff_id } → correct the audit-facing version label
 //   update_meta   { sop_id, title?, category?, iso_clause_reference? }
 //   archive_sop   { sop_id, staff_id }
 
@@ -52,7 +53,7 @@ serve(async (req) => {
       if (versionIds.length) {
         const { data: versions } = await sb
           .from("sop_versions")
-          .select("id, version_number, status, effective_date, approved_by_name, approved_at, created_at")
+          .select("id, version_number, document_version, status, effective_date, approved_by_name, approved_at, created_at")
           .in("id", versionIds);
         versionsById = Object.fromEntries((versions ?? []).map((v) => [v.id, v]));
       }
@@ -82,7 +83,7 @@ serve(async (req) => {
     }
 
     if (action === "create_sop") {
-      const { title, category, iso_clause_reference, content_md, staff_id } = body;
+      const { title, category, iso_clause_reference, content_md, staff_id, document_version } = body;
       if (!title?.trim() || !content_md?.trim() || !staff_id) {
         return json({ success: false, error: "title, content_md, staff_id required" }, 400);
       }
@@ -119,7 +120,7 @@ serve(async (req) => {
 
       const { data: version, error: vErr } = await sb
         .from("sop_versions")
-        .insert({ sop_id: sop.id, version_number: 1, content_md, change_summary: "Initial version.", status: "draft", created_by: staff_id, created_by_name: staffName })
+        .insert({ sop_id: sop.id, version_number: 1, document_version: (document_version as string)?.trim() || "1.0", content_md, change_summary: "Initial version.", status: "draft", created_by: staff_id, created_by_name: staffName })
         .select("*")
         .single();
       if (vErr) return json({ success: false, error: vErr.message }, 400);
@@ -130,7 +131,8 @@ serve(async (req) => {
     }
 
     if (action === "save_draft") {
-      const { sop_id, content_md, change_summary, staff_id } = body;
+      const { sop_id, content_md, change_summary, staff_id, document_version } = body;
+      const docVer = (document_version as string | undefined)?.trim() || undefined;
       if (!sop_id || !content_md?.trim() || !staff_id) {
         return json({ success: false, error: "sop_id, content_md, staff_id required" }, 400);
       }
@@ -139,7 +141,7 @@ serve(async (req) => {
 
       const { data: latest, error: lErr } = await sb
         .from("sop_versions")
-        .select("id, version_number, status")
+        .select("id, version_number, status, document_version")
         .eq("sop_id", sop_id)
         .order("version_number", { ascending: false })
         .limit(1)
@@ -149,7 +151,7 @@ serve(async (req) => {
       if (latest?.status === "draft") {
         const { data: version, error } = await sb
           .from("sop_versions")
-          .update({ content_md, change_summary: change_summary?.trim() || null })
+          .update({ content_md, change_summary: change_summary?.trim() || null, ...(docVer ? { document_version: docVer } : {}) })
           .eq("id", latest.id)
           .select("*")
           .single();
@@ -160,7 +162,7 @@ serve(async (req) => {
       const nextNumber = (latest?.version_number ?? 0) + 1;
       const { data: version, error } = await sb
         .from("sop_versions")
-        .insert({ sop_id, version_number: nextNumber, content_md, change_summary: change_summary?.trim() || null, status: "draft", created_by: staff_id, created_by_name: staffName })
+        .insert({ sop_id, version_number: nextNumber, document_version: docVer ?? latest?.document_version ?? `${nextNumber}.0`, content_md, change_summary: change_summary?.trim() || null, status: "draft", created_by: staff_id, created_by_name: staffName })
         .select("*")
         .single();
       if (error) return json({ success: false, error: error.message }, 400);
@@ -169,7 +171,8 @@ serve(async (req) => {
     }
 
     if (action === "activate") {
-      const { version_id, staff_id, effective_date } = body;
+      const { version_id, staff_id, effective_date, document_version } = body;
+      const docVer = (document_version as string | undefined)?.trim() || undefined;
       if (!version_id || !staff_id) return json({ success: false, error: "version_id + staff_id required" }, 400);
       const { data: staff } = await sb.from("staff_users").select("full_name").eq("id", staff_id).maybeSingle();
       const staffName = staff?.full_name ?? null;
@@ -192,6 +195,7 @@ serve(async (req) => {
         .update({
           status: "active",
           effective_date: effective_date ?? new Date().toISOString().slice(0, 10),
+          ...(docVer ? { document_version: docVer } : {}),
           approved_by: staff_id,
           approved_by_name: staffName,
           approved_at: new Date().toISOString(),
@@ -235,6 +239,25 @@ serve(async (req) => {
       const { data: updated, error } = await sb
         .from("sop_versions")
         .update({ effective_date })
+        .eq("id", version_id)
+        .select("*")
+        .single();
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json({ success: true, version: updated });
+    }
+
+    // Correct the audit-facing document version label of a recorded version.
+    // version_number (the internal counter) is immutable; document_version is a
+    // free-form label (e.g. "5.0") and stays correctable for records hygiene.
+    if (action === "set_document_version") {
+      const { version_id, document_version, staff_id } = body;
+      const docVer = (document_version as string | undefined)?.trim();
+      if (!version_id || !docVer || !staff_id) {
+        return json({ success: false, error: "version_id, document_version, staff_id required" }, 400);
+      }
+      const { data: updated, error } = await sb
+        .from("sop_versions")
+        .update({ document_version: docVer })
         .eq("id", version_id)
         .select("*")
         .single();

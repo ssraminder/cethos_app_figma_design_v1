@@ -47,7 +47,7 @@ function buildDocx(meta: any, tokens: any[]): Promise<Uint8Array> {
   const metaRows = [
     ["Category", meta.category || "—"],
     ["ISO reference", meta.iso_clause_reference || "—"],
-    ["Version", `v${meta.version_number} · ${meta.status}${meta.effective_date ? " · effective " + meta.effective_date : ""}`],
+    ["Version", `${meta.version_label} · ${meta.status}${meta.effective_date ? " · effective " + meta.effective_date : ""}`],
     ["Approved by", meta.approved_by_name || "—"],
   ];
   children.push(new Table({
@@ -134,7 +134,7 @@ async function buildPdf(meta: any, tokens: any[]): Promise<Uint8Array> {
   draw(meta.sop_number, { font: bold, size: 11, color: rgb(0.055, 0.455, 0.565) });
   draw(meta.title, { font: bold, size: 18, color: navy, gap: 6 });
   for (const [k, v] of [["Category", meta.category || "—"], ["ISO reference", meta.iso_clause_reference || "—"],
-       ["Version", `v${meta.version_number} · ${meta.status}${meta.effective_date ? " · effective " + meta.effective_date : ""}`], ["Approved by", meta.approved_by_name || "—"]]) {
+       ["Version", `${meta.version_label} · ${meta.status}${meta.effective_date ? " · effective " + meta.effective_date : ""}`], ["Approved by", meta.approved_by_name || "—"]]) {
     ensure(14); page.drawText(k + ":", { x: M, y: y - 9, size: 9, font: bold, color: mute });
     for (const line of wrap(v, reg, 9, W - 2 * M - 110)) { page.drawText(line, { x: M + 110, y: y - 9, size: 9, font: reg, color: ink }); y -= 12; }
   }
@@ -179,11 +179,12 @@ serve(async (req: Request) => {
 
     const verId = version_id || sop.current_version_id;
     if (!verId) return json({ success: false, error: "SOP has no version to export" }, 400);
-    const { data: ver, error: vErr } = await sb.from("sop_versions").select("version_number, content_md, status, effective_date, approved_by_name").eq("id", verId).single();
+    const { data: ver, error: vErr } = await sb.from("sop_versions").select("version_number, document_version, content_md, status, effective_date, approved_by_name").eq("id", verId).single();
     if (vErr || !ver) return json({ success: false, error: "Version not found" }, 404);
 
     const meta = { sop_number: sop.sop_number, title: sop.title, category: sop.category, iso_clause_reference: sop.iso_clause_reference,
-                   version_number: ver.version_number, status: ver.status, effective_date: ver.effective_date, approved_by_name: ver.approved_by_name };
+                   version_label: ver.document_version ? `v${ver.document_version}` : `v${ver.version_number}`,
+                   status: ver.status, effective_date: ver.effective_date, approved_by_name: ver.approved_by_name };
     const tokens = marked.lexer(ver.content_md || "");
 
     const bytes = format === "docx" ? await buildDocx(meta, tokens) : await buildPdf(meta, tokens);

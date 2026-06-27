@@ -34,6 +34,7 @@ interface SopVersion {
   id: string;
   sop_id: string;
   version_number: number;
+  document_version: string | null;
   content_md: string;
   change_summary: string | null;
   status: "draft" | "active" | "superseded" | "retired";
@@ -73,6 +74,12 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// The audit-facing version label. document_version (e.g. "5.0") is authoritative;
+// version_number is only the internal ordering counter, shown as a fallback.
+function verLabel(v: { document_version: string | null; version_number: number }): string {
+  return `v${v.document_version ?? v.version_number}`;
+}
+
 export default function AdminSopDetail() {
   const { id } = useParams<{ id: string }>();
   const { session } = useAdminAuthContext();
@@ -91,10 +98,15 @@ export default function AdminSopDetail() {
   // Approve & Activate dialog — lets the approver set/backdate the effective date.
   const [activateOpen, setActivateOpen] = useState(false);
   const [activateDate, setActivateDate] = useState(todayISO());
+  const [activateDocVer, setActivateDocVer] = useState("1.0");
   // Inline effective-date correction for already-recorded versions.
   const [editDateId, setEditDateId] = useState<string | null>(null);
   const [editDateValue, setEditDateValue] = useState("");
   const [savingDate, setSavingDate] = useState(false);
+  // Inline document-version correction for already-recorded versions.
+  const [editVerId, setEditVerId] = useState<string | null>(null);
+  const [editVerValue, setEditVerValue] = useState("");
+  const [savingVer, setSavingVer] = useState(false);
   const { state: confirmState, handleAnswer } = useConfirmDialog();
 
   const load = async (keepSelection = false) => {
@@ -166,6 +178,7 @@ export default function AdminSopDetail() {
   const openActivate = () => {
     if (!selected) return;
     setActivateDate(todayISO());
+    setActivateDocVer(selected.document_version ?? `${selected.version_number}.0`);
     setActivateOpen(true);
   };
 
@@ -175,17 +188,21 @@ export default function AdminSopDetail() {
       toast.error("Pick a valid effective date");
       return;
     }
+    if (!activateDocVer.trim()) {
+      toast.error("Enter a version number");
+      return;
+    }
     setActivating(true);
     try {
       const { data, error } = await supabase.functions.invoke("manage-sops", {
-        body: { action: "activate", version_id: selected.id, staff_id: staffId, effective_date: activateDate },
+        body: { action: "activate", version_id: selected.id, staff_id: staffId, effective_date: activateDate, document_version: activateDocVer.trim() },
       });
       if (error || !data?.success) {
         toast.error(data?.error ?? error?.message ?? "Failed to activate");
         return;
       }
       setActivateOpen(false);
-      toast.success(`v${data.version.version_number} is now active — effective ${fmtDate(data.version.effective_date)}`);
+      toast.success(`${verLabel(data.version)} is now active — effective ${fmtDate(data.version.effective_date)}`);
       await load(true);
     } finally {
       setActivating(false);
@@ -217,6 +234,34 @@ export default function AdminSopDetail() {
       await load(true);
     } finally {
       setSavingDate(false);
+    }
+  };
+
+  const startEditVer = (v: SopVersion) => {
+    setEditVerId(v.id);
+    setEditVerValue(v.document_version ?? `${v.version_number}.0`);
+  };
+
+  const handleSetDocumentVersion = async (versionId: string) => {
+    if (!staffId) return;
+    if (!editVerValue.trim()) {
+      toast.error("Enter a version number");
+      return;
+    }
+    setSavingVer(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-sops", {
+        body: { action: "set_document_version", version_id: versionId, document_version: editVerValue.trim(), staff_id: staffId },
+      });
+      if (error || !data?.success) {
+        toast.error(data?.error ?? error?.message ?? "Failed to update version");
+        return;
+      }
+      toast.success(`Version set to ${verLabel(data.version)}`);
+      setEditVerId(null);
+      await load(true);
+    } finally {
+      setSavingVer(false);
     }
   };
 
@@ -292,7 +337,7 @@ export default function AdminSopDetail() {
             </span>
             {selected && (
               <span className="text-xs font-normal text-slate-400">
-                · viewing v{selected.version_number} ({selected.status})
+                · viewing {verLabel(selected)} ({selected.status})
               </span>
             )}
           </span>
@@ -314,7 +359,10 @@ export default function AdminSopDetail() {
                     className="block w-full text-left"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-slate-900">v{v.version_number}</span>
+                      <span className="text-sm font-medium text-slate-900">
+                        {verLabel(v)}
+                        <span className="ml-1.5 text-xs font-normal text-slate-400">seq {v.version_number}</span>
+                      </span>
                       {sopStatusChip(v.status)}
                     </div>
                     <div className="mt-1 text-xs text-slate-500">
@@ -327,7 +375,41 @@ export default function AdminSopDetail() {
                     )}
                   </button>
                   {v.status !== "draft" && (
-                    <div className="mt-2 border-t border-slate-100 pt-2">
+                    <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+                      {editVerId === v.id ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <input
+                            value={editVerValue}
+                            onChange={(e) => setEditVerValue(e.target.value)}
+                            placeholder="e.g. 5.0"
+                            className="w-20 rounded border border-slate-300 px-2 py-1 text-xs focus:border-teal-500 focus:outline-none"
+                          />
+                          <button
+                            onClick={() => handleSetDocumentVersion(v.id)}
+                            disabled={savingVer}
+                            className="rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+                          >
+                            {savingVer ? "…" : "Save"}
+                          </button>
+                          <button
+                            onClick={() => setEditVerId(null)}
+                            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-500">Version {verLabel(v)}</span>
+                          <button
+                            onClick={() => startEditVer(v)}
+                            className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700"
+                            title="Correct the audit-facing version label"
+                          >
+                            <Pencil className="h-3 w-3" /> Edit
+                          </button>
+                        </div>
+                      )}
                       {editDateId === v.id ? (
                         <div className="flex flex-wrap items-center gap-1.5">
                           <input
@@ -376,10 +458,38 @@ export default function AdminSopDetail() {
         )}
       </div>
 
+      {/* Authoritative version banner — rendered from the DB columns, which are
+          the single source of truth. The document body no longer restates these. */}
+      {selected && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border border-slate-200 bg-slate-50/70 px-5 py-4">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Version</div>
+            <div className="text-lg font-bold text-slate-900">{verLabel(selected)}</div>
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</div>
+            <div className="mt-0.5">{sopStatusChip(selected.status)}</div>
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Effective date</div>
+            <div className="mt-0.5 text-sm font-medium text-slate-700">
+              {selected.status === "draft" ? "On approval" : fmtDate(selected.effective_date)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Approved by</div>
+            <div className="mt-0.5 text-sm font-medium text-slate-700">
+              {selected.approved_by_name ?? "—"}
+              {selected.approved_at ? ` · ${fmtDate(selected.approved_at)}` : ""}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-slate-200 bg-white">
         {selected && selected.id !== sop.current_version_id && !editing && (
             <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-800">
-              You are viewing v{selected.version_number} ({selected.status}) — not the current version.
+              You are viewing {verLabel(selected)} ({selected.status}) — not the current version.
             </div>
           )}
           {selected?.status === "draft" && !editing && (
@@ -432,12 +542,24 @@ export default function AdminSopDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900">
-              Approve &amp; activate v{selected.version_number}?
+              Approve &amp; activate {verLabel({ document_version: activateDocVer || selected.document_version, version_number: selected.version_number })}?
             </h3>
             <p className="mt-2 text-sm text-slate-600">
               This records you as the approver and makes this the official current version. The content can never be
               edited again — future changes need a new version.
             </p>
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Version number
+              <input
+                value={activateDocVer}
+                onChange={(e) => setActivateDocVer(e.target.value)}
+                placeholder="e.g. 2.0"
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+              />
+              <span className="mt-1 block text-xs font-normal text-slate-400">
+                The document's controlled version, shown to staff and auditors (independent of the internal sequence number).
+              </span>
+            </label>
             <label className="mt-4 block text-sm font-medium text-slate-700">
               Effective date
               <input
