@@ -86,10 +86,15 @@ export default function AdminVendorCommunication() {
   const [replySubject, setReplySubject] = useState("");
   const [replyBody, setReplyBody] = useState("");
   const [replySending, setReplySending] = useState(false);
+  // Inbox sender search. `inboxQuery` is the input; `appliedQuery` is what's
+  // actually sent (applied on Enter/Search) so we don't refetch per keystroke.
+  // A search looks across ALL history, so it reaches messages the recent page omits.
+  const [inboxQuery, setInboxQuery] = useState("");
+  const [appliedQuery, setAppliedQuery] = useState("");
 
   const loadInbox = useCallback(async () => {
     try {
-      const { data, error } = await supabase.functions.invoke("manage-vendor-communication", { body: { action: "inbox", filter } });
+      const { data, error } = await supabase.functions.invoke("manage-vendor-communication", { body: { action: "inbox", filter, search: appliedQuery || undefined } });
       if (error) throw new Error(error.message);
       const payload = (data as { data?: { inbox?: InboxItem[]; counts?: Record<FilterKey, number> } })?.data;
       setInbox((payload?.inbox ?? []) as InboxItem[]);
@@ -102,7 +107,7 @@ export default function AdminVendorCommunication() {
     } finally {
       setLoadingInbox(false);
     }
-  }, [filter]);
+  }, [filter, appliedQuery]);
 
   // Load on mount, on filter change, + auto-refresh every 2 minutes.
   useEffect(() => {
@@ -283,6 +288,42 @@ export default function AdminVendorCommunication() {
             </ul>
           ) : null}
         </div>
+      )}
+
+      {/* Sender search — reaches older messages the recent page omits */}
+      <form
+        onSubmit={(e) => { e.preventDefault(); setAppliedQuery(inboxQuery.trim()); }}
+        className="relative mb-3"
+      >
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+        <input
+          type="text"
+          value={inboxQuery}
+          onChange={(e) => setInboxQuery(e.target.value)}
+          placeholder="Search inbox by sender name, email, or subject…"
+          className="w-full text-sm border border-gray-300 rounded-md pl-9 pr-20 py-2.5 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+        />
+        {appliedQuery ? (
+          <button
+            type="button"
+            onClick={() => { setInboxQuery(""); setAppliedQuery(""); }}
+            className="absolute right-2 top-1.5 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-md px-2 py-1"
+          >
+            Clear
+          </button>
+        ) : (
+          <button
+            type="submit"
+            className="absolute right-2 top-1.5 text-xs text-white bg-cyan-600 hover:bg-cyan-700 rounded-md px-2.5 py-1"
+          >
+            Search
+          </button>
+        )}
+      </form>
+      {appliedQuery && (
+        <p className="text-xs text-gray-500 mb-2">
+          Showing results for “{appliedQuery}” across all history.
+        </p>
       )}
 
       {/* Filter chips */}

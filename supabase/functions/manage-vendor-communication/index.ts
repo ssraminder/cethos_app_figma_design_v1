@@ -112,18 +112,29 @@ serve(async (req: Request) => {
   // thread, jump to the recruitment record, or show an inline read view. ----
   if (action === "inbox") {
     const filter = (body as { filter?: string }).filter ?? "all";
+    const search = ((body as { search?: string }).search ?? "").trim();
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     let ibq = supabase.from("cvp_inbound_emails")
       .select("id, matched_vendor_id, matched_application_id, received_at, subject, stripped_text, body_plain, from_email, from_name, acknowledged_at, classified_intent, action_taken")
-      .gte("received_at", since).order("received_at", { ascending: false }).limit(200);
+      .order("received_at", { ascending: false }).limit(200);
+    // No search: show the recent 30-day window. With a search term, look
+    // across ALL history (matching rows are few, so the 200-cap won't drop
+    // them) — this is how staff reach an older message the recent page omits.
+    if (!search) {
+      ibq = ibq.gte("received_at", since);
+    } else {
+      const term = search.replace(/[%,()]/g, " ").trim();
+      ibq = ibq.or(`from_email.ilike.%${term}%,from_name.ilike.%${term}%,subject.ilike.%${term}%`);
+    }
     if (filter === "vendor") ibq = ibq.not("matched_vendor_id", "is", null);
     else if (filter === "applicant") ibq = ibq.not("matched_application_id", "is", null);
     else if (filter === "other") ibq = ibq.is("matched_vendor_id", null).is("matched_application_id", null);
 
     // Outbound here is always vendor-communication, so only include it in the
-    // All and Vendors views.
-    const includeOutbound = filter === "all" || filter === "vendor";
+    // All and Vendors views — and skip it while searching (search targets
+    // inbound senders).
+    const includeOutbound = (filter === "all" || filter === "vendor") && !search;
 
     const [ob, ib] = await Promise.all([
       includeOutbound
