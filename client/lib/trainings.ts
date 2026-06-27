@@ -226,64 +226,20 @@ export async function markLessonAcknowledged(
 }
 
 /**
- * Single-confirmation completion: the learner reads the whole training and
- * confirms once. Acknowledges every lesson (so the per-lesson audit trail is
- * preserved) and stamps started_at + completed_at on the assignment in one go.
+ * Single-confirmation completion for a STAFF member. Routes through the
+ * SECURITY DEFINER RPC cvp_staff_complete_training, which:
+ *   - resolves the acting staff from auth.uid(),
+ *   - upserts their assignment (so it works even if they were never explicitly
+ *     assigned the training — the old client path silently no-op'd in that case,
+ *     and RLS only lets admins insert assignments),
+ *   - stamps started_at + completed_at, and acknowledges every lesson.
+ * Idempotent (keeps the original completed_at on re-run).
  */
-export async function confirmTrainingComplete(
-  assignmentId: string,
-  trainingId: string,
-): Promise<void> {
-  const now = new Date().toISOString();
-
-  const { data: lessons } = await supabase
-    .from("cvp_training_lessons")
-    .select("id")
-    .eq("training_id", trainingId);
-  const lessonIds = (lessons ?? []).map((l) => l.id);
-
-  const { data: existing } = await supabase
-    .from("cvp_training_lesson_progress")
-    .select("id, lesson_id, acknowledged_at")
-    .eq("assignment_id", assignmentId);
-  const existingByLesson = new Map(
-    (existing ?? []).map((e) => [e.lesson_id, e]),
-  );
-
-  const toInsert: {
-    assignment_id: string;
-    lesson_id: string;
-    viewed_at: string;
-    acknowledged_at: string;
-  }[] = [];
-  const toAck: string[] = [];
-  for (const lessonId of lessonIds) {
-    const row = existingByLesson.get(lessonId);
-    if (!row) {
-      toInsert.push({
-        assignment_id: assignmentId,
-        lesson_id: lessonId,
-        viewed_at: now,
-        acknowledged_at: now,
-      });
-    } else if (!row.acknowledged_at) {
-      toAck.push(row.id);
-    }
-  }
-  if (toInsert.length) {
-    await supabase.from("cvp_training_lesson_progress").insert(toInsert);
-  }
-  if (toAck.length) {
-    await supabase
-      .from("cvp_training_lesson_progress")
-      .update({ acknowledged_at: now })
-      .in("id", toAck);
-  }
-
-  await supabase
-    .from("cvp_training_assignments")
-    .update({ started_at: now, completed_at: now })
-    .eq("id", assignmentId);
+export async function confirmTrainingComplete(trainingId: string): Promise<void> {
+  const { error } = await supabase.rpc("cvp_staff_complete_training", {
+    p_training_id: trainingId,
+  });
+  if (error) throw error;
 }
 
 export async function recordLessonViewed(
