@@ -90,6 +90,7 @@ import AdminTrainings from "./pages/admin/AdminTrainings";
 import AdminQmsStaff from "./pages/admin/AdminQmsStaff";
 import AdminQualityHub from "./pages/admin/AdminQualityHub";
 import AdminQmsHub from "./pages/admin/AdminQmsHub";
+import QmsHubLayout from "./components/admin/QmsHubLayout";
 import AdminNonconformityDetail from "./pages/admin/AdminNonconformityDetail";
 import AdminSmsTemplates from "./pages/admin/AdminSmsTemplates";
 import Patterns from "./pages/admin/Patterns";
@@ -456,23 +457,27 @@ const App = () => (
                     <Route path="vendors/new" element={<AdminVendorNew />} />
                     <Route path="vendors/communication" element={<AdminVendorCommunication />} />
                     <Route path="vendors/:vendorId" element={<AdminVendorDetail />} />
-                    <Route path="iso-quizzes" element={<AdminIsoQuizzes />} />
-                    <Route path="sops" element={<AdminSops />} />
-                    <Route path="sops/:id" element={<AdminSopDetail />} />
-                    <Route path="documents" element={<AdminDocuments />} />
-                    <Route path="qms" element={<AdminQmsHub />} />
-                    <Route path="qms/queue" element={<AdminQmsQueue />} />
-                    <Route path="qms/approvals" element={<AdminQmsApprovals />} />
-                    <Route path="qms/training-records" element={<AdminTrainings />} />
-                    <Route path="qms/staff" element={<AdminQmsStaff />} />
-                    <Route path="quality" element={<AdminQualityHub />} />
-                    <Route path="quality/nc/:id" element={<AdminNonconformityDetail />} />
+                    {/* Consolidated QMS Hub — shared tabbed shell over all
+                        Quality-domain pages (QmsHubLayout renders the tab bar). */}
+                    <Route element={<QmsHubLayout />}>
+                      <Route path="iso-quizzes" element={<AdminIsoQuizzes />} />
+                      <Route path="sops" element={<AdminSops />} />
+                      <Route path="sops/:id" element={<AdminSopDetail />} />
+                      <Route path="documents" element={<AdminDocuments />} />
+                      <Route path="qms" element={<AdminQmsHub />} />
+                      <Route path="qms/queue" element={<AdminQmsQueue />} />
+                      <Route path="qms/approvals" element={<AdminQmsApprovals />} />
+                      <Route path="qms/training-records" element={<AdminTrainings />} />
+                      <Route path="qms/staff" element={<AdminQmsStaff />} />
+                      <Route path="quality" element={<AdminQualityHub />} />
+                      <Route path="quality/nc/:id" element={<AdminNonconformityDetail />} />
+                      <Route path="trainings" element={<TrainingsList />} />
+                    </Route>
                     <Route path="employment-applications" element={<EmploymentApplications />} />
                     <Route path="recruitment" element={<RecruitmentList />} />
                     <Route path="recruitment/system/regrade-backfill" element={<RecruitmentRegradeBackfill />} />
                     <Route path="recruitment/approval-queue" element={<RecruitmentApprovalQueue />} />
                     <Route path="recruitment/:id" element={<RecruitmentDetail />} />
-                    <Route path="trainings" element={<TrainingsList />} />
                     <Route path="trainings/bulk-assign" element={<BulkAssignTrainings />} />
                     <Route path="trainings/new" element={<TrainingEditor />} />
                     <Route path="trainings/:slug" element={<TrainingOverview />} />
