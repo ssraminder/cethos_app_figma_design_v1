@@ -37,6 +37,7 @@ interface Sop {
   current_version: {
     id: string;
     version_number: number;
+    document_version: string | null;
     status: string;
     effective_date: string | null;
   } | null;
@@ -154,7 +155,12 @@ export default function AdminQmsHub() {
                     key={s.id}
                     label={s.sop_number}
                     sub={s.title}
-                    badge={sopStatusChip(s.current_version?.status, s.current_version?.version_number)}
+                    badge={sopStatusChip(
+                      s.current_version?.status,
+                      s.current_version
+                        ? `v${s.current_version.document_version ?? s.current_version.version_number}`
+                        : undefined,
+                    )}
                     onClick={() => navigate(`/admin/sops/${s.id}`)}
                   />
                 ))}

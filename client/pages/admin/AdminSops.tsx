@@ -18,6 +18,7 @@ import { SopExportButton } from "@/components/admin/SopExportButton";
 interface SopVersionSummary {
   id: string;
   version_number: number;
+  document_version: string | null;
   status: "draft" | "active" | "superseded" | "retired";
   effective_date: string | null;
   approved_by_name: string | null;
@@ -36,8 +37,8 @@ interface Sop {
   current_version: SopVersionSummary | null;
 }
 
-export function sopStatusChip(status: string | undefined, versionNumber?: number) {
-  const label = versionNumber != null ? `v${versionNumber} ${status}` : (status ?? "—");
+export function sopStatusChip(status: string | undefined, versionLabel?: string) {
+  const label = versionLabel ? `${versionLabel} ${status}` : (status ?? "—");
   const cls =
     status === "active"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -182,7 +183,12 @@ export default function AdminSops() {
                         <td className="px-4 py-3 font-medium text-slate-900">{s.title}</td>
                         <td className="px-4 py-3 text-xs text-slate-500">{s.iso_clause_reference ?? "—"}</td>
                         <td className="px-4 py-3">
-                          {sopStatusChip(s.current_version?.status, s.current_version?.version_number)}
+                          {sopStatusChip(
+                            s.current_version?.status,
+                            s.current_version
+                              ? `v${s.current_version.document_version ?? s.current_version.version_number}`
+                              : undefined,
+                          )}
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-500">
                           {s.current_version?.effective_date ?? "—"}
