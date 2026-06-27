@@ -366,6 +366,7 @@ async function alreadySynced(ctx: Ctx, dropboxPath: string): Promise<boolean> {
 
 async function syncOne(ctx: Ctx, args: {
   source_bucket: string; source_path: string; dropbox_path: string; sync_trigger: string;
+  fallback_buckets?: string[];
   order_id?: string; quote_id?: string; quote_file_id?: string; step_delivery_id?: string;
 }): Promise<{ ok: boolean; skipped?: boolean; sha256?: string; size?: number; error?: string; dropbox_path: string }> {
   const { source_bucket, source_path, dropbox_path, sync_trigger } = args;
@@ -382,13 +383,23 @@ async function syncOne(ctx: Ctx, args: {
   if (insErr) return { ok: false, error: `audit insert failed: ${insErr.message}`, dropbox_path };
 
   try {
-    const { data: file, error: dlErr } = await ctx.supabase.storage.from(source_bucket).download(source_path);
-    if (dlErr || !file) throw new Error(`download failed: ${dlErr?.message || "no data"}`);
+    // The bucket recorded on a delivery isn't always where the file lives: vendor
+    // deliveries land in `vendor-deliveries`, staff deliveries (same workflows/…
+    // path) land in `quote-files`. Try the primary bucket, then any fallbacks, and
+    // record whichever actually held the object.
+    const buckets = [source_bucket, ...(args.fallback_buckets ?? [])];
+    let file: any = null, usedBucket = source_bucket, lastErr = "no data";
+    for (const b of buckets) {
+      const { data, error } = await ctx.supabase.storage.from(b).download(source_path);
+      if (!error && data) { file = data; usedBucket = b; break; }
+      lastErr = error?.message || "no data";
+    }
+    if (!file) throw new Error(`download failed: ${lastErr}`);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const sha256 = encodeHex(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)));
     const up = await dbxUpload(ctx, dropbox_path, bytes);
     await ctx.supabase.from("dropbox_file_syncs").update({
-      status: "synced", sha256_hash: sha256, file_size_bytes: bytes.length,
+      status: "synced", source_bucket: usedBucket, sha256_hash: sha256, file_size_bytes: bytes.length,
       dropbox_content_hash: up.content_hash, synced_at: new Date().toISOString(),
     }).eq("id", rec.id);
     return { ok: true, sha256, size: bytes.length, dropbox_path };
@@ -466,7 +477,8 @@ async function backfillOrder(ctx: Ctx, body: { order_id: string }) {
         if (!f.storage_path) continue;
         const filename = seg(f.original_filename || f.storage_path.split("/").pop() || "file");
         const r = await syncOne(ctx, {
-          source_bucket: "vendor-deliveries", source_path: f.storage_path,
+          source_bucket: "vendor-deliveries", fallback_buckets: ["quote-files"],
+          source_path: f.storage_path,
           dropbox_path: `${meta.basePath}/${sf.folder}${vsub}/${filename}`,
           sync_trigger: "step_delivery",
           order_id: meta.order.id, step_delivery_id: d.id,
