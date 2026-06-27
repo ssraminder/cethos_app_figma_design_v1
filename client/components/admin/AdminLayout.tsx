@@ -53,6 +53,9 @@ interface NavItem {
   isChild?: boolean;
   /** When true, only super_admin staff see this nav item. */
   superAdminOnly?: boolean;
+  /** Extra path prefixes that should mark this item active (e.g. the QMS Hub
+   *  entry stays highlighted across /admin/sops, /admin/quality, etc.). */
+  matchPrefixes?: string[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -187,52 +190,35 @@ const NAV_ITEMS: NavItem[] = [
     superAdminOnly: true,
   },
   {
-    label: "ISO 17100 quizzes",
-    path: "/admin/iso-quizzes",
-    icon: GraduationCap,
-    section: "Vendors",
-  },
-  {
+    // Single entry for the whole Quality domain. SOPs, Documents, Staff
+    // competence, Qualification queue/approvals, Quality and Quizzes are all
+    // reached via the in-hub tab bar (see QmsHubLayout).
     label: "QMS Hub",
     path: "/admin/qms",
     icon: ShieldCheck,
     section: "Quality",
+    matchPrefixes: [
+      "/admin/sops",
+      "/admin/documents",
+      "/admin/qms",
+      "/admin/quality",
+      "/admin/iso-quizzes",
+      "/admin/trainings",
+    ],
   },
   {
-    label: "SOPs",
-    path: "/admin/sops",
-    icon: BookOpen,
-    section: "Quality",
-  },
-  {
-    label: "Documents & Manuals",
-    path: "/admin/documents",
-    icon: Files,
-    section: "Quality",
-  },
-  {
-    label: "Qualification Queue",
-    path: "/admin/qms/queue",
-    icon: ShieldCheck,
-    section: "Quality",
-  },
-  {
-    label: "QMS Approvals (first-party)",
+    label: "Qualification Approvals",
     path: "/admin/qms/approvals",
-    icon: ShieldCheck,
-    section: "Quality",
-  },
-  {
-    label: "Staff Competence",
-    path: "/admin/qms/staff",
-    icon: GraduationCap,
-    section: "Quality",
-  },
-  {
-    label: "Quality & Performance",
-    path: "/admin/quality",
     icon: ClipboardList,
     section: "Quality",
+    isChild: true,
+  },
+  {
+    label: "Trainings",
+    path: "/admin/trainings",
+    icon: GraduationCap,
+    section: "Quality",
+    isChild: true,
   },
   {
     label: "Review Jobs",
@@ -265,19 +251,6 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/settings/transcription",
     icon: Settings,
     section: "Transcription",
-    isChild: true,
-  },
-  {
-    label: "Trainings",
-    path: "/admin/trainings",
-    icon: GraduationCap,
-    section: "Trainings",
-  },
-  {
-    label: "Vendor Management",
-    path: "/admin/trainings/vendor-management",
-    icon: GraduationCap,
-    section: "Trainings",
     isChild: true,
   },
   { label: "Staff", path: "/admin/staff", icon: Users, section: "Management" },
@@ -585,7 +558,12 @@ function AdminLayoutInner() {
       (item) => !item.superAdminOnly || session?.staffRole === "super_admin",
     ).map((item) => {
       const Icon = item.icon;
-      const active = isActivePath(item.path);
+      const active =
+        isActivePath(item.path) ||
+        (item.matchPrefixes?.some(
+          (p) => location.pathname === p || location.pathname.startsWith(p + "/"),
+        ) ??
+          false);
 
       const sectionHeader =
         item.section &&
